@@ -190,6 +190,8 @@ def markdown_ruc(response, text):
         title = "# Compiled Traffic Manager station review"
     elif response["operation"] == "station_trace_review":
         title = "# Traffic Manager inspection leg trace review"
+    elif response["operation"] == "cycle_trace_review":
+        title = "# Traffic Manager inspection cycle trace review"
     elif response["operation"] == "launchpad_recovery_review":
         title = "# Compiled Traffic Manager recovery review"
     elif response["operation"] == "launchpad_motion_review":
@@ -277,6 +279,8 @@ def markdown_ruc(response, text):
                 lines.append(f"- {text(edge['source'])} ({text(edge['sourceType'])}) → {text(edge['destination'])} ({text(edge['destinationType'])})")
     if trace := report.get("stationTraceReview"):
         lines.extend(markdown_station_trace(trace, text))
+    if cycle := report.get("cycleTraceReview"):
+        lines.extend(markdown_cycle_trace(cycle, text))
     lines.extend(markdown_rules(review["trafficManagers"], text))
     if review["widgets"]:
         lines.extend(["", "## Rendered widgets", ""])
@@ -406,7 +410,9 @@ def markdown_stations(station_review, text):
 
 
 def markdown_station_trace(trace, text):
-    lines = ["", "## Inspection leg trace", "", f"- State **{text(trace['state'])}**"]
+    lines = ["", "## Inspection leg trace", ""]
+    if "state" in trace:
+        lines.append(f"- State **{text(trace['state'])}**")
     if "path" in trace:
         lines.append(f"- Path {' → '.join(text(name) for name in trace['path'])}")
     if identity := trace.get("trace"):
@@ -422,6 +428,28 @@ def markdown_station_trace(trace, text):
         lines.append(f"- Arrival at {text(arrival['station'])} · Scan {arrival['scan']} · Monitor sequence {arrival['sequence']}")
     if fault := trace.get("firstFault"):
         lines.append(f"- First adapter status {fault['statusId']} at scan {fault['scan']}")
+    return lines
+
+
+def markdown_cycle_trace(cycle, text):
+    lines = ["", "## Inspection cycle trace", "",
+             f"- State **{text(cycle['state'])}** · Phase {text(cycle.get('phase'))}"]
+    if trace := cycle.get("trace"):
+        lines.append(f"- Trace {text(trace['path'])} · SHA-256 {trace['sha256']}")
+    if outbound := cycle.get("outbound"):
+        lines.extend(markdown_station_trace(outbound, text))
+    if returned := cycle.get("returnLeg"):
+        lines.extend(["", "## Return leg trace", "", f"- Path {' → '.join(text(name) for name in returned['path'])}"])
+        lines.append(f"- Source occupancy scan {text(returned.get('occupiedScan'))} "
+                     f"· Source clear scan {text(returned.get('sourceClearScan'))}")
+        if arrival := returned.get("arrival"):
+            lines.append(f"- Arrival at {text(arrival['station'])} · Scan {arrival['scan']} · Monitor sequence {arrival['sequence']}")
+        if fault := returned.get("firstFault"):
+            lines.append(f"- First return status {fault['statusId']} at scan {fault['scan']}")
+    if hold := cycle.get("nextHold"):
+        lines.extend(["", "## Next inspection hold", "",
+                      f"- Station {text(hold['station'])} · Shuttle {hold['shuttleId']} "
+                      f"· New request {hold['requestId']} · Scan {hold['scan']}"])
     return lines
 
 

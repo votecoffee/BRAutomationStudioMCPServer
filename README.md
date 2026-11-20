@@ -47,6 +47,7 @@ $brStudio = '.\.local\venv\Scripts\br-studio.exe'
 & $brStudio operation-help launchpad_route_review
 & $brStudio operation-help launchpad_station_review
 & $brStudio operation-help station_trace_review
+& $brStudio operation-help cycle_trace_review
 & $brStudio operation-help launchpad_recovery_review
 & $brStudio operation-help launchpad_motion_review
 & $brStudio operation-help launchpad_geometry_review
@@ -82,6 +83,8 @@ Use `launchpad_route_review` to compare a locally decoded LaunchPad cycle with a
 Use `launchpad_station_review` to verify each station-to-station path and read the source station's LaunchPad model waits before reviewing the native recipe. [Station path workflow](skills/br-automation-studio/references/launchpad-station-review.md)
 
 Use `station_trace_review` to compare a saved inspection release and arrival trace with the compiled station path. [Inspection trace workflow](skills/br-automation-studio/references/station-trace-review.md)
+
+Use `cycle_trace_review` to check the return and next held request for the same shuttle on a compiled two-station loop. [Inspection cycle workflow](skills/br-automation-studio/references/cycle-trace-review.md)
 
 Use `launchpad_recovery_review` to compare station recovery declarations and check the saved-to-compiled AS4 point sequence. [Recovery declaration workflow](skills/br-automation-studio/references/launchpad-recovery-review.md)
 

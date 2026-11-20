@@ -51,27 +51,30 @@ def scan_fields(row):
             or not all(integer(reply.get(key), 1) for key in ("requestId", "shuttleId"))
             or not all(type(reply.get(key)) is bool for key in ("acknowledged", "approved"))):
         raise ValueError(f"Scan {scan} has a malformed inspection result")
+    return shuttle, reply, scan_detections(row, scan)
+
+
+def scan_detections(row, scan):
     detections = row.get("detections", [])
     if not isinstance(detections, list) or any(not isinstance(item, dict)
             or not all(integer(item.get(key), 1) for key in ("sequence", "shuttleId"))
             or not all(nonempty(item.get(key)) for key in ("station", "event")) for item in detections):
         raise ValueError(f"Scan {scan} has malformed monitor detections")
-    return shuttle, reply, detections
+    return detections
 
 
-def check_detections(detections, trace, scan, sequence, result):
+def check_detections(detections, destination, shuttle_id, scan, sequence, result, *, armed):
     for item in detections:
         event_sequence = item["sequence"]
         if event_sequence <= sequence:
             result["ignoredDetections"] += 1
             continue
-        if not result["releaseScans"] or event_sequence != sequence + 1:
+        if not armed or event_sequence != sequence + 1:
             raise TraceIssue("station_trace_detection_gap",
-                             f"Monitor sequence {event_sequence} at scan {scan} cannot be ordered after release",
+                             f"Monitor sequence {event_sequence} at scan {scan} cannot be ordered in the leg",
                              "warning")
         sequence = event_sequence
-        if (item["station"], item["shuttleId"], item["event"]) != (trace["destinationStation"],
-                                                                  trace["shuttleId"], ARRIVAL):
+        if (item["station"], item["shuttleId"], item["event"]) != (destination, shuttle_id, ARRIVAL):
             result["ignoredDetections"] += 1
             continue
         if result["arrival"] is not None:
@@ -143,7 +146,8 @@ def check_leg(trace, result):
                         raise TraceIssue("station_trace_stale_response",
                                          f"First ReleaseBuffered observation follows departure at scan {scan}")
                     result[key] = scan
-        sequence = check_detections(detections, trace, scan, sequence, result)
+        sequence = check_detections(detections, trace["destinationStation"], trace["shuttleId"],
+                                    scan, sequence, result, armed=bool(result["releaseScans"]))
 
     missing = [label for label, observed in (
         ("Release edge", bool(result["releaseScans"])), ("ReleaseDone", result["doneScan"] is not None),
@@ -152,6 +156,25 @@ def check_leg(trace, result):
         result["missing"] = missing
         raise TraceIssue("station_trace_incomplete", f"Capture ended without {', '.join(missing)}", "warning")
     result["arrivalObservedBeforeDone"] = result["arrival"]["scan"] < result["doneScan"]
+
+
+def selected_leg(report, source_station):
+    legs = [row["path"] for row in report["stationReview"]["legs"] if row["path"][0]["importedName"] == source_station]
+    if len(legs) != 1 or legs[0][-1]["importedName"] == source_station:
+        raise TraceIssue("station_trace_leg", f"Expected one verified leg from {source_station!r} to a different station")
+    return [row["importedName"] for row in legs[0]]
+
+
+def leg_identity(report, manager_id, path):
+    return {"sourceStation": path[0], "destinationStation": path[-1], "managerId": manager_id,
+            "launchPadSha256": report["routeReview"]["launchPad"]["sourceSha256"],
+            "rucSha256": report["rucReview"]["archive"]["sha256"]}
+
+
+def check_bound_leg(trace, identity, result):
+    trace_header(trace, identity)
+    result.update({key: trace[key] for key in ("requestId", "shuttleId", "captureKind", "monitorSequenceBeforeRelease")})
+    check_leg(trace, result)
 
 
 def station_trace_review(project, configuration, cpu, manager_id, lpj, readback, name_map, job_directory,
@@ -163,18 +186,11 @@ def station_trace_review(project, configuration, cpu, manager_id, lpj, readback,
         return report
 
     try:
-        legs = [row["path"] for row in report["stationReview"]["legs"] if row["path"][0]["importedName"] == source_station]
-        if len(legs) != 1 or legs[0][-1]["importedName"] == source_station:
-            raise TraceIssue("station_trace_leg", f"Expected one verified leg from {source_station!r} to a different station")
-        path, = legs
-        identity = {"sourceStation": source_station, "destinationStation": path[-1]["importedName"], "managerId": manager_id,
-                    "launchPadSha256": report["routeReview"]["launchPad"]["sourceSha256"],
-                    "rucSha256": report["rucReview"]["archive"]["sha256"]}
-        result.update(identity=identity, path=[row["importedName"] for row in path])
+        path = selected_leg(report, source_station)
+        identity = leg_identity(report, manager_id, path)
+        result.update(identity=identity, path=path)
         trace, result["trace"] = json_snapshot(trace_path, TRACE_LIMIT)
-        trace_header(trace, identity)
-        result.update({key: trace[key] for key in ("requestId", "shuttleId", "captureKind", "monitorSequenceBeforeRelease")})
-        check_leg(trace, result)
+        check_bound_leg(trace, identity, result)
     except (OSError, RuntimeError, ValueError) as error:
         severity = error.severity if isinstance(error, TraceIssue) else "error"
         code = error.code if isinstance(error, TraceIssue) else "station_trace_invalid"
