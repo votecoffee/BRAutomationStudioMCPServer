@@ -129,6 +129,10 @@ def run_launchpad_station_review(arguments, request_directory):
     return launchpad_route_review(*launchpad_inputs(arguments, request_directory), include_stations=True)
 
 
+def run_launchpad_motion_review(arguments, request_directory):
+    return launchpad_route_review(*launchpad_inputs(arguments, request_directory), include_motion=True)
+
+
 def run_launchpad_recovery_review(arguments, request_directory):
     return launchpad_route_review(*launchpad_inputs(arguments, request_directory), include_recovery=True)
 
@@ -288,6 +292,13 @@ LAUNCHPAD_RECOVERY_REVIEW = Operation(
     required=LAUNCHPAD_ROUTE_REVIEW.required,
     handler=run_launchpad_recovery_review,
 )
+LAUNCHPAD_MOTION_REVIEW = Operation(
+    name="launchpad_motion_review",
+    summary="Read LaunchPad exit values and compare the linked assembly's saved and compiled in-plane limits.",
+    arguments=LAUNCHPAD_ROUTE_REVIEW.arguments,
+    required=LAUNCHPAD_ROUTE_REVIEW.required,
+    handler=run_launchpad_motion_review,
+)
 LAUNCHPAD_GEOMETRY_REVIEW = Operation(
     name="launchpad_geometry_review",
     summary="Measure the saved or packaged station and waypoint geometry of a selected LaunchPad cycle.",
@@ -386,8 +397,8 @@ ARSIM_HMI_SMOKE = Operation(
 )
 OPERATIONS = {item.name: item for item in (
     PROJECT_INSPECT, BUILD_PREFLIGHT, SIMULATION_PREFLIGHT, BUILD_PLAN, BUILD_EXECUTE, RUC_REVIEW,
-    LAUNCHPAD_ROUTE_REVIEW, LAUNCHPAD_STATION_REVIEW, LAUNCHPAD_RECOVERY_REVIEW, LAUNCHPAD_GEOMETRY_REVIEW,
-    LAUNCHPAD_LAYOUT_REVIEW, LAUNCHPAD_FRAME_REVIEW, RUC_BINDING_REVIEW,
+    LAUNCHPAD_ROUTE_REVIEW, LAUNCHPAD_STATION_REVIEW, LAUNCHPAD_RECOVERY_REVIEW, LAUNCHPAD_MOTION_REVIEW,
+    LAUNCHPAD_GEOMETRY_REVIEW, LAUNCHPAD_LAYOUT_REVIEW, LAUNCHPAD_FRAME_REVIEW, RUC_BINDING_REVIEW,
     ARSIM_SMOKE, ARSIM_BROWSER_SMOKE, ARSIM_OPCUA_SMOKE, ARSIM_HMI_SMOKE,
 )}
 

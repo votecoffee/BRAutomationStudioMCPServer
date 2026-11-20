@@ -2,6 +2,7 @@
 """Check saved assembly, traffic and mapp View references for a selected CPU."""
 
 from collections import defaultdict
+from .launchpad_motion import LIMIT_UNITS
 from .project import children, tag
 
 ASSEMBLY_WIDGET = "widgets.mapp6D.Assembly6D"
@@ -63,6 +64,25 @@ def station_recovery(path, node, name):
     return record
 
 
+def assembly_motion_limits(path, node):
+    result = {"path": path.as_posix(), "fields": {}}
+    for group in ("Shuttles", "Limits", "InPlaneLimits"):
+        matches = [child for child in children(node, "Group") if child.get("ID") == group]
+        if len(matches) != 1:
+            state = "unverified" if matches else "absent"
+            result["fields"] = {key: {"state": state, "raw": None} for key in LIMIT_UNITS}
+            return result
+        node, = matches
+    for key in LIMIT_UNITS:
+        matches = [child for child in children(node, "Property") if child.get("ID") == key]
+        if len(matches) == 1:
+            field = {"state": "declared", "raw": matches[0].get("Value")}
+        else:
+            field = {"state": "unverified" if matches else "absent", "raw": None}
+        result["fields"][key] = field
+    return result
+
+
 def segment_layout(path, node):
     groups = fields(node, "Segments", "Group")
     segments = []
@@ -118,7 +138,7 @@ class MotionLinks:
                 results.append(match)
         return results
 
-    def check(self, geometry_manager=None, *, include_layout=False, recovery_manager=None):
+    def check(self, geometry_manager=None, *, include_layout=False, recovery_manager=None, include_motion=False):
         assembly_links = []
         managers = []
         for (kind, identity), entries in self.entries.items():
@@ -128,6 +148,8 @@ class MotionLinks:
             if kind == "assembly6d":
                 layouts = self.targets(path, node, "Layout", "Layout6D", "layout6d")
                 assembly = {"assembly": identity, "layouts": [item.get("ID") for _, item in layouts]}
+                if include_motion:
+                    assembly["motionLimits"] = assembly_motion_limits(path, node)
                 if include_layout:
                     assembly["layoutEvidence"] = [segment_layout(file, item) for file, item in layouts]
                 assembly_links.append(assembly)

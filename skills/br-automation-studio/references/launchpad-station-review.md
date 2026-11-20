@@ -12,7 +12,7 @@ Discover the request with `br-studio operation-help launchpad_station_review`. S
 - Each leg's `modelProcess` describes its **source station**. The report retains the ordered Wait entries, raw `dwell_time` values, `fixed_dwell_time` flag, and recipe-node ID. The return marker provides the last edge. It does not add a process step at the starting station.
 - The supported process shape is the Wait array observed in LaunchPad 1.4. An explicitly empty array is readable. Missing fields, malformed durations or unfamiliar steps produce an unverified process while preserving the matched paths. No conversion or total is applied to the raw durations.
 
-Use [LaunchPad recovery review](launchpad-recovery-review.md) to check the station declarations before the first recovery test.
+Use [LaunchPad recovery review](launchpad-recovery-review.md) to check the station declarations before the first recovery test. Follow the [motion parameter review](launchpad-motion-review.md) to inspect the assembly caps and modeled exit values before reviewing PLC release settings.
 
 ## Verify the native recipe
 

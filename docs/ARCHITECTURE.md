@@ -18,6 +18,7 @@ The standalone CLI exposes `project_inspect` for a saved project and `build_pref
 | `scripts/decode-launchpad.cjs` and `src/br_automation_studio/launchpad_route.py` | Decode a known LaunchPad save locally, bind its readback to the source hash, and compare typed edges with a selected saved or compiled manager. |
 | `src/br_automation_studio/launchpad_recovery.py` | Compare per-station recovery flags, mode and point counts against a matched LaunchPad route, and check indexed point positions within AS4. |
 | `src/br_automation_studio/launchpad_stations.py` | Read station-to-station legs and the associated source station model processes in a matched LaunchPad cycle. |
+| `src/br_automation_studio/launchpad_motion.py` | Read raw route-object exit parameters and identify explicit and build-materialized in-plane limits on the linked assembly. |
 | `src/br_automation_studio/launchpad_geometry.py` | Compare positions in the selected route's saved or compiled object lists, reporting distances and a handedness witness. |
 | `src/br_automation_studio/launchpad_layout.py` | Resolve the selected manager's linked layout and compare the occupied 240 mm grid cells relative to each input's master segment. |
 | `src/br_automation_studio/launchpad_frame.py` | Compare station and waypoint residuals with a shared translation under the grid-compatible axis mappings. Accept an optional common datum bound to the inputs. |

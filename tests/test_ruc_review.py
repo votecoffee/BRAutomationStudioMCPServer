@@ -19,6 +19,7 @@ from br_automation_studio.ruc_review import CONTENT, DATA, WIDGET_SCRIPT
 FIXTURE = Path(__file__).resolve().parent / "fixtures/Loop"
 RUC_PATH = "binary/ARsim/PC/RUCPackage/RUCPackage.zip"
 MAPPING = f"{DATA}/DemoMappings.br"
+ASSEMBLY = f"{DATA}/FixtureAssembly.br"
 RULES = f"{DATA}/DemoRules.br"
 WIDGET = f"{CONTENT}/DemoOverview.html"
 DISPLAY = f"{SERVER}/CounterPanel.vis"
@@ -207,6 +208,89 @@ class RucReviewTests(unittest.TestCase):
         self.assertEqual(self.codes(response), ["unsupported_rule"])
         rule_list, = response["result"]["rucReview"]["trafficManagers"][0]["ruleEvidence"]
         self.assertEqual(rule_list["state"], "unverified")
+
+    def supply_motion_values(self, *, saved, compiled):
+        path = self.project / "Physical/ARsim/PC/mapp6D/FixtureAssembly.assembly6d"
+        original = path.read_bytes()
+
+        def insert(values):
+            if values is None:
+                return original
+            speed, acceleration = values
+            limits = f"""<Group ID="Shuttles"><Group ID="Limits"><Group ID="InPlaneLimits">
+                <Property ID="InPlaneVelLim" Value="{speed}"/>
+                <Property ID="InPlaneAccLim" Value="{acceleration}"/>
+              </Group></Group></Group>"""
+            return original.replace(b"</Element>", limits.encode() + b"</Element>")
+
+        path.write_bytes(insert(saved))
+        manifest = self.plan["manifest"]
+        manifest["inputs"] = source_tree(self.project)
+        self.plan["sha256"] = identity(manifest)
+        self.write("plan.json", self.plan)
+        self.members[ASSEMBLY] = b"synthetic BR prefix\0" + insert(compiled)
+
+    def motion_review(self, *, missing_exit=False):
+        lpj = self.root / "Route.lpj"
+        lpj.write_bytes(b"synthetic saved route")
+        receipt = self.root / "Route.json"
+        routes = [
+            ("rs", "s", "Load", "workstation", ["rg"]),
+            ("rg", "g", "Transit", "gate", ["ri"]),
+            ("ri", "i", "Inspect", "workstation", ["end"]),
+            ("end", "s", "recipe_loop_merge_node", "workstation", []),
+        ]
+        nodes = [dict(recipe_id=key, id=obj, name=name, type_name=kind, targets=targets,
+                      exit_velocity=-1 if kind == "gate" else 2, exit_acceleration=10, exit_payload_weight=0)
+                 for key, obj, name, kind, targets in routes]
+        if missing_exit:
+            nodes[0]["exit_velocity"] = True
+        decoded = {"launchpad_version": "1.4", "recipe_nodes": nodes,
+                   "workstations": [{"id": "s", "name": "Load"}, {"id": "i", "name": "Inspect"}],
+                   "gates": [{"id": "g", "name": "Transit"}]}
+        with lpj.open("rb") as stream:
+            source = {"fileName": lpj.name, "sha256": file_digest(stream, "sha256").hexdigest()}
+        receipt.write_text(json.dumps({"schemaVersion": 1, "source": source, "decoded": decoded,
+                                       "codec": {"name": "zipson", "version": "0.2.12"}}), encoding="utf-8")
+        self.package()
+        params = {"project": "Loop/Loop.apj", "jobDirectory": "retained", "managerId": "DemoTraffic",
+                  "launchPadProject": "Route.lpj", "launchPadReadback": "Route.json"}
+        return execute({"schemaVersion": 1, "workspace": "motion", "operation": "launchpad_motion_review",
+                        "arguments": params}, self.root)
+
+    def test_motion_review_reads_materialized_limits_and_raw_exit_values(self):
+        self.supply_motion_values(saved=None, compiled=("1.0", "10.0"))
+        response = self.motion_review()
+        result = response["result"]
+        self.assertEqual(response["status"], "complete", result["diagnostics"])
+        self.assertEqual(result["evidence"], "launchpad_motion_compiled")
+        motion = result["motionReview"]
+        velocity = motion["limits"]["InPlaneVelLim"]
+        self.assertEqual(velocity, {"unit": "m/s", "saved": {"state": "absent", "raw": None},
+                                    "compiled": {"state": "declared", "raw": "1.0"}, "comparison": "materialized"})
+        self.assertEqual([row["exit_velocity"] for row in motion["launchPadExitParameters"]], [2, -1, 2])
+        self.assertIn("materialized", markdown(response))
+
+    def test_changed_explicit_motion_limit_fails_without_changing_route_evidence(self):
+        self.supply_motion_values(saved=("0.75", "8.0"), compiled=("0.5", "8.00"))
+        response = self.motion_review()
+        result = response["result"]
+        self.assertEqual(response["status"], "issues", result["diagnostics"])
+        self.assertEqual(result["routeReview"]["state"], "matched")
+        self.assertEqual(self.codes(response), ["ruc_motion_limit_mismatch"])
+        limits = result["motionReview"]["limits"]
+        self.assertEqual(limits["InPlaneVelLim"]["comparison"], "mismatch")
+        self.assertEqual(limits["InPlaneAccLim"]["comparison"], "matched")
+
+    def test_invalid_model_exit_is_partial_preserving_compiled_limits(self):
+        self.supply_motion_values(saved=None, compiled=("1.0", "10.0"))
+        response = self.motion_review(missing_exit=True)
+        result = response["result"]
+        self.assertEqual(response["status"], "partial", result["diagnostics"])
+        self.assertEqual(result["routeReview"]["state"], "matched")
+        self.assertEqual(self.codes(response), ["launchpad_motion_unverified"])
+        self.assertIsNone(result["motionReview"]["launchPadExitParameters"][0]["exit_velocity"])
+        self.assertEqual(result["motionReview"]["limits"]["InPlaneVelLim"]["comparison"], "materialized")
 
     def test_changed_widget_link_fails_after_a_valid_archive(self):
         self.members[WIDGET] = self.members[WIDGET].replace(b"mapp6D::DemoTraffic", b"mapp6D::Other")

@@ -30,6 +30,7 @@ def markdown(response):
         "launchpad_route_review": "Saved Traffic Manager route review",
         "launchpad_station_review": "Saved Traffic Manager station review",
         "launchpad_recovery_review": "Saved Traffic Manager recovery review",
+        "launchpad_motion_review": "Saved ACOPOS 6D motion review",
         "launchpad_geometry_review": "Saved Traffic Manager geometry review",
         "launchpad_layout_review": "Saved ACOPOS 6D segment layout review",
         "launchpad_frame_review": "Saved LaunchPad coordinate frame review",
@@ -55,6 +56,8 @@ def markdown(response):
             lines.extend(markdown_stations(stations, text))
         if recovery := report.get("recoveryReview"):
             lines.extend(markdown_recovery(recovery, text))
+        if motion := report.get("motionReview"):
+            lines.extend(markdown_motion(motion, text))
         if geometry := report.get("geometryReview"):
             lines.extend(markdown_geometry(geometry, text))
         if layout := report.get("layoutReview"):
@@ -143,6 +146,8 @@ def markdown_ruc(response, text):
         title = "# Compiled Traffic Manager station review"
     elif response["operation"] == "launchpad_recovery_review":
         title = "# Compiled Traffic Manager recovery review"
+    elif response["operation"] == "launchpad_motion_review":
+        title = "# Compiled ACOPOS 6D motion review"
     elif smoke is not None:
         title = "# AS4 ARsim loopback smoke"
     elif binding is not None:
@@ -205,6 +210,8 @@ def markdown_ruc(response, text):
             lines.extend(markdown_stations(stations, text))
         if recovery := report.get("recoveryReview"):
             lines.extend(markdown_recovery(recovery, text))
+        if motion := report.get("motionReview"):
+            lines.extend(markdown_motion(motion, text))
         if geometry := report.get("geometryReview"):
             lines.extend(markdown_geometry(geometry, text))
         if layout := report.get("layoutReview"):
@@ -312,6 +319,28 @@ def markdown_recovery(recovery, text):
 
 def recovery_fields(row, text):
     return " / ".join(text(row[key]) for key in ("mode", "stationIsRecoveryPoint", "explicitPointCount"))
+
+
+def markdown_motion(motion, text):
+    lines = ["", "## In-plane limits and LaunchPad exit values", "", f"- State {text(motion['state'])}"]
+    if not motion["launchPadExitParameters"]:
+        return lines
+    lines.append(f"- Linked assembly {text(motion['assembly'])}")
+    if "savedPath" in motion:
+        lines.append(f"- Saved {text(motion['savedPath'])} · Compiled {text(motion['compiledPath'])}")
+    if motion["limits"]:
+        lines.extend(["", "| Limit | Unit | Saved | Compiled | Comparison |", "| --- | --- | --- | --- | --- |"])
+        for key, row in motion["limits"].items():
+            before, after = row["saved"], row["compiled"]
+            saved = f"{text(before['raw'])} ({text(before['state'])})"
+            compiled = f"{text(after['raw'])} ({text(after['state'])})" if after is not None else text(None)
+            lines.append(f"| {key} | {row['unit']} | {saved} | {compiled} | {text(row['comparison'])} |")
+    lines.extend(["", "| Route object | Type | Raw exit velocity | Raw exit acceleration | Raw exit payload weight |",
+                  "| --- | --- | --- | --- | --- |"])
+    for row in motion["launchPadExitParameters"]:
+        lines.append(f"| {text(row['importedName'])} | {text(row['type'])} | {text(row['exit_velocity'])} | "
+                     f"{text(row['exit_acceleration'])} | {text(row['exit_payload_weight'])} |")
+    return lines
 
 
 def markdown_geometry(geometry, text):
