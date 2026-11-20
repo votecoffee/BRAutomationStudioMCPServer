@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
+from .arsim_smoke import arsim_smoke
 from .inspection import inspect_project
 from .native_build import execute_build, plan_build
 from .preflight import build_preflight
@@ -86,6 +87,16 @@ def ruc_review(arguments, request_directory):
                       request_directory / arguments["jobDirectory"])
 
 
+def run_arsim_smoke(arguments, request_directory):
+    return arsim_smoke(
+        project_path(arguments, request_directory),
+        request_directory / arguments["jobDirectory"],
+        request_directory / arguments["pviTransfer"],
+        request_directory / arguments["sessionDirectory"],
+        arguments.get("timeoutSeconds", 30),
+    )
+
+
 PROJECT_INSPECT = Operation(
     name="project_inspect",
     summary="Inspect saved project versions and ACOPOS 6D references.",
@@ -137,7 +148,21 @@ RUC_REVIEW = Operation(
     required=("project", "jobDirectory"),
     handler=ruc_review,
 )
-OPERATIONS = {item.name: item for item in (PROJECT_INSPECT, BUILD_PREFLIGHT, BUILD_PLAN, BUILD_EXECUTE, RUC_REVIEW)}
+ARSIM_SMOKE = Operation(
+    name="arsim_smoke",
+    summary="Materialize a reviewed AS4 RUC and verify its mapp View assets over owned loopback HTTP.",
+    arguments={
+        **RUC_REVIEW.arguments,
+        "pviTransfer": {"type": "string", "minLength": 1, "description": "Path to installed PVI 4 PVITransfer.exe."},
+        "sessionDirectory": {"type": "string", "minLength": 1, "description": "New private directory for the ARsim smoke session."},
+        "timeoutSeconds": {"type": "integer", "minimum": 1, "maximum": 120, "default": 30},
+    },
+    required=(*RUC_REVIEW.required, "pviTransfer", "sessionDirectory"),
+    handler=run_arsim_smoke,
+)
+OPERATIONS = {item.name: item for item in (
+    PROJECT_INSPECT, BUILD_PREFLIGHT, BUILD_PLAN, BUILD_EXECUTE, RUC_REVIEW, ARSIM_SMOKE,
+)}
 
 
 def valid_text(value):

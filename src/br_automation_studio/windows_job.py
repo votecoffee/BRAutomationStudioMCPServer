@@ -1,6 +1,8 @@
 
-"""Run a local Windows build and its child processes in an owned Job Object."""
+"""Run local vendor commands and their children in owned Windows Job Objects."""
 
+from contextlib import contextmanager
+from dataclasses import dataclass
 import ctypes
 from ctypes import wintypes
 import json
@@ -16,7 +18,11 @@ import subprocess
 import sys
 
 args = json.load(sys.stdin)
-raise SystemExit(subprocess.call(args, stdin=subprocess.DEVNULL, creationflags=subprocess.CREATE_NO_WINDOW))
+startup = subprocess.STARTUPINFO()
+startup.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+startup.wShowWindow = subprocess.SW_HIDE
+raise SystemExit(subprocess.call(args, stdin=subprocess.DEVNULL,
+                                creationflags=subprocess.CREATE_NO_WINDOW, startupinfo=startup))
 """
 
 
@@ -101,6 +107,25 @@ class Job:
             raise ctypes.WinError(ctypes.get_last_error())
         return info.active_processes
 
+    def pids(self):
+        count_size = 2 * ctypes.sizeof(wintypes.DWORD)
+        pid_size = ctypes.sizeof(ctypes.c_size_t)
+        for slots in (32, 256, 2048):
+            data = ctypes.create_string_buffer(count_size + slots * pid_size)
+            if not self.query(self.handle, 3, data, ctypes.sizeof(data), None):
+                error = ctypes.get_last_error()
+                if error in (122, 234):
+                    continue
+                raise ctypes.WinError(error)
+            assigned, returned = (wintypes.DWORD * 2).from_buffer(data)
+            if returned <= slots and assigned == returned:
+                return set((ctypes.c_size_t * returned).from_buffer(data, count_size))
+        raise OSError("Could not read the complete Windows job PID list")
+
+    def stop(self):
+        if self.active() and not self.terminate(self.handle, 1):
+            raise ctypes.WinError(ctypes.get_last_error())
+
     def drain(self):
         deadline = time.monotonic() + 5
         while self.active():
@@ -116,11 +141,47 @@ class Job:
         return "empty"
 
 
+def waiting_worker(working_directory, log):
+    return subprocess.Popen([sys.executable, "-I", "-S", "-c", WORKER],
+                            cwd=working_directory, stdin=subprocess.PIPE, stdout=log,
+                            stderr=subprocess.STDOUT, creationflags=subprocess.CREATE_NO_WINDOW)
+
+
+@dataclass
+class ObservedProcess:
+    job: Job
+    worker: subprocess.Popen
+    cleanup: str | None = None
+
+
+@contextmanager
+def observed_process(arguments, working_directory, log):
+    with Job() as job:
+        with waiting_worker(working_directory, log) as worker:
+            try:
+                job.add(worker.pid)
+            except BaseException:
+                worker.kill()
+                raise
+            session = ObservedProcess(job, worker)
+            try:
+                worker.stdin.write(json.dumps(arguments).encode("ascii"))
+                worker.stdin.close()
+                yield session
+            finally:
+                try:
+                    job.stop()
+                    worker.wait(timeout=10)
+                    session.cleanup = job.drain()
+                except BaseException:
+                    if worker.poll() is None:
+                        worker.kill()
+                    raise
+
+
 def run_build(arguments, working_directory, begin_dispatch, log, timeout):
     with Job() as job:
-        with subprocess.Popen([sys.executable, "-I", "-S", "-c", WORKER],
-                              cwd=working_directory, stdin=subprocess.PIPE, stdout=log,
-                              stderr=subprocess.STDOUT, creationflags=subprocess.CREATE_NO_WINDOW) as worker:
+        with waiting_worker(working_directory, log) as worker:
             try:
                 job.add(worker.pid)
                 begin_dispatch(worker.pid)

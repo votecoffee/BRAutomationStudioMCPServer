@@ -85,10 +85,11 @@ def markdown(response):
 def markdown_ruc(response, text):
     report = response["result"]
     review = report["rucReview"]
+    smoke = report.get("arsimSmoke")
     lines = [
-        "# AS4 RUC review", "",
+        "# AS4 ARsim loopback smoke" if smoke is not None else "# AS4 RUC review", "",
         f"- Project **{text(report['project'])}**",
-        f"- Readback status **{response['status']}**",
+        f"- Status **{response['status']}**",
         f"- Configuration **{text(report['selectedConfiguration'])}** · CPU **{text(report['selectedCpu'])}**",
         f"- Build job {text(review['jobId'])}",
         f"- Build plan SHA-256 {text(review['planSha256'])}",
@@ -101,6 +102,12 @@ def markdown_ruc(response, text):
         ])
     if summary := review["buildSummary"]:
         lines.append(f"- Builder errors {text(summary['errors'])} · Builder warnings {text(summary['warnings'])}")
+    if smoke is not None:
+        lines.extend(["", "## Loopback HTTP", "",
+                      f"- Session {text(smoke['state'])} · Runtime {text(smoke.get('runtimeVersion'))}",
+                      f"- Cleanup {text(smoke['cleanup'])}"])
+        for asset in smoke["assets"]:
+            lines.append(f"- {text(asset['path'])} · HTTP {asset['status']} · {asset['bytes']} bytes · {asset['sha256']}")
     for manager in review["trafficManagers"]:
         lines.extend(["", f"## {text(manager['manager'])}", ""])
         for edge in manager["edges"]:
