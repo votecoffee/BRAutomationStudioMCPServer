@@ -19,6 +19,10 @@ The repository is in its documentation stage. Native build workflows will requir
 
 The first planned workflow takes a saved Automation Studio project, reports its configurations and declared technology package versions, and checks the relationships among the ACOPOS 6D assembly, Traffic Manager, and mapp View widget. It records the source and the scope of the checks. Native compilation and simulation each require their own evidence.
 
+## Architecture
+
+The application design covers the shared operation catalog, standalone CLI, future chat skill, and the first saved-project workflow. [Toolset architecture](docs/ARCHITECTURE.md)
+
 ## Maintainers
 
 Project contact [votecoffee](https://github.com/votecoffee).
