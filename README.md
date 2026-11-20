@@ -2,26 +2,38 @@
 
 Standalone engineering tools for B&R Automation Studio projects.
 
-The first development use case is ACOPOS 6D with Core Motion, Traffic Manager, and a PLC-hosted mapp View HMI. The toolset starts with saved-project inspection and build preflight. The planned command-line interface will be the entry point for engineers and reusable chat workflows. A future MCP adapter can call the same operations.
+The first workflow inspects saved Automation Studio projects for ACOPOS 6D, Core Motion, Traffic Manager, and PLC-hosted mapp View. The standalone CLI uses a shared operation catalog that a future MCP adapter can call.
 
 ## Install
 
-Clone the repository to read the project documentation.
+Use Python 3.11 or later. From PowerShell, clone the repository and install the CLI in a local environment.
 
 ```powershell
 git clone https://github.com/votecoffee/BRAutomationStudioMCPServer.git
 Set-Location BRAutomationStudioMCPServer
+py -3 -m venv .local\venv
+.\.local\venv\Scripts\python.exe -m pip install .
 ```
 
-The repository is in its documentation stage. Native build workflows will require a compatible Windows installation of B&R Automation Studio, Automation Runtime, and the selected technology packages.
+Saved-file inspection runs without Automation Studio. Native build workflows will require a compatible B&R installation.
 
 ## Usage
 
-The first planned workflow takes a saved Automation Studio project, reports its configurations and declared technology package versions, and checks the relationships among the ACOPOS 6D assembly, Traffic Manager, and mapp View widget. It records the source and the scope of the checks. Native compilation and simulation each require their own evidence.
+### CLI
+
+```powershell
+$brStudio = '.\.local\venv\Scripts\br-studio.exe'
+& $brStudio operations
+& $brStudio operation-help project_inspect
+& $brStudio run --request examples/inspect-loop.json
+& $brStudio run --request examples/inspect-loop.json --format markdown
+```
+
+The example reads a synthetic project. The result lists declared package versions, selected configuration and CPU, layout and assembly references, Traffic Manager endpoints, and Assembly6D widget links. It records SHA-256 hashes for the files read. Use the result as saved-file evidence. Native compilation and ARsim behavior need their own checks.
 
 ## Architecture
 
-The application design covers the shared operation catalog, standalone CLI, future chat skill, and the first saved-project workflow. [Toolset architecture](docs/ARCHITECTURE.md)
+The application design covers the shared operation catalog, standalone CLI, future chat skill, and the native build boundary. [Toolset architecture](docs/ARCHITECTURE.md)
 
 ## Maintainers
 

@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Configuration>
+  <Element Type="trafficmappinglist" ID="DemoMappings">
+    <Group ID="TrafficMapping[1]">
+      <Selector ID="Source" Value="Station">
+        <Property ID="SourceRef" Value="Load" />
+        <Group ID="Destinations">
+          <Selector ID="To[1]" Value="Waypoint">
+            <Property ID="DestinationRef" Value="Transit" />
+          </Selector>
+        </Group>
+      </Selector>
+    </Group>
+    <Group ID="TrafficMapping[2]">
+      <Selector ID="Source" Value="Waypoint">
+        <Property ID="SourceRef" Value="Transit" />
+        <Group ID="Destinations">
+          <Selector ID="To[1]" Value="Station">
+            <Property ID="DestinationRef" Value="Inspect" />
+          </Selector>
+        </Group>
+      </Selector>
+    </Group>
+    <Group ID="TrafficMapping[3]">
+      <Selector ID="Source" Value="Station">
+        <Property ID="SourceRef" Value="Inspect" />
+        <Group ID="Destinations">
+          <Selector ID="To[1]" Value="Station">
+            <Property ID="DestinationRef" Value="Load" />
+          </Selector>
+        </Group>
+      </Selector>
+    </Group>
+  </Element>
+</Configuration>

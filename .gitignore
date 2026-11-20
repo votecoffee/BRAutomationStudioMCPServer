@@ -1,2 +1,8 @@
 # Private inputs, corpus notes, and local evidence.
 /.local/
+
+# Python build artifacts.
+__pycache__/
+*.egg-info/
+/build/
+/dist/

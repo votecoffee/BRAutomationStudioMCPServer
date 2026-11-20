@@ -2,15 +2,15 @@
 
 [Repository README](../README.md)
 
-This document proposes the structure for the first standalone Automation Studio application. The first operation is a read-only inventory of a saved project. Use ACOPOS 6D, Traffic Manager, and mapp View to exercise the design.
+The standalone Automation Studio CLI exposes `project_inspect`, a read-only inventory of a saved project. Use ACOPOS 6D, Traffic Manager, and mapp View to exercise the design.
 
 ## Application layers
 
-| Planned path | Responsibility |
+| Component | Responsibility |
 | --- | --- |
-| `src/core/` | Inspect saved snapshots, resolve references, and produce typed diagnostics and artifact metadata. Own one operation catalog with request and result types. |
-| `src/cli/` | Discover operations and schemas, accept a UTF-8 JSON request, and return structured JSON. Keep console formatting and exit codes at this boundary. |
-| `src/automation-studio/` | Discover a selected local Automation Studio version and run explicit native jobs in private workspaces. Capture vendor diagnostics and verify generated artifacts. Add this layer when the saved-file workflow is ready. |
+| `src/br_automation_studio/` | Inspect saved snapshots, resolve references, and produce typed diagnostics and artifact metadata. Own one operation catalog with request and result types. |
+| `src/br_automation_studio/cli.py` | Discover operations and schemas, accept a UTF-8 JSON request, and return structured JSON. Keep console formatting and exit codes at this boundary. |
+| Native build adapter, planned | Discover a selected local Automation Studio version and run explicit native jobs in private workspaces. Capture vendor diagnostics and verify generated artifacts. Add this layer when the saved-file workflow is ready. |
 | `skills/br-automation-studio/` | Give future chats a short entry point that locates the installed standalone executable and routes work by operation. |
 | `workflows/` | Maintain versioned workflow guides, request examples, and verification steps distributed with the CLI. |
 | `tests/fixtures/` | Hold synthetic inputs and expected outcomes, including unresolved references and unsupported formats. |
@@ -19,7 +19,7 @@ Keep the core callable in process. A future MCP adapter can use the operation ca
 
 ## Command and result contract
 
-Use the Rockwell CLI's discovery pattern for the B&R CLI. The proposed commands are `operations`, `operation-help <operation>`, and `run --request <file>`. A request carries a schema version, workspace, operation, and typed arguments. Use the discovered schema to prepare the request.
+Use the Rockwell CLI's discovery pattern for the B&R CLI. The available commands are `operations`, `operation-help <operation>`, and `run --request <file>`. A request carries a schema version, workspace, operation, and typed arguments. Use the discovered schema to prepare the request.
 
 A result identifies its operation, source snapshot, outcome, and diagnostics. Include exact input SHA-256 hashes, relevant tool versions, and hashes for any retained report or artifact. Include the checks performed and any unresolved or unsupported scope. Preserve the distinction between a check that passed, a check that failed, and a check that could not run. Use bounded output and make large collections pageable when needed.
 
@@ -28,7 +28,7 @@ Add durable job IDs when native work begins. Keep each job's input snapshot, sel
 ## First workflow
 
 1. Open an explicitly selected saved `.apj` in a private workspace. Record its exact hash and track the relative paths and hashes of the project files actually read. Preserve unknown formats and report path or parse errors.
-2. List project configurations and declared technology package versions. Mark available local installations and unresolved dependencies from their own evidence. Saved package selections and installed package inventories answer different questions.
+2. List project configurations and declared technology package versions. A separate local tool inventory can compare these declarations against installed packages in a future operation.
 3. For the selected configuration, inventory the ACOPOS 6D layout and assembly, Traffic Manager object and mapping lists, and mapp View content. Resolve their explicit links. Diagnose missing or mistyped mapping targets and a widget whose assembly and manager links disagree.
 4. Produce a structured result and a readable report from the same findings. Include the selected configuration, checked links, unsupported objects, and source hashes. Validate the reporting with a synthetic project and a variant with an unresolved return edge. Verify the source bytes before and after the run.
 

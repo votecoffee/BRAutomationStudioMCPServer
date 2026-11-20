@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Configuration>
+  <Element Type="trafficmanager" ID="DemoTraffic">
+    <Selector ID="Base" Value="AssemblyAcp6D">
+      <Property ID="BaseRef" Value="FixtureAssembly" />
+    </Selector>
+    <Group ID="TrafficObjects">
+      <Property ID="TrafficObjectListRef[1]" Value="DemoObjects" />
+    </Group>
+    <Group ID="TrafficMapping">
+      <Property ID="TrafficMappingListRef[1]" Value="DemoMappings" />
+    </Group>
+    <Group ID="TrafficRules">
+      <Property ID="TrafficRuleListRef[1]" Value="DemoRules" />
+    </Group>
+  </Element>
+</Configuration>

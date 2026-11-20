@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Package PackageType="mapp6D" xmlns="http://br-automation.co.at/AS/Package">
+  <Objects>
+    <Object Type="File">FixtureLayout.layout6d</Object>
+    <Object Type="File">FixtureAssembly.assembly6d</Object>
+    <Object Type="File">DemoTraffic.trafficmanager</Object>
+    <Object Type="File">DemoObjects.trafficobjectlist</Object>
+    <Object Type="File">DemoMappings.trafficmappinglist</Object>
+    <Object Type="File">DemoRules.trafficrulelist</Object>
+  </Objects>
+</Package>

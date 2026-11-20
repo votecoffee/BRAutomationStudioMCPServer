@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Configuration>
+  <Element Type="trafficobjectlist" ID="DemoObjects">
+    <Selector ID="TrafficObject[1]" Value="Station">
+      <Property ID="Type" Value="Station" />
+      <Property ID="Name" Value="Load" />
+    </Selector>
+    <Selector ID="TrafficObject[2]" Value="Waypoint">
+      <Property ID="Type" Value="Waypoint" />
+      <Property ID="Name" Value="Transit" />
+    </Selector>
+    <Selector ID="TrafficObject[3]" Value="Station">
+      <Property ID="Type" Value="Station" />
+      <Property ID="Name" Value="Inspect" />
+    </Selector>
+  </Element>
+</Configuration>

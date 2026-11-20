@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Configuration>
+  <Element Type="layout6d" ID="FixtureLayout">
+    <Property ID="GridSize" Value="0" />
+  </Element>
+</Configuration>

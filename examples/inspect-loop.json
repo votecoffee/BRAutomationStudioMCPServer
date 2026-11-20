@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "workspace": "loop-demo",
+  "operation": "project_inspect",
+  "arguments": {
+    "project": "../tests/fixtures/Loop/Loop.apj",
+    "configuration": "ARsim",
+    "cpu": "PC"
+  }
+}

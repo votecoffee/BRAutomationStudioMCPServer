@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Configuration xmlns="http://br-automation.co.at/AS/Configuration">
+  <Objects>
+    <Object Type="Cpu">PC</Object>
+  </Objects>
+</Configuration>
