@@ -114,6 +114,7 @@ class BindingTarget:
     content: str
     widget: str
     identifier: str
+    require_default: bool = False
 
     @property
     def dom_id(self):
@@ -190,6 +191,13 @@ class BindingTarget:
         binding = self.check_binding(matches, visu_path, True)
         output.update(visualization=visu_path, binding=binding.as_posix())
 
+    def check_default(self, root, path):
+        values = [item.get("Value") for element in nested(root, "Element") if element.get("Type") == "MAPPVIEWCFG"
+                  for group in nested(element, "Group") if group.get("ID") == "Client"
+                  for item in nested(group, "Property") if item.get("ID") == "defaultVisu"]
+        require(values == [self.visualization], path,
+                f"The default visualization must be {self.visualization!r} for the browser check")
+
     def check(self, archive, source, manifest, report):
         try:
             reference = TASK_VARIABLE.fullmatch(self.identifier)
@@ -198,7 +206,10 @@ class BindingTarget:
             for value in (self.visualization, self.content, self.widget):
                 require(re.fullmatch(r"[a-zA-Z0-9_-]+", value), ".", f"Unsupported resource ID {value!r}")
             cpu = Path("Physical", manifest["configuration"], manifest["cpu"], "Cpu.pkg")
-            paths = package_files(source, cpu, "Cpu", {"vis", "binding", "uaserver", "uad"})
+            extensions = {"vis", "binding", "uaserver", "uad"}
+            if self.require_default:
+                extensions.add("mappviewcfg")
+            paths = package_files(source, cpu, "Cpu", extensions)
             saved, compiled = report["saved"], report["compiled"]
 
             report["state"] = "checking_saved"
@@ -220,9 +231,23 @@ class BindingTarget:
                                             cpu, f"saved default-view task variable {self.identifier!r}")
             require(task_node.get("Enable") == field.get("Enable") == "True", map_path, "Saved task variable is disabled")
             saved["nodeMap"] = map_path.as_posix()
+            if self.require_default:
+                config, root = one(saved_documents(source, paths, ".mappviewcfg", "Configuration"),
+                                   cpu, "saved mapp View configuration")
+                self.check_default(root, config)
+                saved.update(defaultVisualization=self.visualization, serverConfig=config.as_posix())
 
             report["state"] = "checking_compiled"
             self.compiled_binding(archive, compiled)
+            if self.require_default:
+                server_config = f"{SERVER}/{config.name}"
+                candidates = [name for name in archive.members
+                              if name.startswith(f"{SERVER.casefold()}/") and name.endswith(".mappviewcfg")]
+                require(candidates == [server_config.casefold()], server_config,
+                        "Could not select one compiled mapp View server configuration")
+                root = unpack_xml(packaged_bytes(archive, server_config), server_config, "Configuration")
+                self.check_default(root, server_config)
+                compiled.update(defaultVisualization=self.visualization, serverConfig=server_config)
             html_path = f"{CONTENT}/{self.content}.html"
             widget_parser = RenderedWidget(self.dom_id)
             widget_parser.feed(packaged_bytes(archive, html_path).decode("utf-8-sig"))

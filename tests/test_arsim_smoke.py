@@ -7,9 +7,11 @@ from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
+from zipfile import ZipFile
 
-from br_automation_studio.arsim_smoke import check_free, check_owned, loopback_profile, probe_http
+from br_automation_studio.arsim_smoke import check_free, check_owned, expected_assets, loopback_profile, probe_http
 from br_automation_studio.native_build import source_tree
+from br_automation_studio.ruc_review import CONTENT, VIEW, WIDGET_SCRIPT
 
 FIXTURE = Path(__file__).resolve().parent / "fixtures/Loop"
 
@@ -100,3 +102,18 @@ class ArsimSmokeTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "did not match"):
                     probe_http(session, profile, [expected], receipt, 1)
         self.assertEqual(receipt["assets"], [response])
+
+    def test_counter_content_is_checked_even_when_not_in_the_assembly_content(self):
+        path = self.project.parent / "RUC.zip"
+        with ZipFile(path, "w") as archive:
+            archive.writestr("ProjectInformation.xml",
+                             "<ProjectInformation><CPUType>AR000</CPUType><RuntimeType>AR Simulation</RuntimeType>"
+                             "<ARVersion>J4.93</ARVersion></ProjectInformation>")
+            archive.writestr(f"{VIEW}/index.html", b"entry point")
+            archive.writestr(f"{CONTENT}/Assembly.html", b"assembly")
+            archive.writestr(WIDGET_SCRIPT, b"assembly widget script")
+            archive.writestr(f"{CONTENT}/Counter.html", b"counter")
+        _, assets = expected_assets(path, {"widgets": [{"contentId": "Assembly"}]},
+                                    {"opcUaPort": None}, ("Counter",))
+        counter = next(item for item in assets if item["path"].endswith("/Counter.html"))
+        self.assertEqual(counter["sha256"], sha256(b"counter").hexdigest())

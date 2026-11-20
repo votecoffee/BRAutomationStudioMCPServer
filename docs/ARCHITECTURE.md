@@ -17,6 +17,7 @@ The standalone CLI exposes `project_inspect` for a saved project and `build_pref
 | `src/br_automation_studio/arsim_smoke.py` | Materialize an ARsim runtime, verify owned loopback listeners, and compare served HMI assets with the bound RUC. |
 | `src/br_automation_studio/browser_smoke.py` | Run a headless Chrome job against the same verified ARsim HTTP session. Record rendered widget and counter evidence before and after a page reopen. |
 | `src/br_automation_studio/opcua_smoke.py` | Read an explicit namespace URI and string node ID on the owned ARsim OPC UA listener. Record access metadata, data quality and counter samples. |
+| `src/br_automation_studio/hmi_smoke.py` | Bind the compiled value binding and 6D reviews to the same package, then run the existing direct OPC UA and browser probes inside one ARsim job. |
 | `skills/br-automation-studio/` | Give future chats a short entry point that locates the installed standalone executable and routes work by operation. |
 | `skills/br-automation-studio/references/` | Maintain versioned workflow guides, request examples, and verification steps distributed with the CLI. |
 | `tests/fixtures/` | Hold synthetic inputs and expected outcomes, including unresolved references and unsupported formats. |

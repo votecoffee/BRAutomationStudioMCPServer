@@ -8,7 +8,11 @@ from typing import ClassVar
 from .arsim_smoke import HOST
 
 CURRENT_READ = 0x01
-INTEGER_TYPES = {"SByte", "Byte", "Int16", "UInt16", "Int32", "UInt32", "Int64", "UInt64"}
+INTEGER_NODE_TYPES = {
+    "i=2": "SByte", "i=3": "Byte", "i=4": "Int16", "i=5": "UInt16",
+    "i=6": "Int32", "i=7": "UInt32", "i=8": "Int64", "i=9": "UInt64",
+}
+INTEGER_TYPES = frozenset(INTEGER_NODE_TYPES.values())
 
 
 def resolve_namespace(namespaces, uri):

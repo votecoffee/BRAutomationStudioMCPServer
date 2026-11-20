@@ -8,6 +8,7 @@ from typing import Callable
 from .arsim_smoke import arsim_smoke
 from .binding_review import BindingTarget
 from .browser_smoke import ChromeProbe
+from .hmi_smoke import arsim_hmi_smoke
 from .inspection import inspect_project
 from .native_build import execute_build, plan_build
 from .opcua_smoke import OpcUaProbe
@@ -90,21 +91,28 @@ def ruc_review(arguments, request_directory):
                       request_directory / arguments["jobDirectory"])
 
 
+def binding_target(arguments):
+    return BindingTarget(arguments["visualizationId"], arguments["contentId"],
+                         arguments["widgetId"], arguments["stringIdentifier"])
+
+
 def ruc_binding_review(arguments, request_directory):
-    target = BindingTarget(arguments["visualizationId"], arguments["contentId"],
-                           arguments["widgetId"], arguments["stringIdentifier"])
-    return review_ruc(project_path(arguments, request_directory), request_directory / arguments["jobDirectory"], target)
+    return review_ruc(project_path(arguments, request_directory), request_directory / arguments["jobDirectory"],
+                      binding_target(arguments))
 
 
-def run_arsim_smoke(arguments, request_directory, runtime_probe=None):
-    return arsim_smoke(
+def arsim_inputs(arguments, request_directory):
+    return (
         project_path(arguments, request_directory),
         request_directory / arguments["jobDirectory"],
         request_directory / arguments["pviTransfer"],
         request_directory / arguments["sessionDirectory"],
         arguments.get("timeoutSeconds", 30),
-        runtime_probe,
     )
+
+
+def run_arsim_smoke(arguments, request_directory, runtime_probe=None):
+    return arsim_smoke(*arsim_inputs(arguments, request_directory), runtime_probe)
 
 
 def run_arsim_browser_smoke(arguments, request_directory):
@@ -117,6 +125,15 @@ def run_arsim_opcua_smoke(arguments, request_directory):
     probe = OpcUaProbe(arguments["namespaceUri"], arguments["stringIdentifier"],
                        arguments.get("opcUaTimeoutSeconds", 20))
     return run_arsim_smoke(arguments, request_directory, probe)
+
+
+def run_arsim_hmi_smoke(arguments, request_directory):
+    return arsim_hmi_smoke(
+        *arsim_inputs(arguments, request_directory),
+        binding_target(arguments), request_directory / arguments["browserExecutable"],
+        arguments.get("assemblyWidgetId"), arguments.get("browserTimeoutSeconds", 30),
+        arguments.get("opcUaTimeoutSeconds", 20),
+    )
 
 
 PROJECT_INSPECT = Operation(
@@ -220,9 +237,23 @@ ARSIM_OPCUA_SMOKE = Operation(
     required=(*ARSIM_SMOKE.required, "namespaceUri", "stringIdentifier"),
     handler=run_arsim_opcua_smoke,
 )
+ARSIM_HMI_SMOKE = Operation(
+    name="arsim_hmi_smoke",
+    summary="Verify a compiled counter binding and compare direct OPC UA and browser values in one ARsim run.",
+    arguments={
+        **RUC_BINDING_REVIEW.arguments,
+        **ARSIM_SMOKE.arguments,
+        "browserExecutable": ARSIM_BROWSER_SMOKE.arguments["browserExecutable"],
+        "assemblyWidgetId": ARSIM_BROWSER_SMOKE.arguments["assemblyWidgetId"],
+        "browserTimeoutSeconds": ARSIM_BROWSER_SMOKE.arguments["browserTimeoutSeconds"],
+        "opcUaTimeoutSeconds": ARSIM_OPCUA_SMOKE.arguments["opcUaTimeoutSeconds"],
+    },
+    required=(*ARSIM_SMOKE.required, "visualizationId", "contentId", "widgetId", "stringIdentifier", "browserExecutable"),
+    handler=run_arsim_hmi_smoke,
+)
 OPERATIONS = {item.name: item for item in (
     PROJECT_INSPECT, BUILD_PREFLIGHT, BUILD_PLAN, BUILD_EXECUTE, RUC_REVIEW, RUC_BINDING_REVIEW,
-    ARSIM_SMOKE, ARSIM_BROWSER_SMOKE, ARSIM_OPCUA_SMOKE,
+    ARSIM_SMOKE, ARSIM_BROWSER_SMOKE, ARSIM_OPCUA_SMOKE, ARSIM_HMI_SMOKE,
 )}
 
 

@@ -157,7 +157,7 @@ class RucReviewTests(unittest.TestCase):
         cpu = self.project / "Physical/ARsim/PC"
         manifest = cpu / "Cpu.pkg"
         xml = manifest.read_text(encoding="utf-8")
-        files = ("Display.vis", "Counter.binding", "Local.uaserver", "Exposure.uad")
+        files = ("Display.vis", "Counter.binding", "Local.uaserver", "Exposure.uad", "Display.mappviewcfg")
         registration = "".join(f'<Object Type="File">{name}</Object>' for name in files)
         manifest.write_text(xml.replace("</Objects>", registration + "</Objects>"), encoding="utf-8")
         visu = """<vis:Visualization id="CounterPanel" xmlns:vis="http://www.br-automation.com/iat2015/visualizationDefinition/v2">
@@ -178,7 +178,11 @@ class RucReviewTests(unittest.TestCase):
         source_map = """<OpcUaSource><DefaultView><Module>
           <Task Name="Pulse" Enable="True"><Variable Name="Count" Enable="True"/></Task>
         </Module></DefaultView></OpcUaSource>"""
-        for name, text in zip(files, (visu, saved, ua, source_map)):
+        config = """<Configuration><Element Type="MAPPVIEWCFG"><Group ID="Client">
+          <Property ID="defaultVisu" Value="CounterPanel"/>
+        </Group></Element></Configuration>"""
+        self.members[f"{SERVER}/Display.mappviewcfg"] = config.encode()
+        for name, text in zip(files, (visu, saved, ua, source_map, config)):
             (cpu / name).write_text(text, encoding="utf-8")
         content = self.project / "Logical/mappView/Overview.content"
         xml = content.read_text(encoding="utf-8")
@@ -259,3 +263,20 @@ class RucReviewTests(unittest.TestCase):
         self.members[CONNECTION] = self.members[CONNECTION].replace(b"14840", b"14841")
         self.package()
         self.assertIn("endpoint differs", self.binding_review()["result"]["diagnostics"][0]["message"])
+
+    def test_combined_hmi_requires_same_default_visualization_before_starting_arsim(self):
+        self.configure_display()
+        member = f"{SERVER}/Display.mappviewcfg"
+        self.members[member] = self.members[member].replace(b"CounterPanel", b"OtherPanel")
+        self.package()
+        response = execute({"schemaVersion": 1, "workspace": "readback", "operation": "arsim_hmi_smoke",
+                            "arguments": {"project": "Loop/Loop.apj", "jobDirectory": "retained",
+                                          "visualizationId": "CounterPanel", "contentId": "DemoOverview",
+                                          "widgetId": "CountView", "stringIdentifier": "::Pulse:Count",
+                                          "pviTransfer": "unused.exe", "browserExecutable": "unused.exe",
+                                          "sessionDirectory": "unused-session"}}, self.root)
+        self.assertEqual(response["status"], "issues")
+        self.assertEqual(response["result"]["arsimSmoke"]["state"], "not_started")
+        self.assertEqual(response["result"]["diagnostics"][0]["path"], member)
+        self.assertIn("default visualization must be", markdown(response))
+        self.assertFalse((self.root / "unused-session").exists())

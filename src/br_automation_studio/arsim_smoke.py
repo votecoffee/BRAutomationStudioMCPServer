@@ -118,8 +118,8 @@ def check_ua_settings(root, port):
         raise ValueError("Could not verify an explicit HMI OPC UA connection")
 
 
-def expected_assets(archive_path, review, profile):
-    names = {f"{VIEW}/index.html"}
+def expected_assets(archive_path, review, profile, extra_content=()):
+    names = {f"{VIEW}/index.html", *(f"{CONTENT}/{content}.html" for content in extra_content)}
     for widget in review["widgets"]:
         names.add(f"{CONTENT}/{widget['contentId']}.html")
     if review["widgets"]:
@@ -212,7 +212,7 @@ def ascii_pil_path(path):
     return value
 
 
-def arsim_smoke(project, job_dir, pvi, session_dir, timeout=30, runtime_probe=None):
+def arsim_smoke(project, job_dir, pvi, session_dir, timeout=30, runtime_probe=None, *, extra_content=()):
     report = review_ruc(project, job_dir)
     smoke = {"state": "not_started", "packageSha256": None, "assets": [], "cleanup": None}
     report["arsimSmoke"] = smoke
@@ -258,7 +258,7 @@ def arsim_smoke(project, job_dir, pvi, session_dir, timeout=30, runtime_probe=No
         copyfile(archive_path, staged)
         if fingerprint(staged) != smoke["packageSha256"]:
             raise ValueError("The staged RUC differs from the completed build")
-        version, assets = expected_assets(staged, reviewed, profile)
+        version, assets = expected_assets(staged, reviewed, profile, extra_content)
         smoke["runtimeVersion"] = version
         instructions.write_text(instruction, encoding="ascii", newline="\n")
         with (session_dir / "pvi-stdout.log").open("xb") as log:

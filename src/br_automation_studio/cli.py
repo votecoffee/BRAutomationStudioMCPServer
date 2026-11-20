@@ -88,7 +88,9 @@ def markdown_ruc(response, text):
     smoke = report.get("arsimSmoke")
     binding = report.get("bindingReview")
     title = "# AS4 RUC review"
-    if smoke is not None:
+    if response["operation"] == "arsim_hmi_smoke":
+        title = "# AS4 mapp View end-to-end smoke"
+    elif smoke is not None:
         title = "# AS4 ARsim loopback smoke"
     elif binding is not None:
         title = "# AS4 RUC mapp View binding review"
@@ -103,7 +105,7 @@ def markdown_ruc(response, text):
     ]
     if archive := review["archive"]:
         lines.append(f"- RUC SHA-256 **{archive['sha256']}** · {archive['entries']} archive entries")
-        if binding is None:
+        if binding is None or review["modules"] or review["widgets"]:
             lines.append(f"- 6D module elements read {len(review['modules'])} · Rendered widgets read {len(review['widgets'])}")
     if summary := review["buildSummary"]:
         lines.append(f"- Builder errors {text(summary['errors'])} · Builder warnings {text(summary['warnings'])}")
@@ -114,24 +116,21 @@ def markdown_ruc(response, text):
         for asset in smoke["assets"]:
             lines.append(f"- {text(asset['path'])} · HTTP {asset['status']} · {asset['bytes']} bytes · {asset['sha256']}")
         if browser := smoke.get("browser"):
-            lines.extend(["", "## Headless browser", "",
-                          f"- Browser state {text(browser['state'])} · Cleanup {text(browser.get('cleanup'))}"])
-            if "chrome" in browser:
-                lines.append(f"- Chrome {text(browser['chrome']['version'])} · URL {text(browser.get('url'))}")
-                lines.append(f"- Assembly {text(browser['assemblyWidgetId'])} · Counter {text(browser['counterWidgetId'])}")
-            for phase, label in (("initial", "Initial document"), ("reopened", "Reopened document")):
-                if document := browser.get(phase):
-                    samples = ", ".join(document["counterSamples"])
-                    lines.append(f"- {label} · Samples {text(samples or None)} · Time origin {text(document.get('timeOrigin'))}")
+            lines.extend(markdown_browser(browser, text))
         if opcua := smoke.get("opcUa"):
-            lines.extend(["", "## Direct OPC UA read", "",
-                          f"- Probe state {text(opcua['state'])} · Endpoint {text(opcua.get('endpoint'))}",
-                          f"- Namespace {text(opcua.get('namespaceUri'))} · Node {text(opcua.get('nodeId'))}",
-                          f"- AccessLevel {text(opcua.get('accessLevel'))} · UserAccessLevel {text(opcua.get('userAccessLevel'))}",
-                          f"- Client disconnected {text(opcua.get('clientDisconnected'))}"])
-            for sample in opcua.get("samples", []):
-                lines.append(f"- Value {text(sample['value'])} · Status 0x{sample['statusCode']:08X}"
-                             f" · Source timestamp {text(sample['sourceTimestamp'])}")
+            lines.extend(markdown_opcua("Direct OPC UA read", opcua, text))
+        if hmi := smoke.get("hmi"):
+            lines.extend(["", "## Same-session HMI comparison", "", f"- Phase {text(hmi['state'])}"])
+            if comparison := hmi.get("comparison"):
+                lines.append(f"- OPC UA before {text(comparison['directBeforeLast'])} · "
+                             f"Browser {text(comparison['browserFirst'])} to {text(comparison['browserLast'])} · "
+                             f"OPC UA after {text(comparison['directAfterFirst'])}")
+            if first := hmi.get("opcUaBefore"):
+                lines.extend(markdown_opcua("Direct OPC UA read before the browser", first, text))
+            if browser := hmi.get("browser"):
+                lines.extend(markdown_browser(browser, text))
+            if last := hmi.get("opcUaAfter"):
+                lines.extend(markdown_opcua("Direct OPC UA read after the browser", last, text))
     if binding is not None:
         lines.extend(["", "## Selected binding", "",
                       f"- {text(binding['state'])} · Visualization {text(binding['visualizationId'])}",
@@ -140,7 +139,7 @@ def markdown_ruc(response, text):
             values = binding[phase]
             if values:
                 lines.extend(["", f"### {phase.capitalize()}", ""])
-                for key in ("visualization", "binding", "content", "connection", "nodeMap"):
+                for key in ("visualization", "binding", "content", "connection", "nodeMap", "serverConfig"):
                     if key in values:
                         lines.append(f"- {text(key)} · {text(values[key])}")
                 if endpoint := values.get("endpoint"):
@@ -161,6 +160,31 @@ def markdown_ruc(response, text):
     if not report["diagnostics"]:
         lines.append("The selected package checks matched the saved inputs.")
     return "\n".join(lines)
+
+
+def markdown_browser(browser, text):
+    lines = ["", "## Headless browser", "",
+             f"- Browser state {text(browser['state'])} · Cleanup {text(browser.get('cleanup'))}"]
+    if "chrome" in browser:
+        lines.append(f"- Chrome {text(browser['chrome']['version'])} · URL {text(browser.get('url'))}")
+        lines.append(f"- Assembly {text(browser['assemblyWidgetId'])} · Counter {text(browser['counterWidgetId'])}")
+    for phase, label in (("initial", "Initial document"), ("reopened", "Reopened document")):
+        if document := browser.get(phase):
+            samples = ", ".join(document["counterSamples"])
+            lines.append(f"- {label} · Samples {text(samples or None)} · Time origin {text(document.get('timeOrigin'))}")
+    return lines
+
+
+def markdown_opcua(title, opcua, text):
+    lines = ["", f"## {title}", "",
+             f"- Probe state {text(opcua['state'])} · Endpoint {text(opcua.get('endpoint'))}",
+             f"- Namespace {text(opcua.get('namespaceUri'))} · Node {text(opcua.get('nodeId'))}",
+             f"- AccessLevel {text(opcua.get('accessLevel'))} · UserAccessLevel {text(opcua.get('userAccessLevel'))}",
+             f"- Client disconnected {text(opcua.get('clientDisconnected'))}"]
+    for sample in opcua.get("samples", []):
+        lines.append(f"- Value {text(sample['value'])} · Status 0x{sample['statusCode']:08X}"
+                     f" · Source timestamp {text(sample['sourceTimestamp'])}")
+    return lines
 
 
 def main(argv=None):
