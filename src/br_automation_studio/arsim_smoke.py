@@ -8,6 +8,7 @@ from pathlib import Path
 from shutil import copyfile
 import time
 from urllib.parse import quote
+from uuid import uuid4
 from xml.etree import ElementTree as ET
 from zipfile import BadZipFile, ZipFile
 
@@ -255,7 +256,7 @@ def arsim_smoke(project, job_dir, pvi, session_dir, timeout=30, runtime_probe=No
         session_dir.mkdir()
         receipt = session_dir / "session.json"
         smoke.update(state="materializing", directory=str(session_dir), startedAt=utc_now(),
-                     packageSha256=job["package"]["sha256"], planSha256=plan["sha256"],
+                     sessionId=str(uuid4()), packageSha256=job["package"]["sha256"], planSha256=plan["sha256"],
                      pvi={"path": str(pvi), "version": pvi_version, "sha256": fingerprint(pvi)}, profile=profile)
         write_json(receipt, smoke)
         copyfile(archive_path, staged)

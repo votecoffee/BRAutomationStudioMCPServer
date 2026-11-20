@@ -30,4 +30,33 @@ Source occupancy and destination arrival support this check whether the recipe d
 
 Capture `nextHold` after the outbound interval and both return observations. Use a scan covered by the return capture or its immediately following scan. Record `scan`, `station`, `shuttleId`, `requestId`, `held`, `release` and `resultAccepted`. The new request needs a different ID, the same returned shuttle and `held: true` with `release` and `resultAccepted` clear.
 
-Keep the raw PLC export, normalized trace, review output and RUC job together. The review records the trace SHA-256, compiled paths and decisive scan indexes. A gap or missing witness yields `incomplete`. An identity conflict, premature hold or recorded adapter error yields `issues`. For a native HMI acceptance run, verify the browser shows the same next request after reopening and keep that separately timestamped evidence.
+Keep the raw PLC export, normalized trace, review output and RUC job together. The review records the trace SHA-256, compiled paths and decisive scan indexes. A gap or missing witness yields `incomplete`. An identity conflict, premature hold or recorded adapter error yields `issues`.
+
+## Match the HMI reopen to that hold
+
+Build one PC simulation RUC with the selected Traffic Manager route and read-only HMI status bindings. Configure the [status smoke](arsim-status-smoke.md) to wait for the next hold, using the request ID, shuttle ID, held phase and release count expected in that run. Size its OPC UA timeout for the inspection cycle. Hold the new request across both browser documents and direct read windows.
+
+Collect the scan trace during that same disposable runtime with your project's trace instrumentation. Record the observed heartbeat at the next hold in `nextHold.heartbeat` and the actual status integers in `nextHold.phase` and `nextHold.releaseTotal`. Use a nonnegative heartbeat and release count. Save the ARsim `sessionId` from that run's `session.json` with the raw trace. The normalized cycle trace adds this top-level object.
+
+```json
+{
+  "hmi": {
+    "sessionId": "<recorded from session.json>",
+    "heartbeatIdentifier": "::Status:Heartbeat",
+    "bindings": {
+      "requestId": "::Status:RequestId",
+      "shuttleId": "::Status:ShuttleId",
+      "phase": "::Status:Phase",
+      "releaseTotal": "::Status:ReleaseTotal"
+    }
+  }
+}
+```
+
+Set the optional `arguments.hmiStatusReport` to the completed `arsim_status_smoke` JSON response from that runtime. The path resolves from the cycle request directory. Use br-studio 0.29.0 or later to capture and pair the reports.
+
+- The cycle and HMI results must identify the same build, RUC and runtime session. Keep the trace's original `captureKind` of `arsim` or `synthetic`.
+- The heartbeat at the hold must be at or before the last direct pre-browser sample. The direct samples bracket increasing browser samples across the initial, blank and reopened pages.
+- The four status values must agree with the hold in both OPC UA read windows and both rendered documents. The reviewer checks the matched compiled bindings, node types and read-only access and quality of the OPC UA samples.
+
+Use `cycleHmiReview.state` for the pairing outcome. A failed pairing yields `issues` while preserving an independently matched cycle. Retain both input reports and the raw capture provenance. The joined check establishes consistency across supplied observations. A synthetic trace retains its synthetic capture classification.

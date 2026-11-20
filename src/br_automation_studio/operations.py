@@ -165,8 +165,10 @@ def run_station_trace_review(arguments, request_directory):
 
 
 def run_cycle_trace_review(arguments, request_directory):
+    status_report = arguments.get("hmiStatusReport")
     return cycle_trace_review(*launchpad_inputs(arguments, request_directory), arguments["sourceStation"],
-                              request_directory / arguments["trace"])
+                              request_directory / arguments["trace"],
+                              hmi_status_path=request_directory / status_report if status_report else None)
 
 
 def run_launchpad_motion_review(arguments, request_directory):
@@ -391,6 +393,8 @@ CYCLE_TRACE_REVIEW = Operation(
     arguments={
         **STATION_TRACE_REVIEW.arguments,
         "trace": {"type": "string", "minLength": 1, "description": "File containing the normalized cycle trace."},
+        "hmiStatusReport": {"type": "string", "minLength": 1,
+                            "description": "Completed arsim_status_smoke JSON for the same cycle RUC and session."},
     },
     required=STATION_TRACE_REVIEW.required,
     handler=run_cycle_trace_review,

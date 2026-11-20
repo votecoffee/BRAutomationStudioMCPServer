@@ -283,6 +283,8 @@ def markdown_ruc(response, text):
         lines.extend(markdown_station_trace(trace, text))
     if cycle := report.get("cycleTraceReview"):
         lines.extend(markdown_cycle_trace(cycle, text))
+    if hmi := report.get("cycleHmiReview"):
+        lines.extend(markdown_cycle_hmi(hmi, text))
     lines.extend(markdown_rules(review["trafficManagers"], text))
     if review["widgets"]:
         lines.extend(["", "## Rendered widgets", ""])
@@ -452,6 +454,20 @@ def markdown_cycle_trace(cycle, text):
         lines.extend(["", "## Next inspection hold", "",
                       f"- Station {text(hold['station'])} · Shuttle {hold['shuttleId']} "
                       f"· New request {hold['requestId']} · Scan {hold['scan']}"])
+    return lines
+
+
+def markdown_cycle_hmi(hmi, text):
+    lines = ["", "## Held status after HMI reopen", "", f"- State {text(hmi['state'])}"]
+    if status_report := hmi.get("statusReport"):
+        lines.append(f"- Status report SHA-256 {status_report['sha256']}")
+    if "sessionId" in hmi:
+        lines.append(f"- ARsim session {text(hmi['sessionId'])} · Cycle capture {text(hmi['captureKind'])}")
+    if heartbeat := hmi.get("heartbeat"):
+        lines.append(f"- Heartbeat at hold {text(heartbeat['atHold'])} "
+                     f"· Last direct sample before browser {text(heartbeat.get('directBeforeLast'))}")
+    for role, row in hmi.get("status", {}).items():
+        lines.append(f"- {text(role)} {row['value']} · Widget {text(row['widget'])} · Node {text(row['identifier'])}")
     return lines
 
 

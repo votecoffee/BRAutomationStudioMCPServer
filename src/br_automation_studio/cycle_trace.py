@@ -1,5 +1,6 @@
 """Correlate an inspection leg, return and next hold for one shuttle in a saved trace."""
 
+from .cycle_hmi import review_cycle_hmi
 from .launchpad_route import json_snapshot, launchpad_route_review
 from .station_trace import (
     TRACE_LIMIT, TraceIssue, check_bound_leg, check_detections, integer, leg_identity, scan_detections, selected_leg,
@@ -109,10 +110,12 @@ def check_cycle(trace, identity, outbound_path, inbound_path, result):
 
 
 def cycle_trace_review(project, configuration, cpu, manager_id, lpj, readback, name_map, job_directory,
-                       source_station, trace_path):
+                       source_station, trace_path, *, hmi_status_path=None):
     report = launchpad_route_review(project, configuration, cpu, manager_id, lpj, readback, name_map, job_directory,
                                     include_stations=True)
     result = report["cycleTraceReview"] = {"state": "not_checked", "sourceStation": source_station}
+    if hmi_status_path is not None:
+        report["cycleHmiReview"] = {"state": "not_checked"}
     if report["diagnostics"] or report["stationReview"]["state"] != "read":
         return report
     try:
@@ -131,4 +134,6 @@ def cycle_trace_review(project, configuration, cpu, manager_id, lpj, readback, n
     else:
         result["state"] = "matched"
         report["evidence"] = "cycle_trace_readback"
+        if hmi_status_path is not None:
+            review_cycle_hmi(report, trace, hmi_status_path)
     return report
