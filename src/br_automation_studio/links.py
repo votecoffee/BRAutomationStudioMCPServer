@@ -64,23 +64,33 @@ def station_recovery(path, node, name):
     return record
 
 
-def assembly_motion_limits(path, node):
-    result = {"path": path.as_posix(), "fields": {}}
-    for group in ("Shuttles", "Limits", "InPlaneLimits"):
+def configuration_values(node, groups, keys):
+    values = {}
+    for group in groups:
         matches = [child for child in children(node, "Group") if child.get("ID") == group]
         if len(matches) != 1:
             state = "unverified" if matches else "absent"
-            result["fields"] = {key: {"state": state, "raw": None} for key in LIMIT_UNITS}
-            return result
+            return {key: {"state": state, "raw": None} for key in keys}
         node, = matches
-    for key in LIMIT_UNITS:
+    for key in keys:
         matches = [child for child in children(node, "Property") if child.get("ID") == key]
         if len(matches) == 1:
-            field = {"state": "declared", "raw": matches[0].get("Value")}
+            values[key] = {"state": "declared", "raw": matches[0].get("Value")}
         else:
-            field = {"state": "unverified" if matches else "absent", "raw": None}
-        result["fields"][key] = field
-    return result
+            values[key] = {"state": "unverified" if matches else "absent", "raw": None}
+    return values
+
+
+def assembly_motion_limits(path, node):
+    values = configuration_values(node, ("Shuttles", "Limits", "InPlaneLimits"), LIMIT_UNITS)
+    return {"path": path.as_posix(), "fields": values}
+
+
+def assembly_io_fields(path, node):
+    return {"path": path.as_posix(),
+            "references": configuration_values(node, ("IOMapp",), ("Input", "Output")),
+            "readAxes": configuration_values(node, ("CyclicChannel6D", "ReadChannel"),
+                                             ("Xaxis", "Yaxis", "Zaxis", "Rxaxis", "Ryaxis", "Rzaxis"))}
 
 
 def segment_layout(path, node):
@@ -138,7 +148,8 @@ class MotionLinks:
                 results.append(match)
         return results
 
-    def check(self, geometry_manager=None, *, include_layout=False, recovery_manager=None, include_motion=False):
+    def check(self, geometry_manager=None, *, include_layout=False, recovery_manager=None,
+              include_motion=False, include_io=False):
         assembly_links = []
         managers = []
         for (kind, identity), entries in self.entries.items():
@@ -150,6 +161,8 @@ class MotionLinks:
                 assembly = {"assembly": identity, "layouts": [item.get("ID") for _, item in layouts]}
                 if include_motion:
                     assembly["motionLimits"] = assembly_motion_limits(path, node)
+                if include_io:
+                    assembly["ioFields"] = assembly_io_fields(path, node)
                 if include_layout:
                     assembly["layoutEvidence"] = [segment_layout(file, item) for file, item in layouts]
                 assembly_links.append(assembly)

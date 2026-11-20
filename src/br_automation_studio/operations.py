@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Callable
 
 from .arsim_smoke import arsim_smoke
+from .assembly_io import assembly_io_review
 from .binding_review import BindingTarget
 from .browser_smoke import ChromeProbe
 from .hmi_smoke import arsim_hmi_smoke
@@ -106,6 +107,13 @@ def build_execute(arguments, request_directory):
 def ruc_review(arguments, request_directory):
     return review_ruc(project_path(arguments, request_directory),
                       request_directory / arguments["jobDirectory"])
+
+
+def run_assembly_io_review(arguments, request_directory):
+    job = arguments.get("jobDirectory")
+    return assembly_io_review(project_path(arguments, request_directory), arguments.get("configuration"),
+                              arguments.get("cpu"), arguments["assemblyId"],
+                              request_directory / job if job is not None else None)
 
 
 def launchpad_inputs(arguments, request_directory):
@@ -264,6 +272,17 @@ RUC_REVIEW = Operation(
     required=("project", "jobDirectory"),
     handler=ruc_review,
 )
+ASSEMBLY_IO_REVIEW = Operation(
+    name="assembly_io_review",
+    summary="Trace AS4 assembly I/O references to saved global declarations and verify compiled read-axis flags.",
+    arguments={
+        **PROJECT_INSPECT.arguments,
+        "assemblyId": {"type": "string", "minLength": 1, "description": "Selected assembly6d element ID."},
+        "jobDirectory": RUC_REVIEW.arguments["jobDirectory"],
+    },
+    required=("project", "assemblyId"),
+    handler=run_assembly_io_review,
+)
 LAUNCHPAD_ROUTE_REVIEW = Operation(
     name="launchpad_route_review",
     summary="Compare one saved LaunchPad cycle with the typed route of a selected saved or compiled Traffic Manager.",
@@ -396,7 +415,7 @@ ARSIM_HMI_SMOKE = Operation(
     handler=run_arsim_hmi_smoke,
 )
 OPERATIONS = {item.name: item for item in (
-    PROJECT_INSPECT, BUILD_PREFLIGHT, SIMULATION_PREFLIGHT, BUILD_PLAN, BUILD_EXECUTE, RUC_REVIEW,
+    PROJECT_INSPECT, BUILD_PREFLIGHT, SIMULATION_PREFLIGHT, BUILD_PLAN, BUILD_EXECUTE, RUC_REVIEW, ASSEMBLY_IO_REVIEW,
     LAUNCHPAD_ROUTE_REVIEW, LAUNCHPAD_STATION_REVIEW, LAUNCHPAD_RECOVERY_REVIEW, LAUNCHPAD_MOTION_REVIEW,
     LAUNCHPAD_GEOMETRY_REVIEW, LAUNCHPAD_LAYOUT_REVIEW, LAUNCHPAD_FRAME_REVIEW, RUC_BINDING_REVIEW,
     ARSIM_SMOKE, ARSIM_BROWSER_SMOKE, ARSIM_OPCUA_SMOKE, ARSIM_HMI_SMOKE,

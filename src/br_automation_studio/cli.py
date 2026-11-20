@@ -27,6 +27,7 @@ def markdown(response):
 
     titles = {
         "project_inspect": "Saved Automation Studio project inspection",
+        "assembly_io_review": "Saved ACOPOS 6D assembly I/O review",
         "launchpad_route_review": "Saved Traffic Manager route review",
         "launchpad_station_review": "Saved Traffic Manager station review",
         "launchpad_recovery_review": "Saved Traffic Manager recovery review",
@@ -50,6 +51,8 @@ def markdown(response):
         "## Declared technology packages", "",
     ]
     lines.extend(f"- {text(item['name'])} {text(item['version'])}" for item in report["technologyPackages"])
+    if io_review := report.get("ioReview"):
+        lines.extend(markdown_io(io_review, text))
     if route := report.get("routeReview"):
         lines.extend(markdown_route(route, text))
         if stations := report.get("stationReview"):
@@ -132,7 +135,9 @@ def markdown_ruc(response, text):
     smoke = report.get("arsimSmoke")
     binding = report.get("bindingReview")
     title = "# AS4 RUC review"
-    if response["operation"] == "arsim_hmi_smoke":
+    if response["operation"] == "assembly_io_review":
+        title = "# Compiled ACOPOS 6D assembly I/O review"
+    elif response["operation"] == "arsim_hmi_smoke":
         title = "# AS4 mapp View end-to-end smoke"
     elif response["operation"] == "launchpad_layout_review":
         title = "# Compiled ACOPOS 6D segment layout review"
@@ -204,6 +209,8 @@ def markdown_ruc(response, text):
                     lines.append(f"- {text(endpoint['host'])}:{text(endpoint['port'])} · {text(endpoint['namespaceUri'])}")
                 if "accessLevel" in values:
                     lines.append(f"- Data type {text(values['dataType'])} · AccessLevel {text(values['accessLevel'])}")
+    if io_review := report.get("ioReview"):
+        lines.extend(markdown_io(io_review, text))
     if route := report.get("routeReview"):
         lines.extend(markdown_route(route, text))
         if stations := report.get("stationReview"):
@@ -234,6 +241,27 @@ def markdown_ruc(response, text):
     if not report["diagnostics"]:
         lines.append("The selected package checks matched the saved inputs.")
     return "\n".join(lines)
+
+
+def markdown_io(review, text):
+    lines = ["", "## Assembly I/O references and read axes", "",
+             f"- Assembly {text(review['assembly'])} · State {text(review['state'])}"]
+    if "savedPath" in review:
+        lines.append(f"- Saved {text(review['savedPath'])} · Compiled {text(review['compiledPath'])}")
+    if not review["references"]:
+        return lines
+    lines.extend(["", "| Field | Saved | Compiled | Comparison | Saved declaration |", "| --- | --- | --- | --- | --- |"])
+    for key, row in {**review["references"], **review["readAxes"]}.items():
+        saved = row["saved"]
+        compiled = row["compiled"]
+        before = f"{text(saved['raw'])} ({text(saved['state'])})"
+        after = f"{text(compiled['raw'])} ({text(compiled['state'])})" if compiled is not None else text(None)
+        found = row.get("declaration")
+        declaration = found["state"] if found else None
+        if found and "line" in found:
+            declaration = f"{found['path']} line {found['line']} · {found['type']} ({found['state']})"
+        lines.append(f"| {key} | {before} | {after} | {text(row['comparison'])} | {text(declaration)} |")
+    return lines
 
 
 def markdown_rules(managers, text):

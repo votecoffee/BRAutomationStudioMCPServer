@@ -91,29 +91,34 @@ class SavedFiles:
         self.sources[path.as_posix()] = fingerprint
         return fingerprint
 
+    def read_bytes(self, path, limit, *, optional=False, label="Project file"):
+        try:
+            source = self.resolve(path)
+            if source is None:
+                return None
+            with source.open("rb") as stream:
+                data = stream.read(limit + 1)
+        except FileNotFoundError:
+            if not optional:
+                self.issue("error", "missing_file", path, "Expected file was not found")
+            return None
+        except (OSError, RuntimeError) as error:
+            self.issue("error", "unreadable_file", path, f"Could not read project file ({type(error).__name__})")
+            return None
+        if len(data) > limit:
+            self.issue("error", "file_too_large", path, f"{label} exceeds {limit} bytes")
+            return None
+        self.sources[path.as_posix()] = sha256(data).hexdigest()
+        return data
+
     def xml(self, path, expected, *, optional=False):
         if path in self.parsed:
             return self.parsed[path]
 
         self.parsed[path] = (None, {})
-        try:
-            source = self.resolve(path)
-            if source is None:
-                return None, {}
-            with source.open("rb") as stream:
-                data = stream.read(XML_LIMIT + 1)
-        except FileNotFoundError:
-            if not optional:
-                self.issue("error", "missing_file", path, "Expected file was not found")
+        data = self.read_bytes(path, XML_LIMIT, optional=optional, label="XML input")
+        if data is None:
             return None, {}
-        except (OSError, RuntimeError) as error:
-            self.issue("error", "unreadable_file", path, f"Could not read project file ({type(error).__name__})")
-            return None, {}
-
-        if len(data) > XML_LIMIT:
-            self.issue("error", "file_too_large", path, f"XML input exceeds {XML_LIMIT} bytes")
-            return None, {}
-        self.sources[path.as_posix()] = sha256(data).hexdigest()
         parser = ProjectXml()
         try:
             node = ET.fromstring(data, parser=ET.XMLParser(target=parser))

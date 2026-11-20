@@ -115,7 +115,7 @@ def compare_rows(reader, path, label, expected, actual):
 
 
 def read_motion(archive, saved, reader, geometry_manager=None, *, include_layout=False,
-                recovery_manager=None, include_motion=False):
+                recovery_manager=None, include_motion=False, include_io=False):
     planned = defaultdict(list)
     for row in saved["motionModules"]:
         planned[Path(row["path"]).with_suffix(".br").name.casefold()].append(row)
@@ -145,7 +145,7 @@ def read_motion(archive, saved, reader, geometry_manager=None, *, include_layout
                      [(item.get("ID"), item.get("Type")) for item in children(root, "Element")])
         motion.add(path, rows[0]["type"], root)
     links, managers = (motion.check(geometry_manager, include_layout=include_layout,
-                                   recovery_manager=recovery_manager, include_motion=include_motion)
+                                   recovery_manager=recovery_manager, include_motion=include_motion, include_io=include_io)
                        if ready else ([], []))
     return motion.module_inventory, links, managers, ready
 
@@ -271,7 +271,7 @@ def match_read_set(reader, path, manifest, result, snapshot, issues):
 
 
 def review_ruc(path, job_directory, binding=None, *, geometry_manager=None, include_layout=False,
-               recovery_manager=None, include_motion=False):
+               recovery_manager=None, include_motion=False, include_io=False):
     reader = SavedFiles(job_directory)
     result = {"evidence": "ruc_readback", "project": path.name, "selectedConfiguration": None,
               "selectedCpu": None, "snapshot": None, "diagnostics": reader.diagnostics}
@@ -290,11 +290,13 @@ def review_ruc(path, job_directory, binding=None, *, geometry_manager=None, incl
 
         if binding is None:
             saved = inspect_project(path, manifest["configuration"], manifest["cpu"],
-                                    recovery_manager=recovery_manager, include_motion=include_motion)
+                                    recovery_manager=recovery_manager, include_motion=include_motion, include_io=include_io)
             if not match_read_set(reader, path, manifest, result, saved["snapshot"], saved["diagnostics"]):
                 return result
-            if include_motion:
+            if include_motion or include_io:
                 review["savedAssemblyLinks"] = saved["assemblyLinks"]
+            if include_io:
+                review["globalDeclarations"] = saved.get("globalDeclarations")
             if recovery_manager is not None:
                 review["savedRecoveryEvidence"] = next((row["recoveryEvidence"] for row in saved["trafficManagers"]
                                                        if row["manager"] == recovery_manager), [])
@@ -325,7 +327,8 @@ def review_ruc(path, job_directory, binding=None, *, geometry_manager=None, incl
                     return result
                 modules, links, managers, ready = read_motion(archive, saved, reader, geometry_manager,
                                                               include_layout=include_layout,
-                                                              recovery_manager=recovery_manager, include_motion=include_motion)
+                                                              recovery_manager=recovery_manager, include_motion=include_motion,
+                                                              include_io=include_io)
                 review.update(modules=modules, assemblyLinks=links, trafficManagers=managers)
                 if ready:
                     compare_motion(reader, saved, links, managers)

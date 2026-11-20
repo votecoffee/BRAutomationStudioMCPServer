@@ -292,6 +292,74 @@ class RucReviewTests(unittest.TestCase):
         self.assertIsNone(result["motionReview"]["launchPadExitParameters"][0]["exit_velocity"])
         self.assertEqual(result["motionReview"]["limits"]["InPlaneVelLim"]["comparison"], "materialized")
 
+    def supply_assembly_io(self, *, output_type="Mc6DControllerFBIOType", registered=True, changed_axis=False):
+        logical = self.project / "Logical"
+        package = logical / "Package.pkg"
+        if registered:
+            xml = package.read_bytes()
+            package.write_bytes(xml.replace(b"</Objects>", b'<Object Type="File">Global.var</Object></Objects>'))
+        global_path = logical / "Global.var"
+        global_path.write_text(f"""(* comment with a fake gInput : BOOL; *)
+VAR
+    gInput : Mc6DControllerFBIOType; // legitimate declaration
+    gOutput : {output_type};
+END_VAR
+""", encoding="utf-8-sig")
+        path = self.project / "Physical/ARsim/PC/mapp6D/FixtureAssembly.assembly6d"
+        original = path.read_bytes()
+        mapping = b'<Group ID="IOMapp"><Property ID="Input" Value="gInput"/><Property ID="Output" Value="gOutput"/></Group>'
+        channel = b'<Group ID="CyclicChannel6D"><Group ID="ReadChannel">%s</Group></Group>'
+        flag = b'<Property ID="%s" Value="%s"/>'
+        saved_axis = flag % (b"Ryaxis", b"false")
+        compiled_axes = b"".join(flag % (axis, b"TRUE" if axis != b"Ryaxis" or changed_axis else b"FALSE")
+                                 for axis in (b"Xaxis", b"Yaxis", b"Zaxis", b"Rxaxis", b"Ryaxis", b"Rzaxis"))
+        path.write_bytes(original.replace(b"</Element>", mapping + channel % saved_axis + b"</Element>"))
+        self.members[ASSEMBLY] = b"synthetic BR prefix\0" + original.replace(
+            b"</Element>", mapping.replace(b"gOutput", b"goutput") + channel % compiled_axes + b"</Element>")
+        manifest = self.plan["manifest"]
+        manifest["inputs"] = source_tree(self.project)
+        self.plan["sha256"] = identity(manifest)
+        self.write("plan.json", self.plan)
+
+    def assembly_io(self):
+        self.package()
+        return execute({"schemaVersion": 1, "workspace": "assembly-io", "operation": "assembly_io_review",
+                        "arguments": {"project": "Loop/Loop.apj", "jobDirectory": "retained",
+                                      "assemblyId": "FixtureAssembly"}}, self.root)
+
+    def test_assembly_io_matches_root_declarations_and_materialized_axes(self):
+        self.supply_assembly_io()
+        response = self.assembly_io()
+        result = response["result"]
+        self.assertEqual(response["status"], "complete", result["diagnostics"])
+        self.assertEqual(result["evidence"], "assembly_io_compiled")
+        review = result["ioReview"]
+        rows = [(row["comparison"], row["compiled"]["value"]) for row in review["readAxes"].values()]
+        self.assertEqual(rows.count(("matched", False)), 1)
+        self.assertEqual(rows.count(("materialized", True)), 5)
+        self.assertEqual(review["references"]["Output"]["comparison"], "matched")
+        self.assertEqual(review["references"]["Input"]["declaration"]["line"], 3)
+        self.assertEqual(review["references"]["Output"]["declaration"]["state"], "matched")
+        self.assertIn("Logical/Global.var line 4", markdown(response))
+        self.assertIn("Logical/Global.var", {row["path"] for row in result["snapshot"]["files"]})
+
+    def test_assembly_io_catches_changed_axis_and_incorrect_global_type(self):
+        self.supply_assembly_io(output_type="UDINT", changed_axis=True)
+        response = self.assembly_io()
+        self.assertEqual(response["status"], "issues")
+        self.assertEqual(set(self.codes(response)), {"assembly_io_wrong_type", "ruc_io_mismatch"})
+        review = response["result"]["ioReview"]
+        self.assertEqual(review["readAxes"]["Ryaxis"]["saved"]["value"], False)
+        self.assertEqual(review["readAxes"]["Ryaxis"]["compiled"]["value"], True)
+        self.assertEqual(review["references"]["Output"]["declaration"]["type"], "UDINT")
+
+    def test_assembly_io_does_not_resolve_unregistered_global_file(self):
+        self.supply_assembly_io(registered=False)
+        response = self.assembly_io()
+        self.assertEqual(response["status"], "partial")
+        self.assertEqual(set(self.codes(response)), {"assembly_io_declaration_unverified"})
+        self.assertNotIn("Logical/Global.var", {row["path"] for row in response["result"]["snapshot"]["files"]})
+
     def test_changed_widget_link_fails_after_a_valid_archive(self):
         self.members[WIDGET] = self.members[WIDGET].replace(b"mapp6D::DemoTraffic", b"mapp6D::Other")
         self.package()
