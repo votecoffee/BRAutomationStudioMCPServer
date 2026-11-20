@@ -8,6 +8,7 @@ from pathlib import Path
 import json
 import re
 import time
+from typing import ClassVar
 from urllib.parse import urlsplit
 
 from .arsim_smoke import HOST
@@ -212,8 +213,10 @@ class ChromeProbe:
     counter_widget: str
     assembly_widget: str | None
     timeout: int
+    key: ClassVar[str] = "browser"
+    evidence: ClassVar[str] = "arsim_loopback_browser"
 
-    def prepare(self, reviewed, receipt):
+    def prepare(self, reviewed, profile, receipt):
         try:
             from websocket import WebSocketException, create_connection
         except ImportError as error:
@@ -227,7 +230,17 @@ class ChromeProbe:
                        counterWidgetId=self.counter_widget,
                        chrome={"path": str(chrome), "version": version, "sha256": fingerprint(chrome)})
 
-        def probe(session_dir, http_port, guard_runtime):
+        http_port = profile["httpPort"]
+
+        def probe(session_dir, owned_listener):
+            listener = owned_listener(http_port)
+            if listener is None:
+                raise ValueError("ARsim lost its owned HTTP listener before the browser smoke")
+
+            def guard_runtime():
+                if owned_listener(http_port) != listener:
+                    raise ValueError("ARsim lost its original HTTP listener during the browser smoke")
+
             try:
                 self.observe(chrome, session_dir, http_port, guard_runtime, receipt, create_connection)
             except WebSocketException as error:

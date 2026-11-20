@@ -9,6 +9,7 @@ from .arsim_smoke import arsim_smoke
 from .browser_smoke import ChromeProbe
 from .inspection import inspect_project
 from .native_build import execute_build, plan_build
+from .opcua_smoke import OpcUaProbe
 from .preflight import build_preflight
 from .ruc_review import review_ruc
 
@@ -88,20 +89,26 @@ def ruc_review(arguments, request_directory):
                       request_directory / arguments["jobDirectory"])
 
 
-def run_arsim_smoke(arguments, request_directory, browser_probe=None):
+def run_arsim_smoke(arguments, request_directory, runtime_probe=None):
     return arsim_smoke(
         project_path(arguments, request_directory),
         request_directory / arguments["jobDirectory"],
         request_directory / arguments["pviTransfer"],
         request_directory / arguments["sessionDirectory"],
         arguments.get("timeoutSeconds", 30),
-        browser_probe,
+        runtime_probe,
     )
 
 
 def run_arsim_browser_smoke(arguments, request_directory):
     probe = ChromeProbe(request_directory / arguments["browserExecutable"], arguments["counterWidgetId"],
                         arguments.get("assemblyWidgetId"), arguments.get("browserTimeoutSeconds", 30))
+    return run_arsim_smoke(arguments, request_directory, probe)
+
+
+def run_arsim_opcua_smoke(arguments, request_directory):
+    probe = OpcUaProbe(arguments["namespaceUri"], arguments["stringIdentifier"],
+                       arguments.get("opcUaTimeoutSeconds", 20))
     return run_arsim_smoke(arguments, request_directory, probe)
 
 
@@ -181,8 +188,21 @@ ARSIM_BROWSER_SMOKE = Operation(
     required=(*ARSIM_SMOKE.required, "browserExecutable", "counterWidgetId"),
     handler=run_arsim_browser_smoke,
 )
+ARSIM_OPCUA_SMOKE = Operation(
+    name="arsim_opcua_smoke",
+    summary="Read a single increasing PLC counter from the owned ARsim OPC UA listener and check access metadata.",
+    arguments={
+        **ARSIM_SMOKE.arguments,
+        "namespaceUri": {"type": "string", "minLength": 1, "description": "Exact OPC UA namespace URI."},
+        "stringIdentifier": {"type": "string", "minLength": 1, "description": "Exact OPC UA string node identifier."},
+        "opcUaTimeoutSeconds": {"type": "integer", "minimum": 1, "maximum": 120, "default": 20},
+    },
+    required=(*ARSIM_SMOKE.required, "namespaceUri", "stringIdentifier"),
+    handler=run_arsim_opcua_smoke,
+)
 OPERATIONS = {item.name: item for item in (
-    PROJECT_INSPECT, BUILD_PREFLIGHT, BUILD_PLAN, BUILD_EXECUTE, RUC_REVIEW, ARSIM_SMOKE, ARSIM_BROWSER_SMOKE,
+    PROJECT_INSPECT, BUILD_PREFLIGHT, BUILD_PLAN, BUILD_EXECUTE, RUC_REVIEW,
+    ARSIM_SMOKE, ARSIM_BROWSER_SMOKE, ARSIM_OPCUA_SMOKE,
 )}
 
 

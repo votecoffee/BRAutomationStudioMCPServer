@@ -212,7 +212,7 @@ def ascii_pil_path(path):
     return value
 
 
-def arsim_smoke(project, job_dir, pvi, session_dir, timeout=30, browser_probe=None):
+def arsim_smoke(project, job_dir, pvi, session_dir, timeout=30, runtime_probe=None):
     report = review_ruc(project, job_dir)
     smoke = {"state": "not_started", "packageSha256": None, "assets": [], "cleanup": None}
     report["arsimSmoke"] = smoke
@@ -231,9 +231,10 @@ def arsim_smoke(project, job_dir, pvi, session_dir, timeout=30, browser_probe=No
         if plan["sha256"] != reviewed["planSha256"] or job["package"]["sha256"] != reviewed["archive"]["sha256"]:
             raise ValueError("The completed job evidence changed after RUC review")
         profile = loopback_profile(project, manifest)
-        if browser_probe is not None:
-            smoke["browser"] = {"state": "not_started"}
-            probe_browser = browser_probe.prepare(reviewed, smoke["browser"])
+        probe = None
+        if runtime_probe is not None:
+            smoke[runtime_probe.key] = {"state": "not_started"}
+            probe = runtime_probe.prepare(reviewed, profile, smoke[runtime_probe.key])
         pvi = pvi.resolve()
         pvi_version = product_version(pvi)
         if pvi.name.casefold() != "pvitransfer.exe" or not (pvi_version or "").startswith("PVI4."):
@@ -276,24 +277,22 @@ def arsim_smoke(project, job_dir, pvi, session_dir, timeout=30, browser_probe=No
         with (session_dir / "arsim-stdout.log").open("xb") as log:
             with observed_process([str(loader)], target, log) as observed:
                 probe_http(observed, profile, assets, smoke, timeout)
-                if browser_probe is not None:
-                    http_port = profile["httpPort"]
+                if probe is not None:
 
-                    def guard_runtime():
+                    def owned_listener(port):
                         if observed.worker.poll() is not None:
-                            raise ValueError("ARsim exited during the browser smoke")
+                            raise ValueError("ARsim exited during the runtime probe")
                         owned = check_owned(profile["guardedPorts"], observed.job.pids())
-                        if not any(row["protocol"] == "tcp" and row["port"] == http_port
-                                   and row["address"] == HOST for row in owned):
-                            raise ValueError("ARsim lost its owned HTTP listener during the browser smoke")
+                        return next((row for row in owned if row["protocol"] == "tcp"
+                                     and row["port"] == port and row["address"] == HOST), None)
 
-                    probe_browser(session_dir, http_port, guard_runtime)
+                    probe(session_dir, owned_listener)
         smoke["cleanup"] = observed.cleanup
         check_free(profile["guardedPorts"])
         if observed.cleanup != "empty":
             raise ValueError("ARsim process cleanup could not be verified")
         smoke["state"] = "complete"
-        report["evidence"] = "arsim_loopback_browser" if browser_probe is not None else "arsim_loopback_http"
+        report["evidence"] = runtime_probe.evidence if runtime_probe is not None else "arsim_loopback_http"
     except (BadZipFile, ET.ParseError, HTTPException, OSError, RuntimeError, ValueError) as error:
         smoke["state"] = "failed"
         if observed is not None:

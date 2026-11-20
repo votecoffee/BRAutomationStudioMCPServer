@@ -118,6 +118,15 @@ def markdown_ruc(response, text):
                 if document := browser.get(phase):
                     samples = ", ".join(document["counterSamples"])
                     lines.append(f"- {label} · Samples {text(samples or None)} · Time origin {text(document.get('timeOrigin'))}")
+        if opcua := smoke.get("opcUa"):
+            lines.extend(["", "## Direct OPC UA read", "",
+                          f"- Probe state {text(opcua['state'])} · Endpoint {text(opcua.get('endpoint'))}",
+                          f"- Namespace {text(opcua.get('namespaceUri'))} · Node {text(opcua.get('nodeId'))}",
+                          f"- AccessLevel {text(opcua.get('accessLevel'))} · UserAccessLevel {text(opcua.get('userAccessLevel'))}",
+                          f"- Client disconnected {text(opcua.get('clientDisconnected'))}"])
+            for sample in opcua.get("samples", []):
+                lines.append(f"- Value {text(sample['value'])} · Status 0x{sample['statusCode']:08X}"
+                             f" · Source timestamp {text(sample['sourceTimestamp'])}")
     for manager in review["trafficManagers"]:
         lines.extend(["", f"## {text(manager['manager'])}", ""])
         for edge in manager["edges"]:

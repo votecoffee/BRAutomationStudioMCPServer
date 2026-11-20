@@ -1,6 +1,6 @@
 ---
 name: br-automation-studio
-description: Inspect saved B&R Automation Studio projects with the standalone br-studio CLI. Use for declared package versions, ACOPOS 6D assembly and Traffic Manager references, mapp View Assembly6D links, AS4 build preflight, offline ARsim RUC builds, compiled RUC readback, and loopback mapp View HTTP and headless browser smoke tests.
+description: Inspect saved B&R Automation Studio projects with the standalone br-studio CLI. Use for declared package versions, ACOPOS 6D assembly and Traffic Manager references, mapp View Assembly6D links, AS4 build preflight, offline ARsim RUC builds, compiled RUC readback, loopback mapp View HTTP and browser smoke tests, and direct OPC UA counter reads.
 ---
 
 # B&R Automation Studio
@@ -18,5 +18,7 @@ Use the [RUC review workflow](references/ruc-review.md) to bind the package to a
 For local runtime HTTP evidence on a reviewed RUC, follow the [ARsim smoke workflow](references/arsim-smoke.md).
 
 Use the [browser smoke workflow](references/arsim-browser-smoke.md) to verify a rendered Assembly6D widget and an advancing PLC-bound counter through a page reopen.
+
+Use the [direct OPC UA smoke workflow](references/arsim-opcua-smoke.md) for an independent read of the selected simulated PLC counter and its reported access levels.
 
 Keep requests and results containing real project details in a project-owned folder or the checkout's ignored `.local/`. Use the read-set SHA-256 and selected configuration when reporting findings. Ground any claim about compiling, running ARsim, or operating on hardware in separate evidence.
