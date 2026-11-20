@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Callable
 
 from .inspection import inspect_project
+from .preflight import build_preflight
 
 SCHEMA_VERSION = 1
 
@@ -41,11 +42,25 @@ class Operation:
         }
 
 
-def inspect(arguments, request_directory):
+def project_path(arguments, request_directory):
     path = request_directory / arguments["project"]
     if path.suffix.lower() != ".apj":
         raise InvalidRequest("project must point to an .apj file")
-    return inspect_project(path, arguments.get("configuration"), arguments.get("cpu"))
+    return path
+
+
+def inspect(arguments, request_directory):
+    return inspect_project(project_path(arguments, request_directory), arguments.get("configuration"), arguments.get("cpu"))
+
+
+def preflight(arguments, request_directory):
+    runtime_root = arguments.get("runtimeRoot")
+    return build_preflight(
+        project_path(arguments, request_directory),
+        request_directory / arguments["studioRoot"],
+        request_directory / runtime_root if runtime_root is not None else None,
+        arguments.get("configuration"), arguments.get("cpu"),
+    )
 
 
 PROJECT_INSPECT = Operation(
@@ -59,7 +74,18 @@ PROJECT_INSPECT = Operation(
     required=("project",),
     handler=inspect,
 )
-OPERATIONS = {operation.name: operation for operation in (PROJECT_INSPECT,)}
+BUILD_PREFLIGHT = Operation(
+    name="build_preflight",
+    summary="Compare a saved project with a selected AS4 installation and Runtime catalog.",
+    arguments={
+        **PROJECT_INSPECT.arguments,
+        "studioRoot": {"type": "string", "minLength": 1, "description": "Automation Studio installation root."},
+        "runtimeRoot": {"type": "string", "minLength": 1, "description": "Override the AS4 Runtime catalog under AS/System."},
+    },
+    required=("project", "studioRoot"),
+    handler=preflight,
+)
+OPERATIONS = {operation.name: operation for operation in (PROJECT_INSPECT, BUILD_PREFLIGHT)}
 
 
 def valid_text(value):

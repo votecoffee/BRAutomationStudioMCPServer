@@ -8,8 +8,10 @@ from .project import MOTION_TYPES, SavedFiles, children, choices, package_files,
 
 def inspect_project(path, configuration=None, cpu=None):
     path = Path(path)
-    source = SavedFiles(path.parent)
-    project = Path(path.name)
+    return inspect_saved(SavedFiles(path.parent), Path(path.name), configuration, cpu)
+
+
+def inspect_saved(source, project, configuration=None, cpu=None):
     node, studio = source.xml(project, "Project")
     packages = []
     if node is not None:

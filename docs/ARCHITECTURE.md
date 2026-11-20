@@ -2,7 +2,7 @@
 
 [Repository README](../README.md)
 
-The standalone Automation Studio CLI exposes `project_inspect`, a read-only inventory of a saved project. Use ACOPOS 6D, Traffic Manager, and mapp View to exercise the design.
+The standalone CLI exposes `project_inspect` for a saved project and `build_preflight` for a read-only comparison with an AS4 toolchain. Use ACOPOS 6D, Traffic Manager, and mapp View to exercise the design.
 
 ## Application layers
 
@@ -10,6 +10,7 @@ The standalone Automation Studio CLI exposes `project_inspect`, a read-only inve
 | --- | --- |
 | `src/br_automation_studio/` | Inspect saved snapshots, resolve references, and produce typed diagnostics and artifact metadata. Own one operation catalog with request and result types. |
 | `src/br_automation_studio/cli.py` | Discover operations and schemas, accept a UTF-8 JSON request, and return structured JSON. Keep console formatting and exit codes at this boundary. |
+| `src/br_automation_studio/preflight.py` | Compare saved selections and selected library dependencies with local AS4 catalogs. |
 | Native build adapter, planned | Discover a selected local Automation Studio version and run explicit native jobs in private workspaces. Capture vendor diagnostics and verify generated artifacts. Add this layer when the saved-file workflow is ready. |
 | `skills/br-automation-studio/` | Give future chats a short entry point that locates the installed standalone executable and routes work by operation. |
 | `skills/br-automation-studio/references/` | Maintain versioned workflow guides, request examples, and verification steps distributed with the CLI. |
@@ -28,7 +29,7 @@ Add durable job IDs when native work begins. Keep each job's input snapshot, sel
 ## First workflow
 
 1. Open an explicitly selected saved `.apj` in a private workspace. Record its exact hash and track the relative paths and hashes of the project files actually read. Preserve unknown formats and report path or parse errors.
-2. List project configurations and declared technology package versions. A separate local tool inventory can compare these declarations against installed packages in a future operation.
+2. List project configurations and declared technology package versions. Use `build_preflight` to compare the same saved selections against an explicitly selected AS4 catalog.
 3. For the selected configuration, inventory the ACOPOS 6D layout and assembly, Traffic Manager object and mapping lists, and mapp View content. Resolve their explicit links. Diagnose missing or mistyped mapping targets and a widget whose assembly and manager links disagree.
 4. Produce a structured result and a readable report from the same findings. Include the selected configuration, checked links, unsupported objects, and source hashes. Validate the reporting with a synthetic project and a variant with an unresolved return edge. Verify the source bytes before and after the run.
 

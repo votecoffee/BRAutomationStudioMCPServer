@@ -25,11 +25,14 @@ Saved-file inspection runs without Automation Studio. Native build workflows wil
 $brStudio = '.\.local\venv\Scripts\br-studio.exe'
 & $brStudio operations
 & $brStudio operation-help project_inspect
+& $brStudio operation-help build_preflight
 & $brStudio run --request examples/inspect-loop.json
 & $brStudio run --request examples/inspect-loop.json --format markdown
 ```
 
 The example reads a synthetic project. The result lists declared package versions, selected configuration and CPU, layout and assembly references, Traffic Manager endpoints, and Assembly6D widget links. It records SHA-256 hashes for the files read. Use the result as saved-file evidence. Native compilation and ARsim behavior need their own checks.
+
+For an installed AS4 toolchain, `build_preflight` compares the project with the selected Studio, Runtime, CPU and technology-package catalogs. [Build preflight workflow](skills/br-automation-studio/references/build-preflight.md)
 
 ## Chat workflow
 

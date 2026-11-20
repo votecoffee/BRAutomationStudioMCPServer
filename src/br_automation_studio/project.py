@@ -1,7 +1,7 @@
 
 """Read declared Automation Studio project files and retain their identities."""
 
-from hashlib import sha256
+from hashlib import file_digest, sha256
 import json
 from pathlib import Path
 from xml.etree import ElementTree as ET
@@ -36,7 +36,12 @@ class ProjectXml(ET.TreeBuilder):
 
     def pi(self, target, data):
         if target == "AutomationStudio":
-            settings = ET.fromstring(f"<Studio {data} />")
+            try:
+                settings = ET.fromstring(f"<Studio {data} />")
+            except ET.ParseError:
+                # Some AS library descriptors use an unquoted version in the PI.
+                # The PI remains valid XML and is independent of the Library element.
+                return
             self.studio = dict(settings.attrib)
 
 
@@ -63,23 +68,43 @@ class SavedFiles:
             return None
         return manifest.parent / value
 
-    def xml(self, path, expected):
+    def resolve(self, path):
+        resolved = (self.root / path).resolve()
+        if not resolved.is_relative_to(self.root):
+            self.issue("error", "outside_project", path, "Path resolves outside the selected source root")
+            return None
+        if resolved.suffix.casefold() != path.suffix.casefold():
+            self.issue("error", "unsupported_file", path, "Resolved path has a different file extension")
+            return None
+        return resolved
+
+    def digest(self, path):
+        try:
+            source = self.resolve(path)
+            if source is None:
+                return None
+            with source.open("rb") as stream:
+                fingerprint = file_digest(stream, "sha256").hexdigest()
+        except (OSError, RuntimeError) as error:
+            self.issue("error", "unreadable_file", path, f"Could not hash metadata file ({type(error).__name__})")
+            return None
+        self.sources[path.as_posix()] = fingerprint
+        return fingerprint
+
+    def xml(self, path, expected, *, optional=False):
         if path in self.parsed:
             return self.parsed[path]
 
         self.parsed[path] = (None, {})
         try:
-            source = (self.root / path).resolve()
-            if not source.is_relative_to(self.root):
-                self.issue("error", "outside_project", path, "Path resolves outside the saved project")
-                return None, {}
-            if source.suffix.casefold() != path.suffix.casefold():
-                self.issue("error", "unsupported_file", path, "Resolved path has a different file extension")
+            source = self.resolve(path)
+            if source is None:
                 return None, {}
             with source.open("rb") as stream:
                 data = stream.read(XML_LIMIT + 1)
         except FileNotFoundError:
-            self.issue("error", "missing_file", path, "Declared project file was not found")
+            if not optional:
+                self.issue("error", "missing_file", path, "Expected file was not found")
             return None, {}
         except (OSError, RuntimeError) as error:
             self.issue("error", "unreadable_file", path, f"Could not read project file ({type(error).__name__})")

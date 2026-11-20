@@ -45,7 +45,7 @@ def markdown(response):
         return escape(str(value), quote=False).replace("\r", " ").replace("\n", " ").replace("|", "&#124;")
 
     lines = [
-        "# Saved Automation Studio project inspection", "",
+        "# AS4 build preflight" if "preflight" in report else "# Saved Automation Studio project inspection", "",
         f"- Project **{text(report['project'])}**",
         f"- Status **{response['status']}**",
         f"- Configuration **{text(report['selectedConfiguration'])}**",
@@ -62,11 +62,25 @@ def markdown(response):
     lines.extend(["", "## Assembly6D widgets", ""])
     for item in report["widgets"]:
         lines.append(f"- {text(item['id'])} · assembly {text(item['assembly'])} · manager {text(item['manager'])}")
+    if preflight := report.get("preflight"):
+        lines.extend(["", "## Installation evidence", "",
+                      f"- Studio read-set SHA-256 **{preflight['studioSnapshot']['sha256']}**",
+                      f"- Runtime read-set SHA-256 **{preflight['runtimeSnapshot']['sha256']}**"])
+        for builder in preflight["buildTools"]:
+            lines.append(f"- Builder {text(builder['path'])} · AS {text(builder['studioVersion'])}")
+        runtime = preflight["runtime"]
+        lines.append(f"- Runtime {text(runtime['version'])} · catalog {text(runtime['manifest'])}")
+        for item in preflight["technologyPackages"]:
+            lines.append(f"- {text(item['name'])} {text(item['version'])} · internal build {text(item['internalVersion'])}")
+        for dependency in preflight["libraryDependencies"]:
+            versions = ", ".join(dependency["selectedVersions"]) or "unresolved"
+            lines.append(f"- {text(dependency['library'])} requires {text(dependency['requires'])} · {text(versions)}")
     lines.extend(["", "## Diagnostics", ""])
     for item in report["diagnostics"]:
-        lines.append(f"- {text(item['severity'])} · {text(item['path'])} · {text(item['message'])}")
+        scope = f"{text(item['scope'])} · " if "scope" in item else ""
+        lines.append(f"- {text(item['severity'])} · {scope}{text(item['path'])} · {text(item['message'])}")
     if not report["diagnostics"]:
-        lines.append("No issues reported by the selected saved-file checks.")
+        lines.append("No issues reported by the selected checks.")
     return "\n".join(lines)
 
 
