@@ -34,3 +34,5 @@ $brStudio = '.\.local\venv\Scripts\br-studio.exe'
 - The verified format is from AS4 and mapp 6D 2.2. It uses an explicit zero user origin, absolute station and waypoint positions, and distinct one-way mappings. An unsupported coordinate frame or mapping topology returns `partial`.
 
 Match the reported SVG hashes to the HTTP capture receipt when proving what the HMI served. Confirm page loading and widget bounds with the [combined HMI rehearsal](arsim-hmi-smoke.md). Target appearance and shuttle movement require observation in the intended environment.
+
+Use the [coordinate frame workflow](launchpad-frame-review.md#trace-the-coordinates-into-the-hmi) when the review also needs to trace the positions to a saved LaunchPad model.

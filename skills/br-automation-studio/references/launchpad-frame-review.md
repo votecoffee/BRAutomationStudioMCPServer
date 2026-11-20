@@ -47,3 +47,9 @@ Supply `datumFile` to use the same known point measured in both coordinate frame
 ```
 
 The translation for each candidate moves the mapped reference point to its Automation Studio coordinates. The JSON report records the datum file hash, per-object residuals, and lower-bound witness.
+
+## Trace the coordinates into the HMI
+
+1. Run `launchpad_frame_review` on the saved project and again with the reviewed `jobDirectory`. When supplying a datum, use each report's own input identity. A constructed rehearsal can use its declared placement as the datum. Record it as a rehearsal placement and use a point measured in both frames for target acceptance.
+2. Use the same project and job in `arsim_hmi_smoke` with `captureLayoutAssets` enabled. Retain the capture receipt, both SVGs and the RUC hash. [Combined HMI rehearsal](arsim-hmi-smoke.md)
+3. Pass those SVGs to `layout_svg_review` with the same job and manager. Compare the RUC SHA-256 across the compiled frame, HMI and SVG reports. Compare the SVG SHA-256 values with the capture receipt. Together the reports trace the saved model through the compiled configuration to the positions and link IDs served to the HMI. [Generated layout review](layout-svg-review.md)
