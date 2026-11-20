@@ -6,6 +6,7 @@ from hashlib import sha256
 from io import StringIO
 import re
 
+from .mptraffic_events import NONE
 from .station_trace import FLAGS, MONITOR_CHECKPOINTS, TRACE_LIMIT, TraceIssue, integer
 
 
@@ -83,10 +84,11 @@ def string_map(value, label):
 
 
 class Sample:
-    def __init__(self, header, cells, columns, record):
+    def __init__(self, header, cells, columns, record, project_events):
         self.cells = dict(zip(header, cells))
         self.columns = columns
         self.record = record
+        self.project_events = project_events
 
     def get(self, role):
         return self.cells[self.columns.get(role, role)]
@@ -116,6 +118,17 @@ class Sample:
             raise ValueError(f"Scan sample {self.record} needs a named value for {role}")
         return translated
 
+    def event(self, role, names):
+        if self.project_events is None:
+            return self.label(role, names)
+        raw = self.get(role)
+        key = int(raw.partition(".")[0]) if DECIMAL_INTEGER.fullmatch(raw) else raw.casefold()
+        event = self.project_events.get(key)
+        if event is None or event == NONE:
+            raise TraceIssue("cycle_capture_event_code_invalid",
+                             f"Scan sample {self.record} {role} has no consumed MpTraffic detection for {raw!r}")
+        return event
+
     def detections(self, leg, slots, stations, events):
         observed = []
         for slot in range(1, slots + 1):
@@ -124,7 +137,7 @@ class Sample:
             if sequence != 0:
                 observed.append({"sequence": sequence, "station": self.label(f"{prefix}.station", stations),
                                  "shuttleId": self.number(f"{prefix}.shuttleId"),
-                                 "event": self.label(f"{prefix}.event", events)})
+                                 "event": self.event(f"{prefix}.event", events)})
         return observed
 
     def inspection(self, scan, slots, stations, events):
@@ -169,7 +182,7 @@ def anchored_monitor_window(leg, rows, field):
     return {**leg, field: start, "scans": rows}, {"start": start, "end": end}
 
 
-def materialize_cycle(trace, path, summary):
+def materialize_cycle(trace, path, summary, *, read_project_events=None):
     capture = trace.get("scanCapture") if isinstance(trace, dict) else None
     if not isinstance(capture, dict):
         raise ValueError("A CSV input needs a scanCapture object in the cycle trace")
@@ -199,6 +212,17 @@ def materialize_cycle(trace, path, summary):
     summary.update(path=str(path.resolve()), bytes=len(raw), sha256=digest, format=format_name, delimiter=delimiter)
     if capture.get("sha256") != digest:
         raise TraceIssue("cycle_capture_hash_mismatch", "The CSV hash differs from its cycle trace descriptor")
+    project_events = None
+    encoding = capture.get("eventEncoding", "capture")
+    if encoding == "project-mptraffic":
+        if events is not None:
+            raise ValueError("Use either project-mptraffic eventEncoding or eventNames")
+        if read_project_events is None:
+            raise ValueError("Project event encoding requires the verified saved build")
+        codes, summary["eventEncoding"] = read_project_events()
+        project_events = {**codes, **{label.casefold(): label for label in codes.values()}}
+    elif encoding != "capture":
+        raise ValueError("scanCapture.eventEncoding must be project-mptraffic or capture")
     decoded = raw.decode("utf-8-sig")
     reader = (chart_table(decoded) if format_name == "as-chart"
               else csv.reader(StringIO(decoded, newline=""), delimiter=delimiter, strict=True))
@@ -233,7 +257,7 @@ def materialize_cycle(trace, path, summary):
     for record, cells in enumerate(reader, 1):
         if len(cells) != len(header):
             raise ValueError(f"Scan sample {record} does not match the header width")
-        row = Sample(header, cells, columns, record)
+        row = Sample(header, cells, columns, record, project_events)
         scan = row.number("scan")
         if scan <= previous:
             raise TraceIssue("cycle_capture_scan_order", f"PLC scan {scan} at sample {record} does not follow {previous}")

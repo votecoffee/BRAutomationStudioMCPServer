@@ -51,9 +51,17 @@ The field names below are the default column names. In `columns`, map every fiel
 
 The first monitor slot uses `.detection`. For multiple consumed events in one scan, declare the recorded slot counts in `detectionSlots`, for example `{"inspection": 2, "return": 1}`. Add the same four fields for each additional slot using `.detection2`, `.detection3` and subsequent suffixes. Keep the event order from the capture and set unused slot sequences to `0`.
 
-Use `0` for the absent selected or occupying shuttle and for a slot with no observed monitor event. Boolean cells accept `TRUE`, `FALSE` or numeric 0/1. On an observed event, use the sequence, station, shuttle and enum preserved by the capture. If the export stores numeric station or enum values, add `stationNames` and `eventNames` to `scanCapture` with exact raw text keys and the imported station names or version-matched enum names as values. For example, `{"1.0000": "Inspect"}` maps a recorded station code once the capture defines that correspondence.
+Use `0` for the absent selected or occupying shuttle and for a slot with no observed monitor event. Boolean cells accept `TRUE`, `FALSE` or numeric 0/1. On an observed event, use the sequence, station, shuttle and enum preserved by the capture. For numeric station codes, add `stationNames` to `scanCapture` with exact raw text keys and the imported station names as values. For numeric detection codes, use the project declaration below or supply a reviewed `eventNames` map with the exact capture cell text as keys. For example, `{"1.0000": "Inspect"}` maps a recorded station code once the capture defines that correspondence.
 
 Read only the window-specific columns for each selected phase. A fault needs its raw `statusId`. The result details are read when `resultPresent` is true. The detection details are read when the event sequence is positive. All columns still need headers so missing signal definitions surface before review.
+
+## Decode events from the saved project and RUC
+
+With br-studio 0.33.0 or later, set `scanCapture.eventEncoding` to `"project-mptraffic"` to verify event codes against the selected build. Leave out `eventNames` in this mode. The decoder reads the explicit `MpTrafficShDetectionEnum` values from the project's registered `Logical/Libraries/MpTraffic/MpTraffic.typ`. It checks that the library descriptor's version agrees with the .apj selection, that the source read set matches the retained build manifest and that the saved IA32 `MpTraffic.br` matches the RUC member byte for byte. The scan review reports the library version, type declaration hash, binary hash and event map.
+
+CSV cells may hold an exact integer or its whole-valued decimal form, such as `2.0000`, or the member name. Unknown values and `NONE` fail when a slot records a consumed detection. A recognized assignment or pass-through keeps its own identity and cannot satisfy an arrival. If the project has no verified saved library definition or the RUC differs, the requested check reports an issue. [B&R detection enum](https://help.br-automation.com/#/en/4/motion/mapp_6d/bibliotheken/mptraffic/datatype_constants/mptrafficshdetectionenum.html)
+
+For captures with trusted enum names or a separately verified `eventNames` map, omit `eventEncoding`. Retain the mapping and its version provenance alongside the trace.
 
 ## Check the consumed-event sequence in every scan
 

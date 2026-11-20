@@ -145,14 +145,14 @@ class CycleTraceTest(unittest.TestCase):
         trace["scanCapture"] = {"inspectionScans": [10, 15], "returnScans": [15, 17], "nextHoldScan": 18}
         return trace, columns, list(scans.values())
 
-    def materialize(self, trace, contents, update_digest=True):
+    def materialize(self, trace, contents, update_digest=True, *, event_source=None):
         with TemporaryDirectory(dir=os.environ.get("BR_STUDIO_TEST_SCRATCH")) as directory:
             path = Path(directory) / "capture.csv"
             path.write_bytes(contents)
             if update_digest:
                 trace["scanCapture"]["sha256"] = sha256(contents).hexdigest()
             capture = {}
-            result = materialize_cycle(trace, path, capture)
+            result = materialize_cycle(trace, path, capture, read_project_events=event_source)
             self.assertEqual(capture["sha256"], sha256(contents).hexdigest())
             return result, capture
 
@@ -294,3 +294,36 @@ class CycleTraceTest(unittest.TestCase):
         writer.writerows(rows)
         with self.assertRaisesRegex(ValueError, "Missing CSV columns: return.monitorSequenceAfterScan"):
             self.materialize(trace, output.getvalue().encode())
+
+
+    def test_numeric_event_decoding_uses_the_project_declaration(self):
+        trace, columns, rows = self.scan_csv()
+        trace["scanCapture"]["eventEncoding"] = "project-mptraffic"
+        codes = {0: "mpTRAFFIC_SH_NONE", 1: "mpTRAFFIC_SH_ASSIGNED", 2: ARRIVAL, 3: "mpTRAFFIC_SH_PASSTHROUGH"}
+        rows[3]["inspection.detection.event"] = "2.000000"
+        rows[7]["return.detection.event"] = "2"
+        evidence = {"mode": "project-mptraffic", "libraryVersion": "2.07.0", "mapp6DVersion": "2.7.0"}
+        event_source = lambda: (codes, evidence)
+        output = StringIO(newline="")
+        writer = csv.DictWriter(output, fieldnames=columns)
+        writer.writeheader()
+        writer.writerows(rows)
+        normalized, capture = self.materialize(trace, output.getvalue().encode(), event_source=event_source)
+        self.assertEqual(self.run_cycle(normalized), self.run_cycle(self.trace))
+        self.assertEqual(capture["eventEncoding"], evidence)
+
+        for code, error_code in (("1", "station_trace_incomplete"), ("0.0", "cycle_capture_event_code_invalid"),
+                                 ("99", "cycle_capture_event_code_invalid")):
+            with self.subTest(code=code):
+                rows[3]["inspection.detection.event"] = code
+                output = StringIO(newline="")
+                writer = csv.DictWriter(output, fieldnames=columns)
+                writer.writeheader()
+                writer.writerows(rows)
+                with self.assertRaises(TraceIssue) as issue:
+                    normalized, _ = self.materialize(trace, output.getvalue().encode(), event_source=event_source)
+                    self.run_cycle(normalized)
+                self.assertEqual(issue.exception.code, error_code)
+        trace["scanCapture"]["eventNames"] = {"1": ARRIVAL}
+        with self.assertRaisesRegex(ValueError, "either project-mptraffic eventEncoding or eventNames"):
+            self.materialize(trace, output.getvalue().encode(), event_source=event_source)

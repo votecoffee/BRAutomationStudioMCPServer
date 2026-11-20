@@ -5,6 +5,7 @@ from csv import Error as CsvError
 from .cycle_capture import materialize_cycle
 from .cycle_hmi import review_cycle_hmi
 from .launchpad_route import json_snapshot, launchpad_route_review
+from .mptraffic_events import read_project_events
 from .station_trace import (
     MONITOR_CHECKPOINTS, TRACE_LIMIT, TraceIssue, check_bound_leg, check_detections, check_monitor_checkpoint,
     integer, leg_identity, scan_detections, selected_leg,
@@ -134,7 +135,10 @@ def cycle_trace_review(project, configuration, cpu, manager_id, lpj, readback, n
         trace, result["trace"] = json_snapshot(trace_path, TRACE_LIMIT)
         if scan_csv_path is not None:
             evidence_path = scan_csv_path
-            trace = materialize_cycle(trace, scan_csv_path, result.setdefault("scanCapture", {}))
+            trace = materialize_cycle(
+                trace, scan_csv_path, result.setdefault("scanCapture", {}),
+                read_project_events=lambda: read_project_events(project, job_directory, report["rucReview"]),
+            )
             evidence_path = trace_path
         elif isinstance(trace, dict) and "scanCapture" in trace:
             raise ValueError("Supply scanCsv for a cycle trace with scanCapture")
