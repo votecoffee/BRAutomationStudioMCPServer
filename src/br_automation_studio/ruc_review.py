@@ -273,7 +273,7 @@ def match_read_set(reader, path, manifest, result, snapshot, issues):
 
 def review_ruc(path, job_directory, binding=None, *, geometry_manager=None, include_layout=False,
                recovery_manager=None, include_motion=False, include_io=False, include_layout_device=False,
-               include_saved_geometry=False):
+               include_saved_geometry=False, require_6d=True):
     reader = SavedFiles(job_directory)
     result = {"evidence": "ruc_readback", "project": path.name, "selectedConfiguration": None,
               "selectedCpu": None, "snapshot": None, "diagnostics": reader.diagnostics}
@@ -349,7 +349,7 @@ def review_ruc(path, job_directory, binding=None, *, geometry_manager=None, incl
                 if ready:
                     compare_motion(reader, saved, links, managers)
                 review["widgets"] = read_widgets(archive, saved, reader)
-                if not saved["motionModules"] and not saved["widgets"]:
+                if require_6d and not saved["motionModules"] and not saved["widgets"]:
                     reader.issue("warning", "ruc_no_expected_6d_content", Path("."),
                                  "No supported saved 6D modules or Assembly6D widgets to compare")
     except (BadZipFile, LookupError, OSError, RuntimeError, ValueError) as error:

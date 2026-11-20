@@ -215,8 +215,8 @@ def ascii_pil_path(path):
     return value
 
 
-def arsim_smoke(project, job_dir, pvi, session_dir, timeout=30, runtime_probe=None, *, extra_content=()):
-    report = review_ruc(project, job_dir)
+def arsim_smoke(project, job_dir, pvi, session_dir, timeout=30, runtime_probe=None, *, extra_content=(), require_6d=True):
+    report = review_ruc(project, job_dir, require_6d=require_6d)
     smoke = {"state": "not_started", "packageSha256": None, "assets": [], "cleanup": None}
     report["arsimSmoke"] = smoke
     if any(item["severity"] == "error" for item in report["diagnostics"]):

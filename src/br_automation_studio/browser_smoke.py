@@ -176,10 +176,14 @@ class Page:
         return value
 
 
-def widget_expression(assembly, counter, layout_paths=None):
+def widget_expression(assembly, counter, layout_paths=None, status_widgets=()):
     return f"""(() => {{
         const assembly = document.getElementById({json.dumps(assembly)});
-        const counter = document.getElementById({json.dumps(counter)});
+        const read = (id) => {{
+            const widget = document.getElementById(id);
+            return widget?.getClientRects().length
+                ? (widget.querySelector('input')?.value ?? widget.textContent)?.trim() : null;
+        }};
         const paths = {json.dumps(layout_paths or {})};
         const layout = assembly && {{
             boundedSvgCount: Array.from(assembly.querySelectorAll('svg')).filter(
@@ -195,8 +199,8 @@ def widget_expression(assembly, counter, layout_paths=None):
             timeOrigin: performance.timeOrigin,
             widgetType: assembly?.getClientRects().length
                 ? assembly.getAttribute('data-brease-widget') : null,
-            value: counter?.getClientRects().length
-                ? (counter.querySelector('input')?.value ?? counter.textContent)?.trim() : null,
+            value: read({json.dumps(counter)}),
+            statusValues: Object.fromEntries({json.dumps(list(status_widgets))}.map(id => [id, read(id)])),
             layout
         }};
     }})()"""
@@ -209,42 +213,68 @@ def document_origin(state, url):
     return None
 
 
+def numeric_text(value):
+    return Decimal(value) if isinstance(value, str) and len(value) <= 64 and NUMBER.fullmatch(value) else None
+
+
+def check_document_status(state, receipt, expected):
+    raw = state.get("statusValues")
+    raw = raw if isinstance(raw, dict) else {}
+    seen = {widget: raw.get(widget) for widget in expected}
+    if all(numeric_text(seen[widget]) == value for widget, value in expected.items()):
+        receipt["statusValues"] = seen
+        return True
+    receipt["lastStatusValues"] = seen
+    if "statusValues" in receipt:
+        raise ValueError("A displayed status changed after the reviewed values appeared in the HMI document")
+    return False
+
+
 def collect_samples(page, expression, url, receipt, count, prior_origins=(), after=Decimal(0),
-                    *, layout_paths=None, require_layout=False):
+                    *, layout_paths=None, require_layout=False, check_assembly=True, expected_status=None):
     latest = after
     while time.monotonic() < page.deadline:
         result = page.read(expression)
         origin = document_origin(result, url)
-        if origin is not None and origin not in prior_origins and result.get("widgetType") == ASSEMBLY_WIDGET:
+        widget_matches = not check_assembly or result.get("widgetType") == ASSEMBLY_WIDGET
+        if origin is not None and origin not in prior_origins and widget_matches:
             if "timeOrigin" in receipt and receipt["timeOrigin"] != origin:
                 raise ValueError("The HMI document changed during counter sampling")
-            receipt.update(timeOrigin=origin, widgetType=ASSEMBLY_WIDGET)
+            receipt["timeOrigin"] = origin
+            if check_assembly:
+                receipt["widgetType"] = ASSEMBLY_WIDGET
             if layout_paths:
                 receipt["layout"] = layout_observation(result.get("layout"), layout_paths)
             value = result.get("value")
-            if (len(receipt["counterSamples"]) < count and isinstance(value, str)
-                    and len(value) <= 64 and NUMBER.fullmatch(value)):
-                numeric = Decimal(value)
-                if numeric > latest:
+            status_matches = not expected_status or check_document_status(result, receipt, expected_status)
+            if status_matches and len(receipt["counterSamples"]) < count:
+                numeric = numeric_text(value)
+                if numeric is not None and numeric > latest:
                     latest = numeric
                     receipt["counterSamples"].append(value)
-            if (len(receipt["counterSamples"]) == count
+            if (status_matches and len(receipt["counterSamples"]) == count
                     and (not require_layout or receipt.get("layout", {}).get("state") == "observed")):
                 return
         time.sleep(0.2)
     if require_layout and len(receipt["counterSamples"]) == count:
         raise TimeoutError("Successful 6DData SVG requests and an inline SVG with layout bounds were not verified")
+    if expected_status:
+        raise TimeoutError("The expected displayed status values and changing numeric counter were not verified")
     raise TimeoutError("The displayed Assembly6D and changing numeric counter were not verified")
 
 
 def verify_navigation(page, url, receipt):
     paths = receipt.get("layoutPaths")
     required = receipt.get("requireLayoutAssets", False)
-    expression = widget_expression(receipt["assemblyWidgetId"], receipt["counterWidgetId"], paths)
+    expected = receipt.get("expectedStatus", {})
+    assembly = receipt["assemblyWidgetId"]
+    options = {"layout_paths": paths, "require_layout": required, "check_assembly": assembly is not None,
+               "expected_status": expected}
+    expression = widget_expression(assembly, receipt["counterWidgetId"], paths, expected)
     page.navigate(url)
     receipt["state"] = "first_document"
     first = receipt["initial"] = {"counterSamples": []}
-    collect_samples(page, expression, url, first, 3, layout_paths=paths, require_layout=required)
+    collect_samples(page, expression, url, first, 3, **options)
 
     receipt["state"] = "leaving_page"
     page.navigate("about:blank")
@@ -261,8 +291,7 @@ def verify_navigation(page, url, receipt):
     receipt["state"] = "reopened_document"
     reopened = receipt["reopened"] = {"counterSamples": []}
     collect_samples(page, expression, url, reopened, 2,
-                    (first["timeOrigin"], blank), Decimal(first["counterSamples"][-1]),
-                    layout_paths=paths, require_layout=required)
+                    (first["timeOrigin"], blank), Decimal(first["counterSamples"][-1]), **options)
 
 
 def capture_layout_assets(session_dir, http_port, paths, guard_runtime):
@@ -312,6 +341,8 @@ class ChromeProbe:
     timeout: int
     require_layout: bool = False
     capture_layout: bool = False
+    expected_status: tuple[tuple[str, int], ...] = ()
+    check_assembly: bool = True
     key: ClassVar[str] = "browser"
     evidence: ClassVar[str] = "arsim_loopback_browser"
 
@@ -324,14 +355,16 @@ class ChromeProbe:
         version = product_version(chrome)
         if chrome.name.lower() != "chrome.exe" or not version:
             raise ValueError("Select an installed Google Chrome chrome.exe")
-        widget = assembly_dom_id(reviewed["widgets"], self.assembly_widget, self.counter_widget)
-        paths = layout_asset_paths(reviewed["widgets"], widget)
+        widget = assembly_dom_id(reviewed["widgets"], self.assembly_widget, self.counter_widget) if self.check_assembly else None
+        paths = layout_asset_paths(reviewed["widgets"], widget) if widget is not None else {}
         require_layout = self.require_layout or self.capture_layout
         if require_layout and not paths:
             raise ValueError("The reviewed widget has no supported 6DData SVG paths")
         receipt.update(state="ready", assemblyWidgetId=widget, layoutPaths=paths, requireLayoutAssets=require_layout,
                        counterWidgetId=self.counter_widget,
                        chrome={"path": str(chrome), "version": version, "sha256": fingerprint(chrome)})
+        if self.expected_status:
+            receipt["expectedStatus"] = dict(self.expected_status)
         if self.capture_layout:
             receipt["layoutCapture"] = {"state": "not_started", "assets": {}}
 

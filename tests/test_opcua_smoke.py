@@ -3,7 +3,7 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import AsyncMock, Mock, patch
 
-from br_automation_studio.opcua_smoke import inspect_counter, observe_counter, resolve_namespace
+from br_automation_studio.opcua_smoke import StatusNode, inspect_counter, inspect_status, observe_counter, resolve_namespace
 
 URI = "urn:B&R/pv/"
 IDENTIFIER = "::Pulse:Count"
@@ -66,6 +66,33 @@ class OpcUaSmokeTest(unittest.IsolatedAsyncioTestCase):
                 self.node.read_data_value.return_value = value
                 await inspect_counter(self.client, UA, Mock(), self.receipt)
         self.assertEqual(self.receipt["samples"], [])
+
+    async def test_status_reads_validate_quality_access_type_and_value(self):
+        identifier = "::Pulse:Phase"
+        expected = (StatusNode(identifier, "Int32", 10),)
+        self.receipt["namespaceIndex"] = 2
+        self.node.read_data_value.return_value = response(10)
+        await inspect_status(self.client, UA, Mock(), self.receipt, expected)
+        UA.NodeId.assert_called_with(identifier, 2, "String")
+        record = self.receipt["statusValues"][identifier]
+        self.assertEqual((record["value"], record["variantType"], record["accessLevel"], record["userAccessLevel"]),
+                         (10, "Int32", 1, 1))
+        for data in (response(11), response(10, "UInt32"), response(10, status=0x80000000)):
+            with self.subTest(data=data), self.assertRaises(ValueError):
+                self.node.read_data_value.return_value = data
+                await inspect_status(self.client, UA, Mock(), self.receipt, expected)
+        self.node.read_attributes.return_value = [response(1, "Byte"), response(3, "Byte")]
+        with self.assertRaisesRegex(ValueError, "CurrentRead alone"):
+            await inspect_status(self.client, UA, Mock(), self.receipt, expected)
+
+    @patch("br_automation_studio.opcua_smoke.asyncio.sleep", new_callable=AsyncMock)
+    async def test_status_can_wait_for_initial_hold_then_checks_after_sampling(self, sleep):
+        expected = (StatusNode("::Pulse:Phase", "Int32", 10),)
+        self.node.read_data_value.side_effect = [response(n) for n in (0, 10, 42, 43, 44, 20)]
+        with self.assertRaisesRegex(ValueError, "expected 10 .* read 20"):
+            await inspect_counter(self.client, UA, Mock(), self.receipt, expected, wait_for_status=True)
+        self.assertEqual([row["value"] for row in self.receipt["samples"]], [42, 43, 44])
+        self.assertEqual(self.receipt["statusValues"]["::Pulse:Phase"]["value"], 20)
 
     async def test_disconnects_when_ownership_changes(self):
         owner = {"pid": 100}

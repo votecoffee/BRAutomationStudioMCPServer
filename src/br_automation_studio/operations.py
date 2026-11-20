@@ -10,7 +10,7 @@ from .assembly_io import assembly_io_review
 from .binding_review import BindingTarget
 from .browser_smoke import ChromeProbe
 from .cycle_trace import cycle_trace_review
-from .hmi_smoke import arsim_hmi_smoke
+from .hmi_smoke import arsim_hmi_smoke, read_status_bindings
 from .inspection import inspect_project
 from .layout_device import layout_device_review
 from .layout_svg import layout_svg_review
@@ -234,14 +234,20 @@ def run_arsim_opcua_smoke(arguments, request_directory):
     return run_arsim_smoke(arguments, request_directory, probe)
 
 
-def run_arsim_hmi_smoke(arguments, request_directory):
+def run_arsim_hmi_smoke(arguments, request_directory, status_bindings=()):
     return arsim_hmi_smoke(
         *arsim_inputs(arguments, request_directory),
         binding_target(arguments), request_directory / arguments["browserExecutable"],
         arguments.get("assemblyWidgetId"), arguments.get("browserTimeoutSeconds", 30),
         arguments.get("opcUaTimeoutSeconds", 20), require_layout=arguments.get("requireLayoutAssets", False),
         capture_layout=arguments.get("captureLayoutAssets", False),
+        status_bindings=status_bindings,
     )
+
+
+def run_arsim_status_smoke(arguments, request_directory):
+    bindings = read_status_bindings(request_directory / arguments["statusBindingFile"], binding_target(arguments))
+    return run_arsim_hmi_smoke(arguments, request_directory, bindings)
 
 
 PROJECT_INSPECT = Operation(
@@ -505,13 +511,23 @@ ARSIM_HMI_SMOKE = Operation(
     required=(*ARSIM_SMOKE.required, "visualizationId", "contentId", "widgetId", "stringIdentifier", "browserExecutable"),
     handler=run_arsim_hmi_smoke,
 )
+ARSIM_STATUS_SMOKE = Operation(
+    name="arsim_status_smoke",
+    summary="Verify read-only numeric HMI status and an advancing counter before and after reopening.",
+    arguments={
+        **ARSIM_HMI_SMOKE.arguments,
+        "statusBindingFile": {"type": "string", "minLength": 1, "description": "JSON file with expected numeric widget bindings."},
+    },
+    required=(*ARSIM_HMI_SMOKE.required, "statusBindingFile"),
+    handler=run_arsim_status_smoke,
+)
 OPERATIONS = {item.name: item for item in (
     PROJECT_INSPECT, BUILD_PREFLIGHT, SIMULATION_ENVIRONMENT, SIMULATION_PREFLIGHT, BUILD_PLAN, BUILD_EXECUTE, RUC_REVIEW,
     ASSEMBLY_IO_REVIEW, LAYOUT_DEVICE_REVIEW, LAYOUT_SVG_REVIEW,
     LAUNCHPAD_ROUTE_REVIEW, LAUNCHPAD_STATION_REVIEW, STATION_TRACE_REVIEW, CYCLE_TRACE_REVIEW,
     LAUNCHPAD_RECOVERY_REVIEW, LAUNCHPAD_MOTION_REVIEW,
     LAUNCHPAD_GEOMETRY_REVIEW, LAUNCHPAD_LAYOUT_REVIEW, LAUNCHPAD_FRAME_REVIEW, RUC_BINDING_REVIEW,
-    ARSIM_SMOKE, ARSIM_BROWSER_SMOKE, ARSIM_OPCUA_SMOKE, ARSIM_HMI_SMOKE,
+    ARSIM_SMOKE, ARSIM_BROWSER_SMOKE, ARSIM_OPCUA_SMOKE, ARSIM_HMI_SMOKE, ARSIM_STATUS_SMOKE,
 )}
 
 

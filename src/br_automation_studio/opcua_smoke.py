@@ -32,12 +32,9 @@ def good_scalar(data):
     return variant.Value, variant.VariantType.name
 
 
-async def inspect_counter(client, ua, guard, receipt):
-    guard()
-    receipt["state"] = "resolving_namespace"
-    index = resolve_namespace(await client.get_namespace_array(), receipt["namespaceUri"])
-    node_id = ua.NodeId(receipt["stringIdentifier"], index, ua.NodeIdType.String)
-    receipt.update(state="reading_access", namespaceIndex=index, nodeId=node_id.to_string())
+async def read_only_node(client, ua, guard, index, identifier, receipt):
+    node_id = ua.NodeId(identifier, index, ua.NodeIdType.String)
+    receipt.update(namespaceIndex=index, nodeId=node_id.to_string())
     node = client.get_node(node_id)
     guard()
     access, user_access = await node.read_attributes([ua.AttributeIds.AccessLevel, ua.AttributeIds.UserAccessLevel])
@@ -48,7 +45,17 @@ async def inspect_counter(client, ua, guard, receipt):
         receipt[name] = value
     if receipt["accessLevel"] != CURRENT_READ or receipt["userAccessLevel"] != CURRENT_READ:
         raise ValueError("OPC UA did not report CurrentRead alone for both the variable and this session")
+    return node
 
+
+async def inspect_counter(client, ua, guard, receipt, expected_status=(), *, wait_for_status=False):
+    guard()
+    receipt["state"] = "resolving_namespace"
+    index = resolve_namespace(await client.get_namespace_array(), receipt["namespaceUri"])
+    receipt["state"] = "reading_access"
+    node = await read_only_node(client, ua, guard, index, receipt["stringIdentifier"], receipt)
+    if expected_status:
+        await inspect_status(client, ua, guard, receipt, expected_status, wait=wait_for_status)
     receipt["state"] = "sampling"
     latest = None
     while len(receipt["samples"]) < 3:
@@ -67,10 +74,47 @@ async def inspect_counter(client, ua, guard, receipt):
                                        "sourceTimestamp": stamp.isoformat() if stamp is not None else None})
         if len(receipt["samples"]) < 3:
             await asyncio.sleep(0.2)
+    if expected_status:
+        await inspect_status(client, ua, guard, receipt, expected_status)
     guard()
 
 
-async def observe_counter(endpoint, client_type, ua, listener, timeout, receipt):
+@dataclass(frozen=True)
+class StatusNode:
+    identifier: str
+    variant_type: str
+    expected: int
+
+
+async def inspect_status(client, ua, guard, receipt, expected_nodes, *, wait=False):
+    receipt["state"] = "checking_status"
+    records = receipt["statusValues"] = {}
+    nodes = []
+    for expected in expected_nodes:
+        record = records[expected.identifier] = {}
+        node = await read_only_node(client, ua, guard, receipt["namespaceIndex"], expected.identifier, record)
+        nodes.append((expected, record, node))
+    while True:
+        matched = True
+        for expected, record, node in nodes:
+            guard()
+            response = await node.read_data_value()
+            value, variant = good_scalar(response)
+            stamp = response.SourceTimestamp
+            record.update(value=value, variantType=variant, statusCode=response.StatusCode.value,
+                          sourceTimestamp=stamp.isoformat() if stamp is not None else None)
+            if variant != expected.variant_type or (not wait and value != expected.expected):
+                raise ValueError(f"Direct OPC UA status {expected.identifier} expected "
+                                 f"{expected.expected} ({expected.variant_type}), read {value} ({variant})")
+            matched &= value == expected.expected
+        guard()
+        if matched:
+            return
+        await asyncio.sleep(0.2)
+
+
+async def observe_counter(endpoint, client_type, ua, listener, timeout, receipt, expected_status=(), *,
+                          wait_for_status=False):
     client = client_type(endpoint, timeout=2, auto_reconnect=False)
     connected = False
     receipt["state"] = "waiting_for_listener"
@@ -88,7 +132,7 @@ async def observe_counter(endpoint, client_type, ua, listener, timeout, receipt)
             receipt["state"] = "opening_session"
             await client.connect()
             connected = True
-            await inspect_counter(client, ua, guard, receipt)
+            await inspect_counter(client, ua, guard, receipt, expected_status, wait_for_status=wait_for_status)
     finally:
         try:
             if connected:
@@ -104,6 +148,8 @@ class OpcUaProbe:
     namespace_uri: str
     string_identifier: str
     timeout: int
+    expected_status: tuple[StatusNode, ...] = ()
+    wait_for_status: bool = False
     key: ClassVar[str] = "opcUa"
     evidence: ClassVar[str] = "arsim_loopback_opcua"
 
@@ -124,7 +170,8 @@ class OpcUaProbe:
 
         def probe(session_dir, owned_listener):
             try:
-                asyncio.run(observe_counter(endpoint, Client, ua, lambda: owned_listener(port), self.timeout, receipt))
+                asyncio.run(observe_counter(endpoint, Client, ua, lambda: owned_listener(port), self.timeout, receipt,
+                                            self.expected_status, wait_for_status=self.wait_for_status))
             except TimeoutError as error:
                 raise ValueError(f"OPC UA timed out in phase {receipt['state']}") from error
             except UaError as error:

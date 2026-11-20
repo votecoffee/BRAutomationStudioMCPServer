@@ -178,6 +178,8 @@ def markdown_ruc(response, text):
         title = "# Compiled ACOPOS 6D assembly I/O review"
     elif response["operation"] == "arsim_hmi_smoke":
         title = "# AS4 mapp View end-to-end smoke"
+    elif response["operation"] == "arsim_status_smoke":
+        title = "# AS4 mapp View status reconnect"
     elif response["operation"] == "launchpad_layout_review":
         title = "# Compiled ACOPOS 6D segment layout review"
     elif response["operation"] == "launchpad_frame_review":
@@ -565,11 +567,16 @@ def markdown_browser(browser, text):
              f"- Browser state {text(browser['state'])} · Cleanup {text(browser.get('cleanup'))}"]
     if "chrome" in browser:
         lines.append(f"- Chrome {text(browser['chrome']['version'])} · URL {text(browser.get('url'))}")
-        lines.append(f"- Assembly {text(browser['assemblyWidgetId'])} · Counter {text(browser['counterWidgetId'])}")
+        if assembly := browser["assemblyWidgetId"]:
+            lines.append(f"- Assembly {text(assembly)} · Counter {text(browser['counterWidgetId'])}")
+        else:
+            lines.append(f"- Counter {text(browser['counterWidgetId'])}")
     for phase, label in (("initial", "Initial document"), ("reopened", "Reopened document")):
         if document := browser.get(phase):
             samples = ", ".join(document["counterSamples"])
             lines.append(f"- {label} · Samples {text(samples or None)} · Time origin {text(document.get('timeOrigin'))}")
+            for widget, value in document.get("statusValues", {}).items():
+                lines.append(f"  - {text(widget)} · Value {text(value)}")
             if layout := document.get("layout"):
                 lines.append(f"  - Layout {text(layout['state'])} · Inline SVGs with layout bounds {text(layout['boundedSvgCount'])}")
                 for role, asset in layout["assets"].items():
@@ -591,6 +598,9 @@ def markdown_opcua(title, opcua, text):
     for sample in opcua.get("samples", []):
         lines.append(f"- Value {text(sample['value'])} · Status 0x{sample['statusCode']:08X}"
                      f" · Source timestamp {text(sample['sourceTimestamp'])}")
+    for identifier, status in opcua.get("statusValues", {}).items():
+        lines.append(f"- {text(identifier)} · Value {text(status.get('value'))} · Type {text(status.get('variantType'))}"
+                     f" · UserAccessLevel {text(status.get('userAccessLevel'))}")
     return lines
 
 

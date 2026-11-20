@@ -41,6 +41,38 @@ class TestBrowserSmoke(unittest.TestCase):
         self.assertEqual(receipt["reopened"]["counterSamples"], ["4.0", "5.0"])
 
     @patch("br_automation_studio.browser_smoke.time.sleep")
+    @patch("br_automation_studio.browser_smoke.time.monotonic", return_value=0)
+    def test_status_observed_in_both_documents_without_assembly_widget(self, now, pause):
+        status = {"Proof_Request": "7.0", "Proof_Shuttle": "12"}
+
+        def sample(value, origin, fields=status):
+            return dict(hmi(str(value), origin), widgetType=None, statusValues=fields)
+
+        page = Mock(deadline=2)
+        page.read.side_effect = [
+            sample(99, 10, {}), sample(1, 10), sample(2, 10), sample(3, 10),
+            {"url": "about:blank", "timeOrigin": 15},
+            sample(100, 10), sample(4, 20), sample(5, 20),
+        ]
+        receipt = dict(self.receipt(), assemblyWidgetId=None, expectedStatus={"Proof_Request": 7, "Proof_Shuttle": 12})
+        verify_navigation(page, URL, receipt)
+        self.assertEqual(receipt["initial"]["counterSamples"], ["1", "2", "3"])
+        self.assertEqual(receipt["reopened"]["counterSamples"], ["4", "5"])
+        self.assertEqual(receipt["initial"]["statusValues"], status)
+        self.assertEqual(receipt["reopened"]["statusValues"], status)
+
+    @patch("br_automation_studio.browser_smoke.time.sleep")
+    @patch("br_automation_studio.browser_smoke.time.monotonic", return_value=0)
+    def test_status_change_after_first_observation_fails_the_document(self, now, pause):
+        page = Mock(deadline=2)
+        page.read.side_effect = [dict(hmi("1", 10), statusValues={"Phase": "10"}),
+                                 dict(hmi("2", 10), statusValues={"Phase": "20"})]
+        receipt = dict(self.receipt(), expectedStatus={"Phase": 10})
+        with self.assertRaisesRegex(ValueError, "displayed status changed"):
+            verify_navigation(page, URL, receipt)
+        self.assertEqual(receipt["initial"]["counterSamples"], ["1"])
+
+    @patch("br_automation_studio.browser_smoke.time.sleep")
     @patch("br_automation_studio.browser_smoke.time.monotonic", side_effect=range(8))
     def test_placeholder_and_even_one_new_value_cannot_pass(self, now, pause):
         page = Mock(deadline=7)
