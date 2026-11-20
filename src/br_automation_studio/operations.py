@@ -10,6 +10,7 @@ from .binding_review import BindingTarget
 from .browser_smoke import ChromeProbe
 from .hmi_smoke import arsim_hmi_smoke
 from .inspection import inspect_project
+from .launchpad_route import launchpad_route_review
 from .native_build import execute_build, plan_build
 from .opcua_smoke import OpcUaProbe
 from .preflight import build_preflight
@@ -103,6 +104,18 @@ def build_execute(arguments, request_directory):
 def ruc_review(arguments, request_directory):
     return review_ruc(project_path(arguments, request_directory),
                       request_directory / arguments["jobDirectory"])
+
+
+def run_launchpad_route_review(arguments, request_directory):
+    name_map = arguments.get("nameMap")
+    job = arguments.get("jobDirectory")
+    return launchpad_route_review(
+        project_path(arguments, request_directory), arguments.get("configuration"), arguments.get("cpu"),
+        arguments["managerId"], request_directory / arguments["launchPadProject"],
+        request_directory / arguments["launchPadReadback"],
+        request_directory / name_map if name_map is not None else None,
+        request_directory / job if job is not None else None,
+    )
 
 
 def binding_target(arguments):
@@ -213,6 +226,20 @@ RUC_REVIEW = Operation(
     required=("project", "jobDirectory"),
     handler=ruc_review,
 )
+LAUNCHPAD_ROUTE_REVIEW = Operation(
+    name="launchpad_route_review",
+    summary="Compare one saved LaunchPad cycle with the typed route of a selected saved or compiled Traffic Manager.",
+    arguments={
+        **PROJECT_INSPECT.arguments,
+        "managerId": {"type": "string", "minLength": 1, "description": "Selected Traffic Manager element ID."},
+        "launchPadProject": {"type": "string", "minLength": 1, "description": "Original saved LaunchPad .lpj."},
+        "launchPadReadback": {"type": "string", "minLength": 1, "description": "JSON readback written by the local LaunchPad decoder."},
+        "nameMap": {"type": "string", "minLength": 1, "description": "Optional JSON mapping of saved names to renamed manager objects."},
+        "jobDirectory": RUC_REVIEW.arguments["jobDirectory"],
+    },
+    required=("project", "managerId", "launchPadProject", "launchPadReadback"),
+    handler=run_launchpad_route_review,
+)
 RUC_BINDING_REVIEW = Operation(
     name="ruc_binding_review",
     summary="Trace a one-way mapp View value binding from saved sources through a reviewed AS4 RUC.",
@@ -278,7 +305,7 @@ ARSIM_HMI_SMOKE = Operation(
     handler=run_arsim_hmi_smoke,
 )
 OPERATIONS = {item.name: item for item in (
-    PROJECT_INSPECT, BUILD_PREFLIGHT, SIMULATION_PREFLIGHT, BUILD_PLAN, BUILD_EXECUTE, RUC_REVIEW, RUC_BINDING_REVIEW,
+    PROJECT_INSPECT, BUILD_PREFLIGHT, SIMULATION_PREFLIGHT, BUILD_PLAN, BUILD_EXECUTE, RUC_REVIEW, LAUNCHPAD_ROUTE_REVIEW, RUC_BINDING_REVIEW,
     ARSIM_SMOKE, ARSIM_BROWSER_SMOKE, ARSIM_OPCUA_SMOKE, ARSIM_HMI_SMOKE,
 )}
 

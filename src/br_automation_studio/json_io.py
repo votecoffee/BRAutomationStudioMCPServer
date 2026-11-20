@@ -22,6 +22,10 @@ def read_json(path, limit):
         data = stream.read(limit + 1)
     if len(data) > limit:
         raise ValueError(f"JSON input exceeds {limit} bytes")
+    return decode_json(data)
+
+
+def decode_json(data):
     if data.startswith(b"\xef\xbb\xbf"):
         raise ValueError("Write JSON as UTF-8 without a BOM")
     return json.loads(data.decode("utf-8"), object_pairs_hook=unique_object, parse_constant=invalid_constant)

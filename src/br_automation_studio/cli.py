@@ -27,6 +27,7 @@ def markdown(response):
 
     titles = {
         "project_inspect": "Saved Automation Studio project inspection",
+        "launchpad_route_review": "Saved Traffic Manager route review",
         "build_preflight": "AS4 build preflight",
         "simulation_preflight": "AS4 ACOPOS 6D simulation preflight",
         "build_plan": "AS4 native build plan",
@@ -43,10 +44,13 @@ def markdown(response):
         "## Declared technology packages", "",
     ]
     lines.extend(f"- {text(item['name'])} {text(item['version'])}" for item in report["technologyPackages"])
-    lines.extend(["", "## Traffic Manager edges", ""])
-    for manager in report["trafficManagers"]:
-        for edge in manager["edges"]:
-            lines.append(f"- {text(manager['manager'])} · {text(edge['source'])} → {text(edge['destination'])}")
+    if route := report.get("routeReview"):
+        lines.extend(markdown_route(route, text))
+    else:
+        lines.extend(["", "## Traffic Manager edges", ""])
+        for manager in report["trafficManagers"]:
+            for edge in manager["edges"]:
+                lines.append(f"- {text(manager['manager'])} · {text(edge['source'])} → {text(edge['destination'])}")
     lines.extend(["", "## Assembly6D widgets", ""])
     for item in report["widgets"]:
         lines.append(f"- {text(item['id'])} · assembly {text(item['assembly'])} · manager {text(item['manager'])}")
@@ -111,6 +115,8 @@ def markdown_ruc(response, text):
     title = "# AS4 RUC review"
     if response["operation"] == "arsim_hmi_smoke":
         title = "# AS4 mapp View end-to-end smoke"
+    elif response["operation"] == "launchpad_route_review":
+        title = "# Compiled Traffic Manager route review"
     elif smoke is not None:
         title = "# AS4 ARsim loopback smoke"
     elif binding is not None:
@@ -167,10 +173,13 @@ def markdown_ruc(response, text):
                     lines.append(f"- {text(endpoint['host'])}:{text(endpoint['port'])} · {text(endpoint['namespaceUri'])}")
                 if "accessLevel" in values:
                     lines.append(f"- Data type {text(values['dataType'])} · AccessLevel {text(values['accessLevel'])}")
-    for manager in review["trafficManagers"]:
-        lines.extend(["", f"## {text(manager['manager'])}", ""])
-        for edge in manager["edges"]:
-            lines.append(f"- {text(edge['source'])} ({text(edge['sourceType'])}) → {text(edge['destination'])} ({text(edge['destinationType'])})")
+    if route := report.get("routeReview"):
+        lines.extend(markdown_route(route, text))
+    else:
+        for manager in review["trafficManagers"]:
+            lines.extend(["", f"## {text(manager['manager'])}", ""])
+            for edge in manager["edges"]:
+                lines.append(f"- {text(edge['source'])} ({text(edge['sourceType'])}) → {text(edge['destination'])} ({text(edge['destinationType'])})")
     if review["widgets"]:
         lines.extend(["", "## Rendered widgets", ""])
         for item in review["widgets"]:
@@ -181,6 +190,31 @@ def markdown_ruc(response, text):
     if not report["diagnostics"]:
         lines.append("The selected package checks matched the saved inputs.")
     return "\n".join(lines)
+
+
+def markdown_route(route, text):
+    lines = ["", "## LaunchPad route comparison", "",
+             f"- {text(route['state'])} · {text(route['view'])} manager {text(route['managerId'])}"]
+    if proof := route.get("launchPad"):
+        lines.append(f"- LaunchPad {text(proof['launchPadVersion'])} · source SHA-256 {text(proof['sourceSha256'])}")
+        lines.append(f"- Decoded JSON SHA-256 {text(proof['readbackSha256'])}")
+        if proof["unusedGeometry"]:
+            lines.append(f"- Geometry outside the cycle · {text(', '.join(proof['unusedGeometry']))}")
+    if names := route.get("nameMap"):
+        lines.append(f"- Name mapping SHA-256 {text(names['sha256'])}")
+    if "assembly" in route:
+        lines.append(f"- Assembly {text(route['assembly'])}")
+    for item in route.get("expectedObjects", []):
+        if item["name"] != item["importedName"]:
+            lines.append(f"- Rename {text(item['name'])} → {text(item['importedName'])}")
+    for label, key in (("Expected", "expectedEdges"), ("Missing", "missingEdges"), ("Unexpected", "unexpectedEdges")):
+        for edge in route.get(key, []):
+            lines.append(f"- {label} · {text(edge['source'])} ({text(edge['sourceType'])}) → "
+                         f"{text(edge['destination'])} ({text(edge['destinationType'])}) · count {text(edge['count'])}")
+    for label, key in (("Missing object", "missingObjects"), ("Additional object", "additionalObjects")):
+        for obj in route.get(key, []):
+            lines.append(f"- {label} · {text(obj['name'])} ({text(obj['type'])})")
+    return lines
 
 
 def markdown_browser(browser, text):
