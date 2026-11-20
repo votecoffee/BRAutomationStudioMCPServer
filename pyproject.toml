@@ -5,12 +5,15 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "br-automation-studio-tools"
-version = "0.5.0"
+version = "0.6.0"
 description = "Standalone engineering tools for B&R Automation Studio projects."
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
 license-files = ["LICENSE"]
+
+[project.optional-dependencies]
+browser = ["websocket-client>=1.8,<2"]
 
 [project.scripts]
 br-studio = "br_automation_studio.cli:main"

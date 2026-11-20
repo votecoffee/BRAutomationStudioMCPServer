@@ -14,6 +14,7 @@ The standalone CLI exposes `project_inspect` for a saved project and `build_pref
 | `src/br_automation_studio/native_build.py` and `windows_job.py` | Pin an installed AS4 toolchain and source tree, stage a private copy, run the native PC simulation build, and retain a job receipt with RUC evidence. |
 | `src/br_automation_studio/ruc_review.py` | Bind a retained archive to a completed build and verify the saved-to-compiled relationships. |
 | `src/br_automation_studio/arsim_smoke.py` | Materialize an ARsim runtime, verify owned loopback listeners, and compare served HMI assets with the bound RUC. |
+| `src/br_automation_studio/browser_smoke.py` | Run a headless Chrome job against the same verified ARsim HTTP session. Record rendered widget and counter evidence before and after a page reopen. |
 | `skills/br-automation-studio/` | Give future chats a short entry point that locates the installed standalone executable and routes work by operation. |
 | `skills/br-automation-studio/references/` | Maintain versioned workflow guides, request examples, and verification steps distributed with the CLI. |
 | `tests/fixtures/` | Hold synthetic inputs and expected outcomes, including unresolved references and unsupported formats. |

@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Callable
 
 from .arsim_smoke import arsim_smoke
+from .browser_smoke import ChromeProbe
 from .inspection import inspect_project
 from .native_build import execute_build, plan_build
 from .preflight import build_preflight
@@ -87,14 +88,21 @@ def ruc_review(arguments, request_directory):
                       request_directory / arguments["jobDirectory"])
 
 
-def run_arsim_smoke(arguments, request_directory):
+def run_arsim_smoke(arguments, request_directory, browser_probe=None):
     return arsim_smoke(
         project_path(arguments, request_directory),
         request_directory / arguments["jobDirectory"],
         request_directory / arguments["pviTransfer"],
         request_directory / arguments["sessionDirectory"],
         arguments.get("timeoutSeconds", 30),
+        browser_probe,
     )
+
+
+def run_arsim_browser_smoke(arguments, request_directory):
+    probe = ChromeProbe(request_directory / arguments["browserExecutable"], arguments["counterWidgetId"],
+                        arguments.get("assemblyWidgetId"), arguments.get("browserTimeoutSeconds", 30))
+    return run_arsim_smoke(arguments, request_directory, probe)
 
 
 PROJECT_INSPECT = Operation(
@@ -160,8 +168,21 @@ ARSIM_SMOKE = Operation(
     required=(*RUC_REVIEW.required, "pviTransfer", "sessionDirectory"),
     handler=run_arsim_smoke,
 )
+ARSIM_BROWSER_SMOKE = Operation(
+    name="arsim_browser_smoke",
+    summary="Verify a reviewed mapp View HMI renders Assembly6D and refreshes a numeric counter on reopening.",
+    arguments={
+        **ARSIM_SMOKE.arguments,
+        "browserExecutable": {"type": "string", "minLength": 1, "description": "Path to installed Google Chrome chrome.exe."},
+        "counterWidgetId": {"type": "string", "minLength": 1, "description": "DOM ID of a read-only PLC-bound increasing counter widget."},
+        "assemblyWidgetId": {"type": "string", "minLength": 1, "description": "DOM ID of a reviewed Assembly6D widget. Required when multiple are reviewed."},
+        "browserTimeoutSeconds": {"type": "integer", "minimum": 1, "maximum": 120, "default": 30},
+    },
+    required=(*ARSIM_SMOKE.required, "browserExecutable", "counterWidgetId"),
+    handler=run_arsim_browser_smoke,
+)
 OPERATIONS = {item.name: item for item in (
-    PROJECT_INSPECT, BUILD_PREFLIGHT, BUILD_PLAN, BUILD_EXECUTE, RUC_REVIEW, ARSIM_SMOKE,
+    PROJECT_INSPECT, BUILD_PREFLIGHT, BUILD_PLAN, BUILD_EXECUTE, RUC_REVIEW, ARSIM_SMOKE, ARSIM_BROWSER_SMOKE,
 )}
 
 

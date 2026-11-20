@@ -108,6 +108,16 @@ def markdown_ruc(response, text):
                       f"- Cleanup {text(smoke['cleanup'])}"])
         for asset in smoke["assets"]:
             lines.append(f"- {text(asset['path'])} · HTTP {asset['status']} · {asset['bytes']} bytes · {asset['sha256']}")
+        if browser := smoke.get("browser"):
+            lines.extend(["", "## Headless browser", "",
+                          f"- Browser state {text(browser['state'])} · Cleanup {text(browser.get('cleanup'))}"])
+            if "chrome" in browser:
+                lines.append(f"- Chrome {text(browser['chrome']['version'])} · URL {text(browser.get('url'))}")
+                lines.append(f"- Assembly {text(browser['assemblyWidgetId'])} · Counter {text(browser['counterWidgetId'])}")
+            for phase, label in (("initial", "Initial document"), ("reopened", "Reopened document")):
+                if document := browser.get(phase):
+                    samples = ", ".join(document["counterSamples"])
+                    lines.append(f"- {label} · Samples {text(samples or None)} · Time origin {text(document.get('timeOrigin'))}")
     for manager in review["trafficManagers"]:
         lines.extend(["", f"## {text(manager['manager'])}", ""])
         for edge in manager["edges"]:

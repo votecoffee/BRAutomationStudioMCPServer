@@ -32,4 +32,4 @@ Run `br-studio run --request <smoke-request.json>`. Select `--format markdown` o
 - The HTTP test uses `127.0.0.1` directly. It checks status and SHA-256 against the packaged `index.html`, reviewed generated content, and `Assembly6D.js` where applicable. A successful HTTP status with different response bytes is an issue.
 - On completion, read `result.arsimSmoke` and `session.json` for the observed endpoints, asset hashes, and cleanup result. The loader runs in an owned Windows job. Save the receipts and logs before discarding the materialized runtime.
 
-The observed AS4 profile serves a verifiable local HMI payload. Browser widget behavior, OPC UA values, simulator motion, and commissioning each need separate evidence.
+The observed AS4 profile serves a verifiable local HMI payload. Use the [headless browser workflow](arsim-browser-smoke.md) for rendering and counter readback. Direct OPC UA readback, simulator motion, and commissioning each need separate evidence.

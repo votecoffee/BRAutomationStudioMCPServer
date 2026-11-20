@@ -30,6 +30,7 @@ $brStudio = '.\.local\venv\Scripts\br-studio.exe'
 & $brStudio operation-help build_execute
 & $brStudio operation-help ruc_review
 & $brStudio operation-help arsim_smoke
+& $brStudio operation-help arsim_browser_smoke
 & $brStudio run --request examples/inspect-loop.json
 & $brStudio run --request examples/inspect-loop.json --format markdown
 ```
@@ -43,6 +44,8 @@ Use `build_plan` and `build_execute` to compile a pinned AS4 PC simulation proje
 After building, use `ruc_review` to compare the retained package's 6D modules, typed routes, and rendered widget links with the saved inputs. [RUC review workflow](skills/br-automation-studio/references/ruc-review.md)
 
 For a private loopback fixture, `arsim_smoke` materializes the reviewed RUC and compares served mapp View assets with their packaged bytes. [ARsim smoke workflow](skills/br-automation-studio/references/arsim-smoke.md)
+
+With the optional `browser` extra and Google Chrome, `arsim_browser_smoke` also verifies the rendered Assembly6D widget and advancing PLC-bound counter across a page reopen. [Headless browser workflow](skills/br-automation-studio/references/arsim-browser-smoke.md)
 
 ## Chat workflow
 
