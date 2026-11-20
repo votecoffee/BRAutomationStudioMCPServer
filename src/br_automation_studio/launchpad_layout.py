@@ -106,11 +106,16 @@ def linked_layout(links, assembly):
     return matches[0]["layoutEvidence"][0]
 
 
+def apply_axes(matrix, point):
+    a, b, c, d = matrix
+    x, y = point
+    return a * x + b * y, c * x + d * y
+
+
 def compare_layout(decoded, layout):
     saved, before = master_offsets(launchpad_segments(decoded), "LaunchPad")
     imported, after = master_offsets(native_segments(layout), "Automation Studio")
-    matching = [label for label, (a, b, c, d) in AXES.items()
-                if {(a * x + b * y, c * x + d * y) for x, y in before} == after]
+    matching = [label for label, matrix in AXES.items() if {apply_axes(matrix, point) for point in before} == after]
     issues = []
     if saved["count"] != imported["count"]:
         issues.append(("launchpad_segment_count_mismatch",

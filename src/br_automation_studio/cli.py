@@ -30,6 +30,7 @@ def markdown(response):
         "launchpad_route_review": "Saved Traffic Manager route review",
         "launchpad_geometry_review": "Saved Traffic Manager geometry review",
         "launchpad_layout_review": "Saved ACOPOS 6D segment layout review",
+        "launchpad_frame_review": "Saved LaunchPad coordinate frame review",
         "build_preflight": "AS4 build preflight",
         "simulation_preflight": "AS4 ACOPOS 6D simulation preflight",
         "build_plan": "AS4 native build plan",
@@ -52,6 +53,8 @@ def markdown(response):
             lines.extend(markdown_geometry(geometry, text))
         if layout := report.get("layoutReview"):
             lines.extend(markdown_layout(layout, text))
+        if frame := report.get("frameReview"):
+            lines.extend(markdown_frame(frame, text))
     else:
         lines.extend(["", "## Traffic Manager edges", ""])
         for manager in report["trafficManagers"]:
@@ -123,6 +126,8 @@ def markdown_ruc(response, text):
         title = "# AS4 mapp View end-to-end smoke"
     elif response["operation"] == "launchpad_layout_review":
         title = "# Compiled ACOPOS 6D segment layout review"
+    elif response["operation"] == "launchpad_frame_review":
+        title = "# Compiled LaunchPad coordinate frame review"
     elif response["operation"] == "launchpad_geometry_review":
         title = "# Compiled Traffic Manager geometry review"
     elif response["operation"] == "launchpad_route_review":
@@ -189,6 +194,8 @@ def markdown_ruc(response, text):
             lines.extend(markdown_geometry(geometry, text))
         if layout := report.get("layoutReview"):
             lines.extend(markdown_layout(layout, text))
+        if frame := report.get("frameReview"):
+            lines.extend(markdown_frame(frame, text))
     else:
         for manager in review["trafficManagers"]:
             lines.extend(["", f"## {text(manager['manager'])}", ""])
@@ -270,6 +277,28 @@ def markdown_layout(layout, text):
         values = layout[key]
         distances = ", ".join(f"{value:g}" for value in values["distancesFromMasterMm"])
         lines.append(f"| {label} | {values['count']} | {text(values['master'])} | {distances} |")
+    return lines
+
+
+def markdown_frame(frame, text):
+    lines = ["", "## Coordinate frame comparison", "", f"- State {text(frame['state'])}"]
+    if "candidates" not in frame:
+        return lines
+    if datum := frame["datum"]:
+        lines.append(f"- Translation from datum **{text(datum['label'])}** · SHA-256 {datum['snapshot']['sha256']}")
+    else:
+        lines.append("- Translation fitted by least squares from the paired route objects")
+    lines.append(f"- Axis mapping with lowest RMS residual **{text(frame['bestRmsAxes'])}**")
+    bound = frame["anyGridCompatibleTranslationLowerBoundMm"]
+    lines.append(f"- Lower bound on worst object residual across all grid-compatible translations **{bound:.3f} mm**")
+    if (limit := frame["positionToleranceMicrometres"]) is not None:
+        lines.append(f"- Maximum object residual allowed for a reported transform {limit} micrometres")
+    lines.extend(["", "| Axis mapping | Shift X / Y (mm) | RMS (mm) | Max (mm) | Worst object | Lower bound (mm) |",
+                  "| --- | --- | ---: | ---: | --- | ---: |"])
+    for row in frame["candidates"]:
+        x, y = row["translationMm"]
+        lines.append(f"| {text(row['axes'])} | {x:.3f} / {y:.3f} | {row['rmsResidualMm']:.3f} | "
+                     f"{row['maxResidualMm']:.3f} | {text(row['worstObject'])} | {row['anyTranslationLowerBoundMm']:.3f} |")
     return lines
 
 

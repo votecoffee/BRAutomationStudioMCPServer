@@ -33,6 +33,7 @@ $brStudio = '.\.local\venv\Scripts\br-studio.exe'
 & $brStudio operation-help launchpad_route_review
 & $brStudio operation-help launchpad_geometry_review
 & $brStudio operation-help launchpad_layout_review
+& $brStudio operation-help launchpad_frame_review
 & $brStudio operation-help ruc_binding_review
 & $brStudio operation-help arsim_smoke
 & $brStudio operation-help arsim_browser_smoke
@@ -57,6 +58,8 @@ Use `launchpad_route_review` to compare a locally decoded LaunchPad cycle with a
 Use `launchpad_geometry_review` to compare station and waypoint distances and handedness in the saved or compiled manager. [LaunchPad geometry workflow](skills/br-automation-studio/references/launchpad-geometry-review.md)
 
 Use `launchpad_layout_review` to compare the linked 240 mm S3 layout and grid offsets from its master. [LaunchPad segment workflow](skills/br-automation-studio/references/launchpad-layout-review.md)
+
+Use `launchpad_frame_review` to compare route object positions under the same axis mappings that align the segment grids. [LaunchPad coordinate frame workflow](skills/br-automation-studio/references/launchpad-frame-review.md)
 
 Use `ruc_binding_review` to trace a selected one-way mapp View status binding through the saved project, compiled widget, and OPC UA exposure map. [Binding readback workflow](skills/br-automation-studio/references/ruc-binding-review.md)
 

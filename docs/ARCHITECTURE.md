@@ -17,6 +17,7 @@ The standalone CLI exposes `project_inspect` for a saved project and `build_pref
 | `scripts/decode-launchpad.cjs` and `src/br_automation_studio/launchpad_route.py` | Decode a known LaunchPad save locally, bind its readback to the source hash, and compare typed edges with a selected saved or compiled manager. |
 | `src/br_automation_studio/launchpad_geometry.py` | Compare positions in the selected route's saved or compiled object lists, reporting distances and a handedness witness. |
 | `src/br_automation_studio/launchpad_layout.py` | Resolve the selected manager's linked layout and compare the occupied 240 mm grid cells relative to each input's master segment. |
+| `src/br_automation_studio/launchpad_frame.py` | Compare station and waypoint residuals with a shared translation under the grid-compatible axis mappings. Accept an optional common datum bound to the inputs. |
 | `src/br_automation_studio/binding_review.py` | Follow the saved and packaged visualization binding references for a selected mapp View widget. Verify the expected OPC UA source and read back its compiled node exposure. |
 | `src/br_automation_studio/arsim_smoke.py` | Materialize an ARsim runtime, verify owned loopback listeners, and compare served HMI assets with the bound RUC. |
 | `src/br_automation_studio/browser_smoke.py` | Run a headless Chrome job against the same verified ARsim HTTP session. Record rendered widget and counter evidence before and after a page reopen. |

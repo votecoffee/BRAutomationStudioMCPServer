@@ -10,6 +10,7 @@ from .binding_review import BindingTarget
 from .browser_smoke import ChromeProbe
 from .hmi_smoke import arsim_hmi_smoke
 from .inspection import inspect_project
+from .launchpad_frame import launchpad_frame_review
 from .launchpad_geometry import GeometryCriteria
 from .launchpad_route import launchpad_route_review
 from .native_build import execute_build, plan_build
@@ -107,17 +108,21 @@ def ruc_review(arguments, request_directory):
                       request_directory / arguments["jobDirectory"])
 
 
-def run_launchpad_route_review(arguments, request_directory, geometry=None, *, include_layout=False):
+def launchpad_inputs(arguments, request_directory):
     name_map = arguments.get("nameMap")
     job = arguments.get("jobDirectory")
-    return launchpad_route_review(
+    return (
         project_path(arguments, request_directory), arguments.get("configuration"), arguments.get("cpu"),
         arguments["managerId"], request_directory / arguments["launchPadProject"],
         request_directory / arguments["launchPadReadback"],
         request_directory / name_map if name_map is not None else None,
         request_directory / job if job is not None else None,
-        geometry=geometry, include_layout=include_layout,
     )
+
+
+def run_launchpad_route_review(arguments, request_directory, geometry=None, *, include_layout=False):
+    return launchpad_route_review(*launchpad_inputs(arguments, request_directory), geometry=geometry,
+                                  include_layout=include_layout)
 
 
 def run_launchpad_geometry_review(arguments, request_directory):
@@ -130,6 +135,13 @@ def run_launchpad_geometry_review(arguments, request_directory):
 
 def run_launchpad_layout_review(arguments, request_directory):
     return run_launchpad_route_review(arguments, request_directory, include_layout=True)
+
+
+def run_launchpad_frame_review(arguments, request_directory):
+    datum = arguments.get("datumFile")
+    return launchpad_frame_review(*launchpad_inputs(arguments, request_directory),
+                                  datum_path=request_directory / datum if datum is not None else None,
+                                  tolerance_um=arguments.get("positionToleranceMicrometres"))
 
 
 def binding_target(arguments):
@@ -274,6 +286,18 @@ LAUNCHPAD_LAYOUT_REVIEW = Operation(
     required=LAUNCHPAD_ROUTE_REVIEW.required,
     handler=run_launchpad_layout_review,
 )
+LAUNCHPAD_FRAME_REVIEW = Operation(
+    name="launchpad_frame_review",
+    summary="Compare station offsets under the same axes that align the selected LaunchPad and AS4 segment grids.",
+    arguments={
+        **LAUNCHPAD_ROUTE_REVIEW.arguments,
+        "datumFile": {"type": "string", "minLength": 1, "description": "Optional hash-bound common point in both coordinate frames."},
+        "positionToleranceMicrometres": {"type": "integer", "minimum": 0, "maximum": 9007199254740991,
+                                        "description": "Optional maximum object residual for one reported transform."},
+    },
+    required=LAUNCHPAD_ROUTE_REVIEW.required,
+    handler=run_launchpad_frame_review,
+)
 RUC_BINDING_REVIEW = Operation(
     name="ruc_binding_review",
     summary="Trace a one-way mapp View value binding from saved sources through a reviewed AS4 RUC.",
@@ -340,7 +364,7 @@ ARSIM_HMI_SMOKE = Operation(
 )
 OPERATIONS = {item.name: item for item in (
     PROJECT_INSPECT, BUILD_PREFLIGHT, SIMULATION_PREFLIGHT, BUILD_PLAN, BUILD_EXECUTE, RUC_REVIEW,
-    LAUNCHPAD_ROUTE_REVIEW, LAUNCHPAD_GEOMETRY_REVIEW, LAUNCHPAD_LAYOUT_REVIEW, RUC_BINDING_REVIEW,
+    LAUNCHPAD_ROUTE_REVIEW, LAUNCHPAD_GEOMETRY_REVIEW, LAUNCHPAD_LAYOUT_REVIEW, LAUNCHPAD_FRAME_REVIEW, RUC_BINDING_REVIEW,
     ARSIM_SMOKE, ARSIM_BROWSER_SMOKE, ARSIM_OPCUA_SMOKE, ARSIM_HMI_SMOKE,
 )}
 

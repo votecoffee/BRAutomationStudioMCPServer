@@ -255,5 +255,77 @@ class LaunchPadRouteTest(unittest.TestCase):
         self.assertIn("exactly one layout", result["diagnostics"][0]["message"])
 
 
+    def frame(self, **arguments):
+        return self.run_review("launchpad_frame_review", **arguments)
+
+    def test_frame_fits_station_shift_under_grid_axes(self):
+        self.prepare_geometry(lambda x, y: (40 - y, 30 + x))
+        self.prepare_layout([(3, 5), (3, 6), (3, 7), (3, 8)])
+        response = self.frame(positionToleranceMicrometres=1)
+        result = response["result"]
+        frame = result["frameReview"]
+        self.assertEqual(response["status"], "complete", result["diagnostics"])
+        self.assertEqual(frame["state"], "criteria_met")
+        self.assertEqual(frame["bestRmsAxes"], "-y, x")
+        self.assertEqual(frame["withinToleranceAxes"], ["-y, x"])
+        best, other = frame["candidates"]
+        self.assertAlmostEqual(best["translationMm"][0], 40)
+        self.assertAlmostEqual(best["translationMm"][1], 30)
+        self.assertAlmostEqual(best["maxResidualMm"], 0)
+        self.assertGreater(other["maxResidualMm"], 1)
+        self.assertEqual(result["evidence"], "launchpad_frame_saved")
+        self.assertIn("## Coordinate frame comparison", markdown(response))
+
+    def test_frame_bounds_error_no_matter_where_origin_is_placed(self):
+        self.prepare_geometry(lambda x, y: (x, y + 15 if y else y))
+        self.prepare_layout([(0, 0), (1, 0), (2, 0), (3, 0)])
+        response = self.frame(positionToleranceMicrometres=1000)
+        result = response["result"]
+        frame = result["frameReview"]
+        self.assertEqual(response["status"], "issues")
+        self.assertEqual(result["routeReview"]["state"], "matched")
+        self.assertEqual(result["layoutReview"]["state"], "matched")
+        self.assertEqual(frame["withinToleranceAxes"], [])
+        self.assertAlmostEqual(frame["anyGridCompatibleTranslationLowerBoundMm"], 7.5)
+        self.assertEqual(result["diagnostics"][0]["code"], "launchpad_frame_residual")
+        self.assertIn("Every grid-compatible translation", result["diagnostics"][0]["message"])
+
+        # A least-squares fit misses 8 mm here even though a 7.5 mm fit is possible.
+        result = self.frame(positionToleranceMicrometres=8000)["result"]
+        self.assertIn("No reported transform", result["diagnostics"][0]["message"])
+
+    def test_frame_datum_binds_shift_and_has_source_identity(self):
+        self.prepare_geometry(lambda x, y: (40 - y, 30 + x))
+        self.prepare_layout([(3, 5), (3, 6), (3, 7), (3, 8)])
+        identity = self.frame()["result"]["frameReview"]["inputIdentity"]
+        datum = self.root / "datum.json"
+        data = {"schemaVersion": 1, **identity, "label": "Fixture test point",
+                "launchPadMm": [20, 10], "automationStudioMm": [30, 50]}
+        datum.write_text(json.dumps(data), encoding="utf-8")
+        frame = self.frame(datumFile=datum.name, positionToleranceMicrometres=1)["result"]["frameReview"]
+        self.assertEqual(frame["translationBasis"], "supplied_datum")
+        self.assertEqual(frame["withinToleranceAxes"], ["-y, x"])
+        self.assertEqual(frame["datum"]["snapshot"]["sha256"], sha256(datum.read_bytes()).hexdigest())
+
+        data["automationStudioMm"] = [30, 60]
+        datum.write_text(json.dumps(data), encoding="utf-8")
+        result = self.frame(datumFile=datum.name, positionToleranceMicrometres=1)["result"]
+        self.assertEqual(result["frameReview"]["candidates"][0]["translationMm"], (40, 40))
+        self.assertIn("No reported transform", result["diagnostics"][0]["message"])
+
+        data["automationStudioSha256"] = "0" * 64
+        datum.write_text(json.dumps(data), encoding="utf-8")
+        result = self.frame(datumFile=datum.name)["result"]
+        self.assertEqual(result["frameReview"]["state"], "issues")
+        self.assertEqual(result["diagnostics"][0]["code"], "launchpad_frame_datum_invalid")
+
+    def test_frame_requires_matching_linked_layout(self):
+        self.prepare_geometry(lambda x, y: (x, y))
+        self.prepare_layout([(0, 0), (1, 0), (2, 0), (4, 0)])
+        result = self.frame()["result"]
+        self.assertEqual(result["frameReview"]["state"], "not_checked")
+        self.assertEqual(result["diagnostics"][0]["code"], "launchpad_master_layout_mismatch")
+
+
 if __name__ == "__main__":
     unittest.main()
