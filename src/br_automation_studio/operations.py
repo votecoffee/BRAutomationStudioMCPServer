@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Callable
 
 from .arsim_smoke import arsim_smoke
+from .binding_review import BindingTarget
 from .browser_smoke import ChromeProbe
 from .inspection import inspect_project
 from .native_build import execute_build, plan_build
@@ -89,6 +90,12 @@ def ruc_review(arguments, request_directory):
                       request_directory / arguments["jobDirectory"])
 
 
+def ruc_binding_review(arguments, request_directory):
+    target = BindingTarget(arguments["visualizationId"], arguments["contentId"],
+                           arguments["widgetId"], arguments["stringIdentifier"])
+    return review_ruc(project_path(arguments, request_directory), request_directory / arguments["jobDirectory"], target)
+
+
 def run_arsim_smoke(arguments, request_directory, runtime_probe=None):
     return arsim_smoke(
         project_path(arguments, request_directory),
@@ -163,6 +170,19 @@ RUC_REVIEW = Operation(
     required=("project", "jobDirectory"),
     handler=ruc_review,
 )
+RUC_BINDING_REVIEW = Operation(
+    name="ruc_binding_review",
+    summary="Trace a one-way mapp View value binding from saved sources through a reviewed AS4 RUC.",
+    arguments={
+        **RUC_REVIEW.arguments,
+        "visualizationId": {"type": "string", "minLength": 1, "description": "Saved visualization ID."},
+        "contentId": {"type": "string", "minLength": 1, "description": "Saved content ID."},
+        "widgetId": {"type": "string", "minLength": 1, "description": "Saved widget ID within that content."},
+        "stringIdentifier": {"type": "string", "minLength": 1, "description": "Expected V1 OPC UA ::Task:Variable identifier."},
+    },
+    required=(*RUC_REVIEW.required, "visualizationId", "contentId", "widgetId", "stringIdentifier"),
+    handler=ruc_binding_review,
+)
 ARSIM_SMOKE = Operation(
     name="arsim_smoke",
     summary="Materialize a reviewed AS4 RUC and verify its mapp View assets over owned loopback HTTP.",
@@ -201,7 +221,7 @@ ARSIM_OPCUA_SMOKE = Operation(
     handler=run_arsim_opcua_smoke,
 )
 OPERATIONS = {item.name: item for item in (
-    PROJECT_INSPECT, BUILD_PREFLIGHT, BUILD_PLAN, BUILD_EXECUTE, RUC_REVIEW,
+    PROJECT_INSPECT, BUILD_PREFLIGHT, BUILD_PLAN, BUILD_EXECUTE, RUC_REVIEW, RUC_BINDING_REVIEW,
     ARSIM_SMOKE, ARSIM_BROWSER_SMOKE, ARSIM_OPCUA_SMOKE,
 )}
 

@@ -86,8 +86,14 @@ def markdown_ruc(response, text):
     report = response["result"]
     review = report["rucReview"]
     smoke = report.get("arsimSmoke")
+    binding = report.get("bindingReview")
+    title = "# AS4 RUC review"
+    if smoke is not None:
+        title = "# AS4 ARsim loopback smoke"
+    elif binding is not None:
+        title = "# AS4 RUC mapp View binding review"
     lines = [
-        "# AS4 ARsim loopback smoke" if smoke is not None else "# AS4 RUC review", "",
+        title, "",
         f"- Project **{text(report['project'])}**",
         f"- Status **{response['status']}**",
         f"- Configuration **{text(report['selectedConfiguration'])}** · CPU **{text(report['selectedCpu'])}**",
@@ -96,10 +102,9 @@ def markdown_ruc(response, text):
         f"- Saved source matched **{'yes' if review['sourceMatched'] else 'unverified'}**",
     ]
     if archive := review["archive"]:
-        lines.extend([
-            f"- RUC SHA-256 **{archive['sha256']}** · {archive['entries']} archive entries",
-            f"- 6D module elements read {len(review['modules'])} · Rendered widgets read {len(review['widgets'])}",
-        ])
+        lines.append(f"- RUC SHA-256 **{archive['sha256']}** · {archive['entries']} archive entries")
+        if binding is None:
+            lines.append(f"- 6D module elements read {len(review['modules'])} · Rendered widgets read {len(review['widgets'])}")
     if summary := review["buildSummary"]:
         lines.append(f"- Builder errors {text(summary['errors'])} · Builder warnings {text(summary['warnings'])}")
     if smoke is not None:
@@ -127,6 +132,21 @@ def markdown_ruc(response, text):
             for sample in opcua.get("samples", []):
                 lines.append(f"- Value {text(sample['value'])} · Status 0x{sample['statusCode']:08X}"
                              f" · Source timestamp {text(sample['sourceTimestamp'])}")
+    if binding is not None:
+        lines.extend(["", "## Selected binding", "",
+                      f"- {text(binding['state'])} · Visualization {text(binding['visualizationId'])}",
+                      f"- {text(binding['stringIdentifier'])} → {text(binding['domId'])}"])
+        for phase in ("saved", "compiled"):
+            values = binding[phase]
+            if values:
+                lines.extend(["", f"### {phase.capitalize()}", ""])
+                for key in ("visualization", "binding", "content", "connection", "nodeMap"):
+                    if key in values:
+                        lines.append(f"- {text(key)} · {text(values[key])}")
+                if endpoint := values.get("endpoint"):
+                    lines.append(f"- {text(endpoint['host'])}:{text(endpoint['port'])} · {text(endpoint['namespaceUri'])}")
+                if "accessLevel" in values:
+                    lines.append(f"- Data type {text(values['dataType'])} · AccessLevel {text(values['accessLevel'])}")
     for manager in review["trafficManagers"]:
         lines.extend(["", f"## {text(manager['manager'])}", ""])
         for edge in manager["edges"]:

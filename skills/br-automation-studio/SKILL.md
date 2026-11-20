@@ -1,6 +1,6 @@
 ---
 name: br-automation-studio
-description: Inspect saved B&R Automation Studio projects with the standalone br-studio CLI. Use for declared package versions, ACOPOS 6D assembly and Traffic Manager references, mapp View Assembly6D links, AS4 build preflight, offline ARsim RUC builds, compiled RUC readback, loopback mapp View HTTP and browser smoke tests, and direct OPC UA counter reads.
+description: Inspect saved B&R Automation Studio projects with the standalone br-studio CLI. Use for declared package versions, ACOPOS 6D assembly and Traffic Manager references, mapp View Assembly6D links, AS4 build preflight, offline ARsim RUC builds, compiled RUC and mapp View binding readback, loopback mapp View HTTP and browser smoke tests, and direct OPC UA counter reads.
 ---
 
 # B&R Automation Studio
@@ -14,6 +14,8 @@ Use `build_preflight` when checking an identified AS4 installation against the s
 For a native build on a trusted saved copy, follow the [native AS4 build workflow](references/native-build.md). It pins the source and toolchain and retains the RUC and builder log.
 
 Use the [RUC review workflow](references/ruc-review.md) to bind the package to a successful job and compare its compiled 6D routes and widget links with the matching saved project.
+
+Use the [binding review workflow](references/ruc-binding-review.md) to verify the selected one-way widget binding and PLC node exposure in the compiled RUC.
 
 For local runtime HTTP evidence on a reviewed RUC, follow the [ARsim smoke workflow](references/arsim-smoke.md).
 

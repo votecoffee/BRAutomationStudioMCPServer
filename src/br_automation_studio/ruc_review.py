@@ -240,13 +240,26 @@ def read_widgets(archive, saved, reader):
     return output
 
 
-def review_ruc(path, job_directory):
+def match_read_set(reader, path, manifest, result, snapshot, issues):
+    result["snapshot"] = snapshot
+    files = {Path(row["path"]): row["sha256"] for row in manifest["inputs"]["files"]}
+    if any(files.get(Path(row["path"])) != row["sha256"] for row in snapshot["files"]):
+        reader.issue("error", "ruc_source_changed", Path(path.name), "Saved project changed during inspection")
+        return False
+    result["rucReview"]["sourceMatched"] = True
+    reader.diagnostics.extend(dict(issue, scope="source") for issue in issues)
+    return True
+
+
+def review_ruc(path, job_directory, binding=None):
     reader = SavedFiles(job_directory)
     result = {"evidence": "ruc_readback", "project": path.name, "selectedConfiguration": None,
               "selectedCpu": None, "snapshot": None, "diagnostics": reader.diagnostics}
     review = {"jobId": None, "planSha256": None, "sourceMatched": False, "buildSummary": None,
               "archive": None, "modules": [], "assemblyLinks": [], "trafficManagers": [], "widgets": []}
     result["rucReview"] = review
+    if binding is not None:
+        result["bindingReview"] = binding.receipt()
     try:
         plan, job, manifest, archive_path = bound_receipts(reader)
         review.update(jobId=job["jobId"], planSha256=plan["sha256"], buildSummary=job["summary"])
@@ -255,14 +268,10 @@ def review_ruc(path, job_directory):
             reader.issue("error", "ruc_source_changed", Path(path.name), "Saved project does not match the staged input manifest")
             return result
 
-        saved = inspect_project(path, manifest["configuration"], manifest["cpu"])
-        result["snapshot"] = saved["snapshot"]
-        files = {Path(row["path"]): row["sha256"] for row in manifest["inputs"]["files"]}
-        if any(files.get(Path(row["path"])) != row["sha256"] for row in saved["snapshot"]["files"]):
-            reader.issue("error", "ruc_source_changed", Path(path.name), "Saved project changed during inspection")
-            return result
-        review["sourceMatched"] = True
-        result["diagnostics"].extend(dict(issue, scope="source") for issue in saved["diagnostics"])
+        if binding is None:
+            saved = inspect_project(path, manifest["configuration"], manifest["cpu"])
+            if not match_read_set(reader, path, manifest, result, saved["snapshot"], saved["diagnostics"]):
+                return result
         with archive_path.open("rb") as stream:
             digest = file_digest(stream, "sha256").hexdigest()
             size = stream.seek(0, 2)
@@ -278,6 +287,16 @@ def review_ruc(path, job_directory):
                 archive = Archive(package, reader)
                 review["archive"] = {"path": job["package"]["path"], "sha256": digest,
                                      "bytes": size, "entries": entries}
+                if binding is not None:
+                    source = SavedFiles(path.parent)
+                    binding_report = result["bindingReview"]
+                    binding.check(archive, source, manifest, binding_report)
+                    matched = match_read_set(reader, path, manifest, result, source.snapshot(), source.diagnostics)
+                    if matched and binding_report["state"] == "matched" and not reader.diagnostics:
+                        result["evidence"] = "ruc_binding_readback"
+                    elif binding_report["state"] == "matched":
+                        binding_report["state"] = "unverified"
+                    return result
                 modules, links, managers, ready = read_motion(archive, saved, reader)
                 review.update(modules=modules, assemblyLinks=links, trafficManagers=managers)
                 if ready:

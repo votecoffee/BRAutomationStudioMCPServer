@@ -13,6 +13,7 @@ The standalone CLI exposes `project_inspect` for a saved project and `build_pref
 | `src/br_automation_studio/preflight.py` | Compare saved selections and selected library dependencies with local AS4 catalogs. |
 | `src/br_automation_studio/native_build.py` and `windows_job.py` | Pin an installed AS4 toolchain and source tree, stage a private copy, run the native PC simulation build, and retain a job receipt with RUC evidence. |
 | `src/br_automation_studio/ruc_review.py` | Bind a retained archive to a completed build and verify the saved-to-compiled relationships. |
+| `src/br_automation_studio/binding_review.py` | Follow the saved and packaged visualization binding references for a selected mapp View widget. Verify the expected OPC UA source and read back its compiled node exposure. |
 | `src/br_automation_studio/arsim_smoke.py` | Materialize an ARsim runtime, verify owned loopback listeners, and compare served HMI assets with the bound RUC. |
 | `src/br_automation_studio/browser_smoke.py` | Run a headless Chrome job against the same verified ARsim HTTP session. Record rendered widget and counter evidence before and after a page reopen. |
 | `src/br_automation_studio/opcua_smoke.py` | Read an explicit namespace URI and string node ID on the owned ARsim OPC UA listener. Record access metadata, data quality and counter samples. |

@@ -1,4 +1,5 @@
 
+from gzip import compress
 from hashlib import file_digest
 import json
 import os
@@ -8,6 +9,7 @@ from tempfile import TemporaryDirectory
 import unittest
 from zipfile import ZipFile
 
+from br_automation_studio.binding_review import NODESETS, SERVER
 from br_automation_studio.cli import markdown
 from br_automation_studio.native_build import identity, source_tree
 from br_automation_studio.operations import execute
@@ -17,6 +19,10 @@ FIXTURE = Path(__file__).resolve().parent / "fixtures/Loop"
 RUC_PATH = "binary/ARsim/PC/RUCPackage/RUCPackage.zip"
 MAPPING = f"{DATA}/DemoMappings.br"
 WIDGET = f"{CONTENT}/DemoOverview.html"
+DISPLAY = f"{SERVER}/CounterPanel.vis"
+BINDING = f"{SERVER}/2100.binding"
+MAP = f"{NODESETS}/Exposure.uar.gz"
+CONNECTION = f"{DATA}/OpcUaSrv.br"
 
 
 class RucReviewTests(unittest.TestCase):
@@ -146,3 +152,109 @@ class RucReviewTests(unittest.TestCase):
         self.members[MAPPING.lower()] = self.members[MAPPING]
         self.package()
         self.assertEqual(self.codes(self.review()), ["duplicate_ruc_member"])
+
+    def configure_display(self):
+        cpu = self.project / "Physical/ARsim/PC"
+        manifest = cpu / "Cpu.pkg"
+        xml = manifest.read_text(encoding="utf-8")
+        files = ("Display.vis", "Counter.binding", "Local.uaserver", "Exposure.uad")
+        registration = "".join(f'<Object Type="File">{name}</Object>' for name in files)
+        manifest.write_text(xml.replace("</Objects>", registration + "</Objects>"), encoding="utf-8")
+        visu = """<vis:Visualization id="CounterPanel" xmlns:vis="http://www.br-automation.com/iat2015/visualizationDefinition/v2">
+          <Contents><Content refId="DemoOverview"/></Contents>
+          <BindingsSets><BindingsSet refId="Counter"/></BindingsSets>
+        </vis:Visualization>"""
+        saved = """<BindingsSet id="Counter" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+          <Bindings><Binding mode="oneWay">
+            <Source xsi:type="opcUa" refId="::Pulse:Count" attribute="value"/>
+            <Target xsi:type="brease" contentRefId="DemoOverview" widgetRefId="CountView" attribute="value"/>
+          </Binding></Bindings>
+        </BindingsSet>"""
+        ua = """<Configuration><Element Type="UASERVER"><Group ID="DefaultOpcUaServer">
+          <Property ID="Alias"/><Property ID="Hostname"/><Property ID="EndpointUrl"/>
+          <Property ID="IPAddress" Value="127.0.0.1"/><Property ID="Port" Value="14840"/>
+          <Property ID="DefaultNamespace" Value="urn:B&amp;R/pv/"/>
+        </Group></Element></Configuration>"""
+        source_map = """<OpcUaSource><DefaultView><Module>
+          <Task Name="Pulse" Enable="True"><Variable Name="Count" Enable="True"/></Task>
+        </Module></DefaultView></OpcUaSource>"""
+        for name, text in zip(files, (visu, saved, ua, source_map)):
+            (cpu / name).write_text(text, encoding="utf-8")
+        content = self.project / "Logical/mappView/Overview.content"
+        xml = content.read_text(encoding="utf-8")
+        content.write_text(xml.replace("</Widgets>", '<Widget xsi:type="widgets.brease.NumericOutput" id="CountView"/></Widgets>'),
+                           encoding="utf-8")
+        self.plan["manifest"]["inputs"] = source_tree(self.project)
+        self.plan["sha256"] = identity(self.plan["manifest"])
+        self.write("plan.json", self.plan)
+        self.members[DISPLAY] = visu.replace('refId="Counter"', 'refId="2100"').encode()
+        self.members[BINDING] = b"""<BindingDefinition xmlns="http://www.br-automation.com/iat2014/binding/runtime/v1"
+            xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+          <Content id="DemoOverview"><Binding mode="oneWay">
+            <Source xsi:type="opcUa" refId="::Pulse:Count" attribute="value"/>
+            <Target xsi:type="brease" refId="DemoOverview_CountView" attribute="value"/>
+          </Binding></Content>
+        </BindingDefinition>"""
+        self.members[WIDGET] += b'<div id="DemoOverview_CountView" data-brease-widget="widgets/brease/NumericOutput"></div>'
+        self.members[CONNECTION] = b'prefix<?xml version="1.0"?>' + ua.encode()
+        node_map = b"""<UANodeSet xmlns="http://opcfoundation.org/UA/2011/03/UANodeSet.xsd"><DefaultView>
+          <Module><Task Name="Pulse"><Variable Name="Count" DataType="i=6" AccessLevel="0x01"/></Task></Module>
+        </DefaultView></UANodeSet>"""
+        self.members[MAP] = compress(node_map)
+        return node_map
+
+    def binding_review(self):
+        return execute({"schemaVersion": 1, "workspace": "readback", "operation": "ruc_binding_review",
+                        "arguments": {"project": "Loop/Loop.apj", "jobDirectory": "retained",
+                                      "visualizationId": "CounterPanel", "contentId": "DemoOverview",
+                                      "widgetId": "CountView", "stringIdentifier": "::Pulse:Count"}}, self.root)
+
+    def test_readback_resolves_generated_binding_and_counter_map(self):
+        self.configure_display()
+        self.package()
+        response = self.binding_review()
+        self.assertEqual(response["status"], "complete", response)
+        report = response["result"]["bindingReview"]
+        self.assertEqual(report["compiled"]["binding"], BINDING)
+        self.assertEqual(report["compiled"]["dataType"], "i=6")
+        self.assertEqual(report["compiled"]["accessLevel"], "0x01")
+        self.assertIn("::Pulse:Count → DemoOverview_CountView", markdown(response))
+
+    def test_compiled_binding_source_is_checked_even_when_the_archive_is_valid(self):
+        self.configure_display()
+        self.members[BINDING] = self.members[BINDING].replace(b"::Pulse:Count", b"::Pulse:Other")
+        self.package()
+        self.assertEqual(self.review()["status"], "complete")
+        response = self.binding_review()
+        self.assertEqual(self.codes(response), ["binding_readback_mismatch"])
+        self.assertEqual(response["result"]["diagnostics"][0]["path"], BINDING)
+
+    def test_orphan_compiled_binding_cannot_prove_active_binding(self):
+        self.configure_display()
+        self.members[DISPLAY] = self.members[DISPLAY].replace(b'<BindingsSet refId="2100"/>', b"")
+        self.package()
+        response = self.binding_review()
+        self.assertEqual(self.codes(response), ["binding_readback_mismatch"])
+        self.assertEqual(response["result"]["diagnostics"][0]["path"], DISPLAY)
+
+    def test_compiled_reverse_binding_is_rejected_as_second_connection(self):
+        self.configure_display()
+        reverse = b"""<Binding mode="oneWay">
+          <Source xsi:type="brease" refId="DemoOverview_CountView" attribute="value"/>
+          <Target xsi:type="opcUa" refId="::Pulse:Count" attribute="value"/>
+        </Binding>"""
+        self.members[BINDING] = self.members[BINDING].replace(b"</Content>", reverse + b"</Content>")
+        self.package()
+        response = self.binding_review()
+        self.assertEqual(self.codes(response), ["binding_readback_mismatch"])
+        self.assertIn("found 2", response["result"]["diagnostics"][0]["message"])
+
+    def test_compiled_writable_node_or_changed_connection_is_rejected(self):
+        node_map = self.configure_display()
+        self.members[MAP] = compress(node_map.replace(b'AccessLevel="0x01"', b'AccessLevel="0x03"'))
+        self.package()
+        self.assertIn("differs from CurrentRead", self.binding_review()["result"]["diagnostics"][0]["message"])
+        self.members[MAP] = compress(node_map)
+        self.members[CONNECTION] = self.members[CONNECTION].replace(b"14840", b"14841")
+        self.package()
+        self.assertIn("endpoint differs", self.binding_review()["result"]["diagnostics"][0]["message"])

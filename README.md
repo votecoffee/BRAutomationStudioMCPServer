@@ -29,6 +29,7 @@ $brStudio = '.\.local\venv\Scripts\br-studio.exe'
 & $brStudio operation-help build_plan
 & $brStudio operation-help build_execute
 & $brStudio operation-help ruc_review
+& $brStudio operation-help ruc_binding_review
 & $brStudio operation-help arsim_smoke
 & $brStudio operation-help arsim_browser_smoke
 & $brStudio operation-help arsim_opcua_smoke
@@ -43,6 +44,8 @@ For an installed AS4 toolchain, `build_preflight` compares the project with the 
 Use `build_plan` and `build_execute` to compile a pinned AS4 PC simulation project and collect the RUC archive and builder log. [Native build workflow](skills/br-automation-studio/references/native-build.md)
 
 After building, use `ruc_review` to compare the retained package's 6D modules, typed routes, and rendered widget links with the saved inputs. [RUC review workflow](skills/br-automation-studio/references/ruc-review.md)
+
+Use `ruc_binding_review` to trace a selected one-way mapp View status binding through the saved project, compiled widget, and OPC UA exposure map. [Binding readback workflow](skills/br-automation-studio/references/ruc-binding-review.md)
 
 For a private loopback fixture, `arsim_smoke` materializes the reviewed RUC and compares served mapp View assets with their packaged bytes. [ARsim smoke workflow](skills/br-automation-studio/references/arsim-smoke.md)
 
