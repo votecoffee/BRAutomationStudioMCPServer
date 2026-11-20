@@ -33,6 +33,33 @@ PAIRS = {
                          "f33645d5197410b970acc528dfab051971504a6c0457632f5558ba5994de6afe",
                          "117.25.53", "24-9F", "24-01", "117.26.01"),
 }
+# Compare against the reviewed ZIP bytes, with the release identities from B&R's
+# catalog and the segment image names from the signed Flyway MSI File table.
+COMPANION_MEDIA_27 = {
+    "controllerFirmwareZip": {
+        "release": "ACOPOS 6D controller firmware 117.25.53",
+        "filename": "117-025-053.zip",
+        "sha256": "0165021b5de75a20916f75b7986eff475a80db92e359d125b929dc69096e5797",
+        "payload": "117-025-053.pmiu",
+    },
+    "segmentFirmwareZip": {
+        "release": "Flyway Update Tool 1.2.7",
+        "filename": "FlywayUpdateTool_v1_2_7_FW249F_AD2401.zip",
+        "sha256": "a3d8bd6ffab740cf7ef3379757910a8c2913dff344a979cf7e90fc5df3a10e69",
+        "payload": "stator_update_FW249F_AD2401.pmiflwu",
+        "msiFileTablePayloads": (
+            "stator_update_FW2492_AD2401.pmiflwu",
+            "stator_update_FW248A_AD2401.pmiflwu",
+            "stator_update_FW249F_AD2401.pmiflwu",
+        ),
+    },
+    "maintenanceToolZip": {
+        "release": "Planar Motor Tool 117.26.01",
+        "filename": "PMTool117.26.01.zip",
+        "sha256": "ace9d5bead725f57cbbf08a35bcb048cb1986911636e0dc4c2bdc6ccdb0d2b07",
+        "payload": "PlanarMotorTool.msi",
+    },
+}
 MINIMUM_STUDIO = "4.9.2"
 MINIMUM_RUNTIME = "C4.90"
 MINIMUM_MOTION = "5.26"
@@ -174,14 +201,49 @@ def simulator_pair(family):
     return pair
 
 
+def known_media(sha256):
+    for role, reference in COMPANION_MEDIA_27.items():
+        if reference["sha256"] == sha256:
+            return role, reference["release"]
+    for pair in PAIRS.values():
+        if pair.mediaSha256 == sha256:
+            return "simulatorZip", f"Planar Motor Simulation Tool {pair.simulatorVersion}"
+    return None, None
+
+
+def check_companion_media(reader, family, media):
+    results = {}
+    for role, path in (media or {}).items():
+        reference = COMPANION_MEDIA_27[role].copy() if family == "2.7" else None
+        archive = file_evidence(reader, path, ".zip", "companion_media_invalid")
+        row = results[role] = {"state": "unverified", "reference": reference, "archive": archive}
+        if archive is None:
+            continue
+        observed_role, release = known_media(archive["sha256"])
+        archive.update(observedRole=observed_role, observedRelease=release)
+        if reference is None:
+            reader.issue("warning", "companion_media_unreviewed", path,
+                         f"No reviewed {role} ZIP for the AS4 mapp 6D {family} family")
+        elif archive["sha256"] == reference["sha256"]:
+            row["state"] = "matched"
+        else:
+            row["state"] = "mismatched"
+            description = f"The ZIP matches {release}" if release else "The ZIP hash is unrecognized"
+            reader.issue("error", "companion_media_mismatch", path,
+                         f"{description}. Expected the reviewed {reference['release']} archive")
+    return results
+
+
 def check_simulator_media(reader, pair, simulator_zip):
     archive = file_evidence(reader, simulator_zip, ".zip", "simulator_media_invalid")
     if archive is not None:
         archive["matched"] = archive["sha256"] == pair.mediaSha256
         if not archive["matched"]:
-            other = next((row.simulatorVersion for row in PAIRS.values() if row.mediaSha256 == archive["sha256"]), None)
-            message = (f"The selected ZIP matches simulator {other}. This family requires {pair.simulatorVersion}" if other
-                       else f"The selected ZIP does not match the reviewed simulator {pair.simulatorVersion} archive")
+            role, release = known_media(archive["sha256"])
+            message = f"The selected ZIP does not match the reviewed simulator {pair.simulatorVersion} archive"
+            if release is not None:
+                archive.update(observedRole=role, observedRelease=release)
+                message = f"The selected ZIP matches {release}. This family requires simulator {pair.simulatorVersion}"
             reader.issue("error", "simulator_media_mismatch", simulator_zip, message)
     return archive
 
@@ -191,7 +253,7 @@ def prerequisite_state(diagnostics):
     return "blocked" if "error" in severities else "review_required" if "warning" in severities else "inputs_present"
 
 
-def simulation_environment(studio, family, simulator_zip=None):
+def simulation_environment(studio, family, simulator_zip=None, *, companion_media=None):
     pair = simulator_pair(family)
     reader = SavedFiles(studio)
     builders, version = engine(reader)
@@ -209,6 +271,7 @@ def simulation_environment(studio, family, simulator_zip=None):
                          f"No identified AS4 {name} technology package{version_label} was found")
     simulator = check_simulator(reader, pair)
     archive = check_simulator_media(reader, pair, simulator_zip)
+    media_checks = check_companion_media(reader, family, companion_media)
     return {
         "evidence": "simulation_environment_metadata",
         "simulationEnvironment": {
@@ -217,13 +280,14 @@ def simulation_environment(studio, family, simulator_zip=None):
             "studioRoot": str(reader.root), "studioVersion": version, "buildTools": builders,
             "catalogSelectors": selectors, "installedTargetCatalog": candidates, "companionCatalog": companions,
             "targetCatalogSnapshot": reader.snapshot(), "simulatorInstallation": simulator, "simulatorZip": archive,
+            **({"companionMedia": media_checks} if media_checks else {}),
         },
         "diagnostics": [dict(item, scope="simulation") for item in reader.diagnostics],
     }
 
 
 def simulation_preflight(project, studio, runtime_root, configuration, cpu, family, simulator_zip=None, export=None,
-                         *, verify_mptraffic_enum=False, verify_motion_declarations=False):
+                         *, verify_mptraffic_enum=False, verify_motion_declarations=False, companion_media=None):
     pair = simulator_pair(family)
     report = build_preflight(project, studio, runtime_root, configuration, cpu,
                              verify_motion_declarations=verify_motion_declarations)
@@ -232,6 +296,7 @@ def simulation_preflight(project, studio, runtime_root, configuration, cpu, fami
     check_project(reader, report, family, pair, candidates)
     simulator = check_simulator(reader, pair)
     archive = check_simulator_media(reader, pair, simulator_zip)
+    media_checks = check_companion_media(reader, family, companion_media)
     native_export = file_evidence(reader, export, ".x6d", "launchpad_export_invalid")
     if export is None:
         reader.issue("error", "launchpad_export_missing", Path("."), "Supply the native LaunchPad .x6d for the intended route")
@@ -246,6 +311,7 @@ def simulation_preflight(project, studio, runtime_root, configuration, cpu, fami
         "minimums": dict(MINIMUMS),
         "installedTargetCatalog": candidates, "targetCatalogSnapshot": reader.snapshot(),
         "simulatorInstallation": simulator, "simulatorZip": archive, "launchPadExport": native_export,
+        **({"companionMedia": media_checks} if media_checks else {}),
         **extra,
     }
     return report

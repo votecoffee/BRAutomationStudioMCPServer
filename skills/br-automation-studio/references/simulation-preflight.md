@@ -28,6 +28,20 @@ Use `simulation_environment` with the intended AS4 installation and target famil
 
 The workstation result covers catalog and installer metadata. Once the project exists, use `simulation_preflight` to check the exact saved package choices, selected CPU, Runtime, libraries and export.
 
+## Verify the 2.7 companion ZIPs
+
+With br-studio 0.48.0 or later, either simulation operation accepts these optional paths alongside `simulatorZip`.
+
+| Argument | Reviewed ZIP |
+| --- | --- |
+| `controllerFirmwareZip` | `117-025-053.zip`, containing the ACOPOS 6D controller image. [B&R controller firmware](https://www.br-automation.com/en/downloads/mechatronic-systems/acopos-6d/acopos-6d-controller-firmware/) |
+| `segmentFirmwareZip` | `FlywayUpdateTool_v1_2_7_FW249F_AD2401.zip`. Its reviewed installer lists several images, including `stator_update_FW249F_AD2401.pmiflwu` for the 2.7 row. [B&R Flyway downloads](https://www.br-automation.com/de-at/downloads/mechatronische-systeme/acopos-6d/acopos-6d-segment-firmware-update-tool-24-92-24-01/) |
+| `maintenanceToolZip` | `PMTool117.26.01.zip`. [B&R PMTool downloads](https://www.br-automation.com/en-in/downloads/mechatronic-systems/acopos-6d/pmtool/) |
+
+Read `companionMedia` under the selected operation's result. The `matched` state means the archive's SHA-256 agrees with the reviewed bytes for that role and family. A mismatched ZIP blocks a requested comparison. If a known ZIP is placed in the wrong role, the diagnostic identifies the observed release, including controller firmware supplied as the simulator. An optional companion archive requested for the 2.4 family is reported as unverified.
+
+The archive comparison covers saved media. Windows Installer registration, the actual technology package, the native export, and the installed controller and segment versions have their own evidence.
+
 ## Run the preflight
 
 Use `br-studio operation-help simulation_preflight` to discover the contract. Set `configuration` and `cpu` when the saved project offers more than one selection. Give the operation the native `.x6d` exported for the route when available. Include the B&R simulator ZIP to compare it with the reviewed release bytes. Omitting the export lets the report identify the missing artifact alongside any catalog or installation gaps.

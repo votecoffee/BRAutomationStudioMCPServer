@@ -23,7 +23,7 @@ from .opcua_smoke import OpcUaProbe
 from .preflight import build_preflight
 from .ruc_review import review_ruc
 from .runtime_capture import RuntimeScanCapture
-from .simulation_preflight import PAIRS, simulation_environment, simulation_preflight
+from .simulation_preflight import COMPANION_MEDIA_27, PAIRS, simulation_environment, simulation_preflight
 from .start_page import StartPageWidget
 from .station_trace import station_trace_review
 from .widget_packages import widget_package_review
@@ -110,10 +110,15 @@ def run_motion_interface_review(arguments, request_directory):
     return review_motion_interfaces(*build_inputs(arguments, request_directory), blocks, paths, enums)
 
 
+def simulation_companion_media(arguments, request_directory):
+    return {role: request_directory / arguments[role] for role in COMPANION_MEDIA_27 if role in arguments}
+
+
 def run_simulation_environment(arguments, request_directory):
     media = arguments.get("simulatorZip")
     return simulation_environment(request_directory / arguments["studioRoot"], arguments["targetMapp6D"],
-                                  request_directory / media if media is not None else None)
+                                  request_directory / media if media is not None else None,
+                                  companion_media=simulation_companion_media(arguments, request_directory))
 
 
 def run_simulation_preflight(arguments, request_directory):
@@ -128,6 +133,7 @@ def run_simulation_preflight(arguments, request_directory):
         request_directory / export if export is not None else None,
         verify_mptraffic_enum=arguments.get("verifyMpTrafficEnum", False),
         verify_motion_declarations=arguments.get("verifyMotionDeclarations", False),
+        companion_media=simulation_companion_media(arguments, request_directory),
     )
 
 
@@ -365,6 +371,9 @@ SIMULATION_ENVIRONMENT = Operation(
         "studioRoot": BUILD_PREFLIGHT.arguments["studioRoot"],
         "targetMapp6D": {"type": "string", "minLength": 3, "description": "Reviewed AS4 family, 2.4 or 2.7."},
         "simulatorZip": {"type": "string", "minLength": 1, "description": "Optional B&R simulator ZIP to match by SHA-256."},
+        **{role: {"type": "string", "minLength": 1,
+                  "description": f"Optional {reference['release']} ZIP to compare by SHA-256."}
+           for role, reference in COMPANION_MEDIA_27.items()},
     },
     required=("studioRoot", "targetMapp6D"),
     handler=run_simulation_environment,

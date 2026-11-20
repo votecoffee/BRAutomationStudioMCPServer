@@ -69,7 +69,7 @@ For an installed AS4 toolchain, `build_preflight` compares the project with the 
 
 Use `widget_package_review` to inventory saved mapp View widget library entries before a build or join them to a retained build log and RUC. [Widget package review](skills/br-automation-studio/references/widget-package-review.md)
 
-Use `simulation_environment` to check the AS4 package catalog, simulator registration and saved simulator media during workstation setup. Run `simulation_preflight` once the saved project and native LaunchPad export are available. [Simulation prerequisites and MpTraffic definition check](skills/br-automation-studio/references/simulation-preflight.md)
+Use `simulation_environment` to check the AS4 package catalog, simulator registration and saved media during workstation setup. It can identify the reviewed 2.7 controller, Flyway and maintenance archives by hash. Run `simulation_preflight` once the saved project and native LaunchPad export are available. [Simulation prerequisites and MpTraffic definition check](skills/br-automation-studio/references/simulation-preflight.md)
 
 Use `build_plan` and `build_execute` to compile a pinned AS4 PC simulation project and collect the RUC archive and builder log. Build dispatch supports short Windows drive aliases for deeply nested jobs. Use `verifyMotionPayloads` to verify the six selected SG4/IA32 motion binaries in the RUC. Use `verifyMotionDeclarations` to check the selected McAcp6D and MpTraffic IEC declaration files during preflight and planning. Use `verifyMotionSymbols` to check the IEC globals the build generates for the selected assemblies and Traffic Managers. [Native build workflow](skills/br-automation-studio/references/native-build.md)
 

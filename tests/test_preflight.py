@@ -770,6 +770,45 @@ class BuildPreflightTests(unittest.TestCase):
         msi.assert_called_once_with(evidence["reference"]["productCode"])
         self.assertIn("Expected Planar Motor Simulation Tool 117.25.53", markdown(response))
 
+    @patch("br_automation_studio.simulation_preflight.installed_product",
+           return_value={"stateCode": 5, "version": "1.25.53"})
+    def test_simulation_companion_media_identifies_bytes_under_wrong_role(self, msi):
+        self.prepare_simulation()
+        firmware = self.root / "Renamed.zip"
+        with ZipFile(firmware, "w") as archive:
+            archive.writestr("Controller.pmiu", "synthetic firmware media")
+        digest = sha256(firmware.read_bytes()).hexdigest()
+        reference = {"filename": "Controller.zip", "release": "Synthetic controller firmware",
+                     "payload": "Controller.pmiu", "sha256": digest}
+        environment = {"schemaVersion": 1, "workspace": "preflight", "operation": "simulation_environment",
+                       "arguments": {"studioRoot": "Install/AS412", "targetMapp6D": "2.7",
+                                     "segmentFirmwareZip": firmware.name}}
+        with patch.dict("br_automation_studio.simulation_preflight.COMPANION_MEDIA_27",
+                        {"controllerFirmwareZip": reference}):
+            matched = self.simulation(controllerFirmwareZip=firmware.name)
+            self.assertEqual(matched["status"], "complete", matched["result"]["diagnostics"])
+            media = matched["result"]["simulationPreflight"]["companionMedia"]["controllerFirmwareZip"]
+            self.assertEqual(media["state"], "matched")
+            self.assertEqual(media["archive"]["sha256"], digest)
+            self.assertEqual(media["archive"]["observedRole"], "controllerFirmwareZip")
+            self.assertIn("Reviewed archive Controller.zip · Payload Controller.pmiu", markdown(matched))
+
+            wrong = execute(environment, self.root)["result"]
+            check = wrong["simulationEnvironment"]["companionMedia"]["segmentFirmwareZip"]
+            self.assertEqual(check["state"], "mismatched")
+            self.assertEqual(check["archive"]["observedRelease"], reference["release"])
+            self.assertIn("companion_media_mismatch", [item["code"] for item in wrong["diagnostics"]])
+            substitute = self.simulation(simulatorZip=firmware.name)["result"]
+            self.assertEqual(substitute["simulationPreflight"]["simulatorZip"]["observedRole"], "controllerFirmwareZip")
+            self.assertIn("simulator_media_mismatch", [item["code"] for item in substitute["diagnostics"]])
+
+        empty = self.root / "Empty.zip"
+        empty.touch()
+        invalid = self.simulation(controllerFirmwareZip=empty.name)["result"]
+        check = invalid["simulationPreflight"]["companionMedia"]["controllerFirmwareZip"]
+        self.assertEqual((check["state"], check["archive"]), ("unverified", None))
+        self.assertIn("companion_media_invalid", [item["code"] for item in invalid["diagnostics"]])
+
     def prepare_mptraffic_definition(self):
         self.prepare_simulation()
         logical = self.project / "Logical"

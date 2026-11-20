@@ -243,6 +243,14 @@ def markdown_simulation_prerequisites(simulation, text):
     if media := simulation["simulatorZip"]:
         lines.append(f"- Simulator ZIP {text(media['path'])} · SHA-256 {text(media['sha256'])}"
                      f" · matches reviewed release {text(media['matched'])}")
+    if media_checks := simulation.get("companionMedia"):
+        lines.extend(["", "### Companion media", ""])
+        for name, result in media_checks.items():
+            lines.append(f"- {text(name)} · {text(result['state'])}")
+            if archive := result["archive"]:
+                lines.append(f"  - {text(archive['path'])} · SHA-256 {text(archive['sha256'])}")
+            if reference := result["reference"]:
+                lines.append(f"  - Reviewed archive {text(reference['filename'])} · Payload {text(reference['payload'])}")
     if definition := simulation.get("mpTrafficDefinition"):
         lines.extend(markdown_mptraffic_definition(definition, text))
     return lines
