@@ -9,6 +9,25 @@ Use `simulation_preflight` with a saved project, an explicitly selected AS4 inst
 
 Choose the family from the expected project and hardware version set. The 2.4 row covers the earlier connection rehearsal with the reviewed 2.4.1 package. Use the 2.7 row for a project designed for 2.7 Traffic Manager behavior. [B&R AS4 system requirements](https://help.br-automation.com/#/en/4/motion/mapp_6d/allgemeines/systemvoraussetzung.html) · [2.4.1 release information](https://www.br-automation.com/en/downloads/software/automation-studio/tp-upgrades/v49-tp-upgrade-mapp6d-24110-revinfo/) · [B&R simulator catalog](https://www.br-automation.com/en-gb/downloads/mechatronic-systems/acopos-6d/planar-motor-simulation-tool/)
 
+## Check the workstation before creating the project
+
+Use `simulation_environment` with the intended AS4 installation and target family. It inventories the installed mapp 6D, mapp Motion and mapp View selectors. It verifies a manifest for the intended mapp 6D family, an installed mapp Motion candidate at the documented minimum or later, and a mapp View candidate. It also checks the AS build marker and exact Windows Installer registration. Pass the simulator ZIP to compare its bytes with the reviewed media.
+
+```json
+{
+  "schemaVersion": 1,
+  "workspace": "planar-simulation",
+  "operation": "simulation_environment",
+  "arguments": {
+    "studioRoot": "C:/Program Files/BRAutomation4/AS412",
+    "targetMapp6D": "2.7",
+    "simulatorZip": "C:/Media/PlanarMotorSimulatorV117.25.53.zip"
+  }
+}
+```
+
+The workstation result covers catalog and installer metadata. Once the project exists, use `simulation_preflight` to check the exact saved package choices, selected CPU, Runtime, libraries and export.
+
 ## Run the preflight
 
 Use `br-studio operation-help simulation_preflight` to discover the contract. Set `configuration` and `cpu` when the saved project offers more than one selection. Give the operation the native `.x6d` exported for the route when available. Include the B&R simulator ZIP to compare it with the reviewed release bytes. Omitting the export lets the report identify the missing artifact alongside any catalog or installation gaps.

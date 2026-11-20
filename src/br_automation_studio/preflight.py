@@ -47,7 +47,7 @@ def check_range(source, path, name, value, lower, upper, *, lockout=False):
         source.issue("error", code, path, f"{message} {limits}")
 
 
-def engine(source, saved_studio):
+def engine(source, saved_studio=None):
     candidates = [Path("bin/BR.AS.Build.exe")]
     candidates.extend(item.relative_to(source.root) / "BR.AS.Build.exe"
                       for item in sorted(source.root.glob("bin-*")) if item.is_dir())
@@ -75,10 +75,11 @@ def engine(source, saved_studio):
         return tools, None
 
     installed, = versions
-    working = numeric_version(saved_studio.get("WorkingVersion") or saved_studio.get("FileVersion")
-                              or saved_studio.get("Version"))
-    if working is None or working[:2] != numeric_version(installed)[:2]:
-        source.issue("warning", "studio_working_version", Path("."), f"Project working version differs from installed AS {installed} or is absent")
+    if saved_studio is not None:
+        working = numeric_version(saved_studio.get("WorkingVersion") or saved_studio.get("FileVersion")
+                                  or saved_studio.get("Version"))
+        if working is None or working[:2] != numeric_version(installed)[:2]:
+            source.issue("warning", "studio_working_version", Path("."), f"Project working version differs from installed AS {installed} or is absent")
     return tools, installed
 
 

@@ -20,7 +20,7 @@ from .native_build import execute_build, plan_build
 from .opcua_smoke import OpcUaProbe
 from .preflight import build_preflight
 from .ruc_review import review_ruc
-from .simulation_preflight import PAIRS, simulation_preflight
+from .simulation_preflight import PAIRS, simulation_environment, simulation_preflight
 
 SCHEMA_VERSION = 1
 
@@ -79,6 +79,12 @@ def build_inputs(arguments, request_directory):
 
 def preflight(arguments, request_directory):
     return build_preflight(*build_inputs(arguments, request_directory))
+
+
+def run_simulation_environment(arguments, request_directory):
+    media = arguments.get("simulatorZip")
+    return simulation_environment(request_directory / arguments["studioRoot"], arguments["targetMapp6D"],
+                                  request_directory / media if media is not None else None)
 
 
 def run_simulation_preflight(arguments, request_directory):
@@ -248,13 +254,23 @@ BUILD_PREFLIGHT = Operation(
     required=("project", "studioRoot"),
     handler=preflight,
 )
+SIMULATION_ENVIRONMENT = Operation(
+    name="simulation_environment",
+    summary="Check installed AS4 packages and simulator media and registration before selecting a project.",
+    arguments={
+        "studioRoot": BUILD_PREFLIGHT.arguments["studioRoot"],
+        "targetMapp6D": {"type": "string", "minLength": 3, "description": "Reviewed AS4 family, 2.4 or 2.7."},
+        "simulatorZip": {"type": "string", "minLength": 1, "description": "Optional B&R simulator ZIP to match by SHA-256."},
+    },
+    required=("studioRoot", "targetMapp6D"),
+    handler=run_simulation_environment,
+)
 SIMULATION_PREFLIGHT = Operation(
     name="simulation_preflight",
     summary="Check a saved AS4 project, workstation and native export prerequisites for matched ACOPOS 6D simulation.",
     arguments={
         **BUILD_PREFLIGHT.arguments,
-        "targetMapp6D": {"type": "string", "minLength": 3, "description": "Reviewed AS4 family, 2.4 or 2.7."},
-        "simulatorZip": {"type": "string", "minLength": 1, "description": "Optional B&R simulator ZIP to match by SHA-256."},
+        **SIMULATION_ENVIRONMENT.arguments,
         "launchPadExport": {"type": "string", "minLength": 1, "description": "Native LaunchPad .x6d for the intended route."},
     },
     required=(*BUILD_PREFLIGHT.required, "targetMapp6D"),
@@ -457,7 +473,7 @@ ARSIM_HMI_SMOKE = Operation(
     handler=run_arsim_hmi_smoke,
 )
 OPERATIONS = {item.name: item for item in (
-    PROJECT_INSPECT, BUILD_PREFLIGHT, SIMULATION_PREFLIGHT, BUILD_PLAN, BUILD_EXECUTE, RUC_REVIEW,
+    PROJECT_INSPECT, BUILD_PREFLIGHT, SIMULATION_ENVIRONMENT, SIMULATION_PREFLIGHT, BUILD_PLAN, BUILD_EXECUTE, RUC_REVIEW,
     ASSEMBLY_IO_REVIEW, LAYOUT_DEVICE_REVIEW, LAYOUT_SVG_REVIEW,
     LAUNCHPAD_ROUTE_REVIEW, LAUNCHPAD_STATION_REVIEW, LAUNCHPAD_RECOVERY_REVIEW, LAUNCHPAD_MOTION_REVIEW,
     LAUNCHPAD_GEOMETRY_REVIEW, LAUNCHPAD_LAYOUT_REVIEW, LAUNCHPAD_FRAME_REVIEW, RUC_BINDING_REVIEW,

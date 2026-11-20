@@ -4,7 +4,7 @@ from dataclasses import asdict, dataclass
 from hashlib import file_digest
 from pathlib import Path
 
-from .preflight import PACKAGE_ROOT, RUNTIME_VERSION, build_preflight, numeric_version, selected_package, within
+from .preflight import PACKAGE_ROOT, RUNTIME_VERSION, build_preflight, engine, numeric_version, selected_package, within
 from .project import SavedFiles
 from .windows_msi import INSTALLSTATE_DEFAULT, installed_product
 
@@ -35,6 +35,7 @@ PAIRS = {
 MINIMUM_STUDIO = "4.9.2"
 MINIMUM_RUNTIME = "C4.90"
 MINIMUM_MOTION = "5.26"
+MINIMUMS = {"automationStudio": MINIMUM_STUDIO, "automationRuntime": MINIMUM_RUNTIME, "mappMotion": MINIMUM_MOTION}
 MSI_STATES = {-1: "unknown_product", 1: "advertised", 2: "different_user", INSTALLSTATE_DEFAULT: "installed"}
 
 
@@ -73,25 +74,34 @@ def file_evidence(reader, path, suffix, code):
         return None
 
 
-def check_target_catalog(catalog, family, pair):
-    root = PACKAGE_ROOT / "mapp6D"
+def catalog_selectors(catalog, name):
+    return sorted(path.name for path in (catalog.root / PACKAGE_ROOT / name).glob("*")
+                  if path.is_dir() and numeric_version(path.name) is not None)
+
+
+def read_candidates(catalog, name, selectors, minimum=None, family=None):
     candidates = []
-    for directory in sorted((catalog.root / root).glob("*")):
-        version = directory.name
-        if not directory.is_dir() or not same_family(version, family):
+    for version in selectors:
+        if family is not None and not same_family(version, family):
             continue
-        inspected = selected_package(catalog, {"name": "mapp6D", "version": version})
+        issue_start = len(catalog.diagnostics)
+        inspected = selected_package(catalog, {"name": name, "version": version})
         if inspected is None:
             continue
         entry, package, manifest = inspected
         build = entry["internalVersion"]
-        verified = (package is not None and same_family(build, family)
-                    and within(version, pair.minimumSelector, None) is True
-                    and within(build, pair.minimumSelector, None) is True)
+        verified = (package is not None and len(catalog.diagnostics) == issue_start
+                    and (family is None or same_family(build, family))
+                    and within(version, minimum, None) is True and within(build, minimum, None) is True)
         candidates.append({"selector": version, "internalVersion": build, "manifest": manifest.as_posix(),
                            "verified": verified})
+    return candidates
+
+
+def check_target_catalog(catalog, family, pair, selectors):
+    candidates = read_candidates(catalog, "mapp6D", selectors, pair.minimumSelector, family)
     if not any(item["verified"] for item in candidates):
-        catalog.issue("error", "simulation_catalog_missing", root,
+        catalog.issue("error", "simulation_catalog_missing", PACKAGE_ROOT / "mapp6D",
                       f"No identified AS4 mapp 6D {family} technology package meeting {pair.minimumSelector} was found")
     return candidates
 
@@ -156,16 +166,14 @@ def check_simulator(reader, pair):
     return observed
 
 
-def simulation_preflight(project, studio, runtime_root, configuration, cpu, family, simulator_zip=None, export=None):
+def simulator_pair(family):
     pair = PAIRS.get(family)
     if pair is None:
         raise ValueError("Select an AS4 mapp 6D family supported by this check (2.4 or 2.7)")
+    return pair
 
-    report = build_preflight(project, studio, runtime_root, configuration, cpu)
-    reader = SavedFiles(studio)
-    candidates = check_target_catalog(reader, family, pair)
-    check_project(reader, report, family, pair, candidates)
-    simulator = check_simulator(reader, pair)
+
+def check_simulator_media(reader, pair, simulator_zip):
     archive = file_evidence(reader, simulator_zip, ".zip", "simulator_media_invalid")
     if archive is not None:
         archive["matched"] = archive["sha256"] == pair.mediaSha256
@@ -174,18 +182,62 @@ def simulation_preflight(project, studio, runtime_root, configuration, cpu, fami
             message = (f"The selected ZIP matches simulator {other}. This family requires {pair.simulatorVersion}" if other
                        else f"The selected ZIP does not match the reviewed simulator {pair.simulatorVersion} archive")
             reader.issue("error", "simulator_media_mismatch", simulator_zip, message)
+    return archive
+
+
+def prerequisite_state(diagnostics):
+    severities = {item["severity"] for item in diagnostics}
+    return "blocked" if "error" in severities else "review_required" if "warning" in severities else "inputs_present"
+
+
+def simulation_environment(studio, family, simulator_zip=None):
+    pair = simulator_pair(family)
+    reader = SavedFiles(studio)
+    builders, version = engine(reader)
+    if version is not None and within(version, MINIMUM_STUDIO, None) is not True:
+        reader.issue("error", "simulation_studio_minimum", Path("."),
+                     f"Verify installed AS4 {MINIMUM_STUDIO} or later")
+    selectors = {name: catalog_selectors(reader, name) for name in ("mapp6D", "mappMotion", "mappView")}
+    candidates = check_target_catalog(reader, family, pair, selectors["mapp6D"])
+    companions = {}
+    for name, minimum in (("mappMotion", MINIMUM_MOTION), ("mappView", None)):
+        rows = companions[name] = read_candidates(reader, name, selectors[name], minimum)
+        if not any(item["verified"] for item in rows):
+            version_label = f" {minimum} or later" if minimum else ""
+            reader.issue("error", "simulation_companion_missing", PACKAGE_ROOT / name,
+                         f"No identified AS4 {name} technology package{version_label} was found")
+    simulator = check_simulator(reader, pair)
+    archive = check_simulator_media(reader, pair, simulator_zip)
+    return {
+        "evidence": "simulation_environment_metadata",
+        "simulationEnvironment": {
+            "state": prerequisite_state(reader.diagnostics), "targetMapp6D": family,
+            "reference": asdict(pair), "minimums": dict(MINIMUMS),
+            "studioRoot": str(reader.root), "studioVersion": version, "buildTools": builders,
+            "catalogSelectors": selectors, "installedTargetCatalog": candidates, "companionCatalog": companions,
+            "targetCatalogSnapshot": reader.snapshot(), "simulatorInstallation": simulator, "simulatorZip": archive,
+        },
+        "diagnostics": [dict(item, scope="simulation") for item in reader.diagnostics],
+    }
+
+
+def simulation_preflight(project, studio, runtime_root, configuration, cpu, family, simulator_zip=None, export=None):
+    pair = simulator_pair(family)
+    report = build_preflight(project, studio, runtime_root, configuration, cpu)
+    reader = SavedFiles(studio)
+    candidates = check_target_catalog(reader, family, pair, catalog_selectors(reader, "mapp6D"))
+    check_project(reader, report, family, pair, candidates)
+    simulator = check_simulator(reader, pair)
+    archive = check_simulator_media(reader, pair, simulator_zip)
     native_export = file_evidence(reader, export, ".x6d", "launchpad_export_invalid")
     if export is None:
         reader.issue("error", "launchpad_export_missing", Path("."), "Supply the native LaunchPad .x6d for the intended route")
 
     report["diagnostics"].extend(dict(item, scope="simulation") for item in reader.diagnostics)
-    severities = {item["severity"] for item in report["diagnostics"]}
-    state = "blocked" if "error" in severities else "review_required" if "warning" in severities else "inputs_present"
     report["evidence"] = "simulation_prerequisite_metadata"
     report["simulationPreflight"] = {
-        "state": state, "targetMapp6D": family, "reference": asdict(pair),
-        "minimums": {"automationStudio": MINIMUM_STUDIO, "automationRuntime": MINIMUM_RUNTIME,
-                     "mappMotion": MINIMUM_MOTION},
+        "state": prerequisite_state(report["diagnostics"]), "targetMapp6D": family, "reference": asdict(pair),
+        "minimums": dict(MINIMUMS),
         "installedTargetCatalog": candidates, "targetCatalogSnapshot": reader.snapshot(),
         "simulatorInstallation": simulator, "simulatorZip": archive, "launchPadExport": native_export,
     }

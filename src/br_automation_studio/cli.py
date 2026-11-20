@@ -24,6 +24,8 @@ def markdown(response):
 
     if "rucReview" in report:
         return markdown_ruc(response, text)
+    if "simulationEnvironment" in report:
+        return markdown_simulation_environment(response, text)
 
     titles = {
         "project_inspect": "Saved Automation Studio project inspection",
@@ -93,23 +95,7 @@ def markdown(response):
             versions = ", ".join(dependency["selectedVersions"]) or "unresolved"
             lines.append(f"- {text(dependency['library'])} requires {text(dependency['requires'])} · {text(versions)}")
     if simulation := report.get("simulationPreflight"):
-        reference = simulation["reference"]
-        installer = simulation["simulatorInstallation"]
-        lines.extend(["", "## Complete simulation prerequisites", "",
-                      f"- State **{text(simulation['state'])}** · Target mapp 6D {text(simulation['targetMapp6D'])}",
-                      f"- Expected Planar Motor Simulation Tool {text(reference['simulatorVersion'])}",
-                      f"- Windows Installer state {text(installer['state'])} ({text(installer['stateCode'])})"
-                      f" · version {text(installer['version'])} · expected {text(reference['msiVersion'])}",
-                      f"- Reference segment firmware {text(reference['segmentFirmware'])}"
-                      f" · Application data {text(reference['segmentApplicationData'])}"])
-        if not simulation["installedTargetCatalog"]:
-            lines.append("- No installed catalog selectors for this family")
-        for candidate in simulation["installedTargetCatalog"]:
-            lines.append(f"- Catalog selector {text(candidate['selector'])} · build {text(candidate['internalVersion'])}"
-                         f" · manifest verified {text(candidate['verified'])}")
-        if media := simulation["simulatorZip"]:
-            lines.append(f"- Simulator ZIP {text(media['path'])} · SHA-256 {text(media['sha256'])}"
-                         f" · matches reviewed release {text(media['matched'])}")
+        lines.extend(markdown_simulation_prerequisites(simulation, text))
         if export := simulation["launchPadExport"]:
             lines.append(f"- LaunchPad export {text(export['path'])} · SHA-256 {text(export['sha256'])}")
     if plan := report.get("buildPlan"):
@@ -123,12 +109,58 @@ def markdown(response):
             lines.append(f"- Builder reported {summary['errors']} errors and {summary['warnings']} warnings")
         if package := job["package"]:
             lines.append(f"- RUC {text(package['path'])} · {package['entries']} ZIP entries · {package['sha256']}")
-    lines.extend(["", "## Diagnostics", ""])
-    for item in report["diagnostics"]:
+    lines.extend(markdown_diagnostics(report["diagnostics"], text))
+    return "\n".join(lines)
+
+
+def markdown_diagnostics(diagnostics, text):
+    lines = ["", "## Diagnostics", ""]
+    for item in diagnostics:
         scope = f"{text(item['scope'])} · " if "scope" in item else ""
         lines.append(f"- {text(item['severity'])} · {scope}{text(item['path'])} · {text(item['message'])}")
-    if not report["diagnostics"]:
+    if not diagnostics:
         lines.append("No issues reported by the selected checks.")
+    return lines
+
+
+def markdown_simulation_prerequisites(simulation, text):
+    reference = simulation["reference"]
+    installer = simulation["simulatorInstallation"]
+    lines = ["", "## Complete simulation prerequisites", "",
+             f"- State **{text(simulation['state'])}** · Target mapp 6D {text(simulation['targetMapp6D'])}",
+             f"- Expected Planar Motor Simulation Tool {text(reference['simulatorVersion'])}",
+             f"- Windows Installer state {text(installer['state'])} ({text(installer['stateCode'])})"
+             f" · version {text(installer['version'])} · expected {text(reference['msiVersion'])}",
+             f"- Reference segment firmware {text(reference['segmentFirmware'])}"
+             f" · Application data {text(reference['segmentApplicationData'])}"]
+    if not simulation["installedTargetCatalog"]:
+        lines.append("- No installed catalog selectors for this family")
+    for candidate in simulation["installedTargetCatalog"]:
+        lines.append(f"- Catalog selector {text(candidate['selector'])} · build {text(candidate['internalVersion'])}"
+                     f" · manifest verified {text(candidate['verified'])}")
+    if media := simulation["simulatorZip"]:
+        lines.append(f"- Simulator ZIP {text(media['path'])} · SHA-256 {text(media['sha256'])}"
+                     f" · matches reviewed release {text(media['matched'])}")
+    return lines
+
+
+def markdown_simulation_environment(response, text):
+    report = response["result"]
+    result = report["simulationEnvironment"]
+    lines = ["# AS4 ACOPOS 6D simulation environment", "",
+             f"- Status **{text(response['status'])}**",
+             f"- Automation Studio {text(result['studioVersion'])} · {text(result['studioRoot'])}",
+             f"- Catalog read-set SHA-256 {result['targetCatalogSnapshot']['sha256']}"]
+    lines.extend(markdown_simulation_prerequisites(result, text))
+    lines.extend(["", "## Installed technology packages", ""])
+    for name, selectors in result["catalogSelectors"].items():
+        values = ", ".join(selectors) or "none found"
+        lines.append(f"- {text(name)} selectors · {text(values)}")
+    for name, candidates in result["companionCatalog"].items():
+        for item in candidates:
+            lines.append(f"- {text(name)} {text(item['selector'])} · build {text(item['internalVersion'])}"
+                         f" · manifest verified {text(item['verified'])}")
+    lines.extend(markdown_diagnostics(report["diagnostics"], text))
     return "\n".join(lines)
 
 

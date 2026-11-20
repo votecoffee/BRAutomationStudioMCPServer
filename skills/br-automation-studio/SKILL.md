@@ -11,7 +11,7 @@ Find `br-studio` on PATH or use the checkout's `.local/venv/Scripts/br-studio.ex
 
 Use `build_preflight` when checking an identified AS4 installation against the saved project. Read the [build preflight workflow](references/build-preflight.md) for Runtime catalog selection and diagnostic scope.
 
-Use the [complete simulation preflight](references/simulation-preflight.md) to verify the intended mapp 6D line, installed simulator identity, and the supplied LaunchPad export before the motion run.
+Use `simulation_environment` to check the installed AS4 packages and simulator during workstation setup. Use the [complete simulation preflight](references/simulation-preflight.md) with the saved project and native LaunchPad export before the motion run.
 
 For a native build on a trusted saved copy, follow the [native AS4 build workflow](references/native-build.md). It pins the source and toolchain and retains the RUC and builder log.
 

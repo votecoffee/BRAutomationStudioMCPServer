@@ -318,6 +318,34 @@ class BuildPreflightTests(unittest.TestCase):
         return execute({"schemaVersion": 1, "workspace": "preflight",
                         "operation": "simulation_preflight", "arguments": arguments}, self.root)
 
+    @patch("br_automation_studio.simulation_preflight.installed_product")
+    @patch("br_automation_studio.simulation_preflight.build_preflight", side_effect=AssertionError("Project check"))
+    def test_simulation_environment_checks_workstation_without_a_project(self, project_check, msi):
+        request = {"schemaVersion": 1, "workspace": "preflight", "operation": "simulation_environment",
+                   "arguments": {"studioRoot": "Install/AS412", "targetMapp6D": "2.7"}}
+        msi.return_value = {"stateCode": -1, "version": None}
+        blocked = execute(request, self.root)
+        report = blocked["result"]["simulationEnvironment"]
+        self.assertEqual(blocked["status"], "issues")
+        self.assertEqual(report["state"], "blocked")
+        self.assertEqual(report["catalogSelectors"], {"mapp6D": ["2.2.0"], "mappMotion": [], "mappView": ["5.24.5"]})
+        self.assertEqual(report["installedTargetCatalog"], [])
+        self.assertEqual(report["simulatorInstallation"]["state"], "unknown_product")
+        self.assertIn("mappMotion selectors · none found", markdown(blocked))
+
+        self.prepare_simulation()
+        msi.return_value = {"stateCode": 5, "version": "1.25.53"}
+        good = execute(request, self.root)
+        report = good["result"]["simulationEnvironment"]
+        self.assertEqual(good["status"], "complete", good["result"]["diagnostics"])
+        self.assertEqual(report["state"], "inputs_present")
+        self.assertEqual(report["studioVersion"], "4.12.10.39")
+        self.assertTrue(report["installedTargetCatalog"][0]["verified"])
+        self.assertEqual(report["companionCatalog"]["mappMotion"][0]["internalVersion"], "5.29.1.2")
+        self.assertTrue(report["simulatorInstallation"]["matched"])
+        self.assertIn("Expected Planar Motor Simulation Tool 117.25.53", markdown(good))
+        project_check.assert_not_called()
+
     @patch("br_automation_studio.simulation_preflight.installed_product",
            return_value={"stateCode": 5, "version": "1.25.53"})
     def test_simulation_checks_exact_catalog_and_fingerprints_export(self, msi):
