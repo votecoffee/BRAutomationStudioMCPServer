@@ -449,6 +449,8 @@ def markdown_cycle_trace(cycle, text):
         if "records" in capture:
             lines.append(f"- CSV records {capture['records']} · Inspection scans {capture['inspectionScans']} "
                          f"· Return scans {capture['returnScans']} · Hold scan {capture['nextHoldScan']}")
+        for leg, observed in capture.get("monitorSequences", {}).items():
+            lines.append(f"- {text(leg.title())} recorded monitor sequence {observed['start']} → {observed['end']}")
     if outbound := cycle.get("outbound"):
         lines.extend(markdown_station_trace(outbound, text))
     if returned := cycle.get("returnLeg"):

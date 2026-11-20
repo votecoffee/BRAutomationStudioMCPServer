@@ -6,7 +6,8 @@ from .cycle_capture import materialize_cycle
 from .cycle_hmi import review_cycle_hmi
 from .launchpad_route import json_snapshot, launchpad_route_review
 from .station_trace import (
-    TRACE_LIMIT, TraceIssue, check_bound_leg, check_detections, integer, leg_identity, scan_detections, selected_leg,
+    MONITOR_CHECKPOINTS, TRACE_LIMIT, TraceIssue, check_bound_leg, check_detections, check_monitor_checkpoint,
+    integer, leg_identity, scan_detections, selected_leg,
 )
 
 
@@ -68,8 +69,11 @@ def check_return(trace, outbound, inbound, result):
         elif occupying is not None and result["sourceClearScan"] is not None:
             raise TraceIssue("cycle_trace_return_reoccupied", f"The shuttle reoccupied the return source at scan {scan}")
         result["lastScan"] = scan
+        before, after = MONITOR_CHECKPOINTS
+        check_monitor_checkpoint(row, before, sequence)
         sequence = check_detections(scan_detections(row, scan), inbound[-1], shuttle_id, scan, sequence, result,
                                     armed=previous is not None)
+        check_monitor_checkpoint(row, after, sequence)
         previous = scan
 
     if result["sourceClearScan"] is None or result["arrival"] is None:

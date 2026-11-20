@@ -55,6 +55,21 @@ Use `0` for the absent selected or occupying shuttle and for a slot with no obse
 
 Read only the window-specific columns for each selected phase. A fault needs its raw `statusId`. The result details are read when `resultPresent` is true. The detection details are read when the event sequence is positive. All columns still need headers so missing signal definitions surface before review.
 
+## Check the consumed-event sequence in every scan
+
+With br-studio 0.32.0 or later, set `scanCapture.monitorCheckpoints` to true to require four additional columns.
+
+| Destination monitor | Columns |
+| --- | --- |
+| Inspection leg destination | `inspection.monitorSequenceBeforeScan` and `inspection.monitorSequenceAfterScan` |
+| Return leg destination | `return.monitorSequenceBeforeScan` and `return.monitorSequenceAfterScan` |
+
+Use the same monotonic application sequence as the detection slots. Record the counter before consuming this scan's detections and again after the final consumption in that task scan. Increment once for each actual consumed detection before copying its slot. Retain the original sequence on an observation that repeats. Keep each monitor's sequence independent. A scan that consumed no detections has equal before and after counters.
+
+The first inspection row begins after the old queue has been drained and before Release. The first return row witnesses the returned shuttle occupying the return source before the return arrival. The tool uses each first row's before value for its leg baseline. The corresponding JSON baseline fields can be omitted in this mode. When supplied, they must match the captured values.
+
+For each scan the checker compares the before value with the running sequence, walks the ordered slots, then compares the after value with the result. A mismatch leaves the cycle incomplete, including when an unrecorded consumption occurs on the final scan. Keep monitor health and queue occupancy evidence available to assess loss before the application consumed an event. [B&R station monitor behavior](https://help.br-automation.com/#/en/4/motion/mapp_6d/bibliotheken/mptraffic/function_block/mptrafficstationmonitor/fb_mptrafficstationmonitor_functiondescription.html)
+
 ## Review the output
 
 Run `br-studio run --request <request.json>` and retain the response with the descriptor, scan file and build receipts. Missing boundary scans or an internal gap leave the cycle incomplete. Duplicate or decreasing scan indexes, a changed scan file, malformed required values or unaligned chart signals produce issues. The existing cycle reviewer still checks request identity, event continuity, return and the next hold. Compare with a same-session HMI report when validating the page reopen. If `arsim_status_smoke` retained the file in that runtime, point `scanCsv` to the retained copy and set `requireSessionScanCapture` to require the receipt. [Same-run scan retention](arsim-status-smoke.md#retain-a-scan-file-from-the-same-runtime)

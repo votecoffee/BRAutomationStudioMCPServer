@@ -4,6 +4,7 @@ from .launchpad_route import json_snapshot, launchpad_route_review, nonempty
 
 TRACE_LIMIT = 16 * 1024 * 1024
 ARRIVAL = "mpTRAFFIC_SH_ARRIVAL"
+MONITOR_CHECKPOINTS = ("monitorSequenceBeforeScan", "monitorSequenceAfterScan")
 FLAGS = ("inspectionBusy", "routePermitted", "stationClear", "release", "releaseBuffered",
          "releaseDone", "releaseAborted", "error", "monitorHealthy")
 
@@ -61,6 +62,18 @@ def scan_detections(row, scan):
             or not all(nonempty(item.get(key)) for key in ("station", "event")) for item in detections):
         raise ValueError(f"Scan {scan} has malformed monitor detections")
     return detections
+
+
+def check_monitor_checkpoint(row, field, expected):
+    if field not in row:
+        return
+    observed = row[field]
+    if not integer(observed):
+        raise ValueError(f"Scan {row['scan']} needs a nonnegative integer for {field}")
+    if observed != expected:
+        raise TraceIssue("station_trace_monitor_checkpoint_mismatch",
+                         f"Scan {row['scan']} {field} is {observed}, expected {expected} from consumed detections",
+                         "warning")
 
 
 def check_detections(detections, destination, shuttle_id, scan, sequence, result, *, armed):
@@ -146,8 +159,11 @@ def check_leg(trace, result):
                         raise TraceIssue("station_trace_stale_response",
                                          f"First ReleaseBuffered observation follows departure at scan {scan}")
                     result[key] = scan
+        before, after = MONITOR_CHECKPOINTS
+        check_monitor_checkpoint(row, before, sequence)
         sequence = check_detections(detections, trace["destinationStation"], trace["shuttleId"],
                                     scan, sequence, result, armed=bool(result["releaseScans"]))
+        check_monitor_checkpoint(row, after, sequence)
 
     missing = [label for label, observed in (
         ("Release edge", bool(result["releaseScans"])), ("ReleaseDone", result["doneScan"] is not None),

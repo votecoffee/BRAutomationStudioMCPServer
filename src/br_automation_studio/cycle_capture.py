@@ -6,7 +6,7 @@ from hashlib import sha256
 from io import StringIO
 import re
 
-from .station_trace import FLAGS, TRACE_LIMIT, TraceIssue, integer
+from .station_trace import FLAGS, MONITOR_CHECKPOINTS, TRACE_LIMIT, TraceIssue, integer
 
 
 HOLD_HMI = ("hold.phase", "hold.releaseTotal", "hold.heartbeat")
@@ -160,6 +160,15 @@ class Sample:
         return row
 
 
+def anchored_monitor_window(leg, rows, field):
+    before, after = MONITOR_CHECKPOINTS
+    start, end = rows[0][before], rows[-1][after]
+    if field in leg and (not integer(leg[field]) or leg[field] != start):
+        raise TraceIssue("cycle_capture_monitor_baseline_mismatch",
+                         f"{field} differs from the captured baseline at PLC scan {rows[0]['scan']}")
+    return {**leg, field: start, "scans": rows}, {"start": start, "end": end}
+
+
 def materialize_cycle(trace, path, summary):
     capture = trace.get("scanCapture") if isinstance(trace, dict) else None
     if not isinstance(capture, dict):
@@ -200,6 +209,11 @@ def materialize_cycle(trace, path, summary):
         raise ValueError("scanCapture.detectionSlots needs positive counts for inspection or return supported by the capture")
     required = FIELDS | {f"{leg}.detection{slot}.{key}" for leg, count in slots.items()
                          for slot in range(2, count + 1) for key in DETECTION}
+    checkpoints = capture.get("monitorCheckpoints", False)
+    if type(checkpoints) is not bool:
+        raise ValueError("scanCapture.monitorCheckpoints must be a Boolean")
+    if checkpoints:
+        required.update(f"{phase}.{field}" for phase in ("inspection", "return") for field in MONITOR_CHECKPOINTS)
     if set(columns) - (required | set(HOLD_HMI)):
         raise ValueError("scanCapture.columns refers to an unknown scan field")
     fields = {columns.get(role, role) for role in required}
@@ -227,9 +241,15 @@ def materialize_cycle(trace, path, summary):
         records += 1
         boundaries.discard(scan)
         if start <= scan <= end:
-            outbound_rows.append(row.inspection(scan, slots.get("inspection", 1), stations, events))
+            outbound = row.inspection(scan, slots.get("inspection", 1), stations, events)
+            if checkpoints:
+                outbound.update({field: row.number(f"inspection.{field}") for field in MONITOR_CHECKPOINTS})
+            outbound_rows.append(outbound)
         if return_start <= scan <= return_end:
-            return_rows.append(row.returned(scan, slots.get("return", 1), stations, events))
+            inbound = row.returned(scan, slots.get("return", 1), stations, events)
+            if checkpoints:
+                inbound.update({field: row.number(f"return.{field}") for field in MONITOR_CHECKPOINTS})
+            return_rows.append(inbound)
         if scan == hold_scan:
             hold = row.hold(scan, stations, include_hmi)
     summary.update(records=records, inspectionScans=[start, end], returnScans=[return_start, return_end],
@@ -237,5 +257,9 @@ def materialize_cycle(trace, path, summary):
     if boundaries:
         missing_scans = ", ".join(str(scan) for scan in sorted(boundaries))
         raise TraceIssue("cycle_capture_boundary_missing", f"CSV is missing selected scan indexes {missing_scans}", "warning")
-    return {**trace, "inspectionLeg": {**leg, "scans": outbound_rows}, "returnLeg": {**returned, "scans": return_rows},
-            "nextHold": hold}
+    leg, returned = {**leg, "scans": outbound_rows}, {**returned, "scans": return_rows}
+    if checkpoints:
+        leg, inspection_sequence = anchored_monitor_window(leg, outbound_rows, "monitorSequenceBeforeRelease")
+        returned, return_sequence = anchored_monitor_window(returned, return_rows, "monitorSequenceAtStart")
+        summary["monitorSequences"] = {"inspection": inspection_sequence, "return": return_sequence}
+    return {**trace, "inspectionLeg": leg, "returnLeg": returned, "nextHold": hold}

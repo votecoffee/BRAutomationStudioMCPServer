@@ -85,7 +85,7 @@ Use `launchpad_station_review` to verify each station-to-station path and read t
 
 Use `station_trace_review` to compare a saved inspection release and arrival trace with the compiled station path. [Inspection trace workflow](skills/br-automation-studio/references/station-trace-review.md)
 
-Use `cycle_trace_review` to check the return and next held request for the same shuttle on a compiled two-station loop. Supply a completed `arsim_status_smoke` report to compare that hold with the HMI reopen from the same build and runtime session. For projects that export scans during simulation, the status smoke can retain the exact scan file before ARsim shuts down. [Inspection cycle workflow](skills/br-automation-studio/references/cycle-trace-review.md) · [Saved scan and AS chart files](skills/br-automation-studio/references/cycle-scan-capture.md)
+Use `cycle_trace_review` to check the return and next held request for the same shuttle on a compiled two-station loop. Supply a completed `arsim_status_smoke` report to compare that hold with the HMI reopen from the same build and runtime session. For projects that export scans during simulation, the status smoke can retain the exact scan file before ARsim shuts down. [Inspection cycle workflow](skills/br-automation-studio/references/cycle-trace-review.md) · [Saved scan files and monitor checkpoints](skills/br-automation-studio/references/cycle-scan-capture.md)
 
 Use `launchpad_recovery_review` to compare station recovery declarations and check the saved-to-compiled AS4 point sequence. [Recovery declaration workflow](skills/br-automation-studio/references/launchpad-recovery-review.md)
 

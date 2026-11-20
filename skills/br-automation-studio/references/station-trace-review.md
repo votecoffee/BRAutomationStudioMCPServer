@@ -45,6 +45,8 @@ Keep the raw capture alongside the JSON. Include every scan in the interval, sta
 - Include `inspectionResult` when a terminal result is observed. Keep the reported `requestId` and `shuttleId`, the matching acknowledgment state as `acknowledged`, and the terminal disposition as `approved`. Preserve stale results with their original IDs.
 - Include `detections` as a list of destination-monitor observations for that scan. Each item needs the application-issued positive `sequence`, imported `station`, `shuttleId` and the raw enum name in `event`. Increment the sequence once for each consumed monitor event and retain that sequence when a captured observation repeats. Read the event after consuming it from the monitor. [Station monitor behavior](https://help.br-automation.com/#/en/4/motion/mapp_6d/bibliotheken/mptraffic/function_block/mptrafficstationmonitor/fb_mptrafficstationmonitor_functiondescription.html)
 
+For a trace with sequence snapshots, include `monitorSequenceBeforeScan` and `monitorSequenceAfterScan` on each row. Use the destination monitor's application sequence before and after consuming the recorded detections. The review reports inconsistent sequence evidence as incomplete. [Scan capture checkpoints](cycle-scan-capture.md#check-the-consumed-event-sequence-in-every-scan)
+
 ## Interpret the result
 
 - `matched` requires one Release edge with the approved request and shuttle, route permission, station clear and inspection busy clear. The same leg needs ReleaseDone and a fresh `mpTRAFFIC_SH_ARRIVAL` at the expected station for that shuttle. Either observation may appear first in the PLC trace after release.

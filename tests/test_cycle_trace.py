@@ -9,7 +9,7 @@ import unittest
 
 from br_automation_studio.cycle_capture import FIELDS, HOLD_HMI, materialize_cycle
 from br_automation_studio.cycle_trace import check_cycle
-from br_automation_studio.station_trace import ARRIVAL, FLAGS, TraceIssue
+from br_automation_studio.station_trace import ARRIVAL, FLAGS, MONITOR_CHECKPOINTS, TraceIssue
 
 
 class CycleTraceTest(unittest.TestCase):
@@ -236,3 +236,61 @@ class CycleTraceTest(unittest.TestCase):
             with self.subTest(code=code), self.assertRaises(TraceIssue) as error:
                 self.materialize(trace, malformed.encode())
             self.assertEqual(error.exception.code, code)
+
+
+    def checkpoint_csv(self):
+        trace, columns, rows = self.scan_csv()
+        before, after = MONITOR_CHECKPOINTS
+        columns.extend(f"{phase}.{field}" for phase in ("inspection", "return") for field in MONITOR_CHECKPOINTS)
+        for phase, observed, last in (("inspection", range(10, 16), 20), ("return", range(15, 18), 70)):
+            for scan in observed:
+                row = rows[scan - 10]
+                row[f"{phase}.{before}"] = last
+                last = max(last, row.get(f"{phase}.detection.sequence", 0))
+                row[f"{phase}.{after}"] = last
+        trace["scanCapture"]["monitorCheckpoints"] = True
+        return trace, columns, rows
+
+    def test_monitor_checkpoints_supply_missing_baselines_from_raw_rows(self):
+        trace, columns, rows = self.checkpoint_csv()
+        del trace["inspectionLeg"]["monitorSequenceBeforeRelease"]
+        del trace["returnLeg"]["monitorSequenceAtStart"]
+        output = StringIO(newline="")
+        writer = csv.DictWriter(output, fieldnames=columns)
+        writer.writeheader()
+        writer.writerows(rows)
+        normalized, capture = self.materialize(trace, output.getvalue().encode())
+        self.assertEqual(self.run_cycle(normalized), self.run_cycle(self.trace))
+        self.assertEqual(capture["monitorSequences"], {"inspection": {"start": 20, "end": 21},
+                                                       "return": {"start": 70, "end": 71}})
+
+    def test_checkpoint_in_final_return_sample_exposes_an_unrecorded_event(self):
+        trace, columns, rows = self.checkpoint_csv()
+        rows[7]["return.monitorSequenceAfterScan"] = 72
+        output = StringIO(newline="")
+        writer = csv.DictWriter(output, fieldnames=columns)
+        writer.writeheader()
+        writer.writerows(rows)
+        normalized, _ = self.materialize(trace, output.getvalue().encode())
+        with self.assertRaisesRegex(TraceIssue, "Scan 17 monitorSequenceAfterScan is 72, expected 71") as issue:
+            self.run_cycle(normalized)
+        self.assertEqual((issue.exception.code, issue.exception.severity),
+                         ("station_trace_monitor_checkpoint_mismatch", "warning"))
+
+    def test_checkpoint_baseline_conflict_and_missing_column_are_rejected(self):
+        trace, columns, rows = self.checkpoint_csv()
+        trace["returnLeg"]["monitorSequenceAtStart"] = 69
+        output = StringIO(newline="")
+        writer = csv.DictWriter(output, fieldnames=columns)
+        writer.writeheader()
+        writer.writerows(rows)
+        with self.assertRaises(TraceIssue) as mismatch:
+            self.materialize(trace, output.getvalue().encode())
+        self.assertEqual(mismatch.exception.code, "cycle_capture_monitor_baseline_mismatch")
+
+        output = StringIO(newline="")
+        writer = csv.DictWriter(output, fieldnames=columns[:-1], extrasaction="ignore")
+        writer.writeheader()
+        writer.writerows(rows)
+        with self.assertRaisesRegex(ValueError, "Missing CSV columns: return.monitorSequenceAfterScan"):
+            self.materialize(trace, output.getvalue().encode())
