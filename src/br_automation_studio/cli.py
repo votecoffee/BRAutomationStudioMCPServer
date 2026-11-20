@@ -28,6 +28,8 @@ def markdown(response):
         return markdown_simulation_environment(response, text)
     if "widgetPackageReview" in report:
         return markdown_widget_package_review(response, text)
+    if "motionInterfaceReview" in report:
+        return markdown_motion_interfaces(response, text)
 
     titles = {
         "project_inspect": "Saved Automation Studio project inspection",
@@ -129,6 +131,28 @@ def markdown(response):
                 lines.append(f"- Packaged MpTraffic {text(payload['path'])} · SHA-256 {payload['sha256']}")
             if payloads := package.get("motionPayloads"):
                 lines.append(f"- Verified motion payloads {len(payloads)}")
+    lines.extend(markdown_diagnostics(report["diagnostics"], text))
+    return "\n".join(lines)
+
+
+def markdown_motion_interfaces(response, text):
+    report = response["result"]
+    review = report["motionInterfaceReview"]
+    lines = ["# AS4 motion function-block interfaces", "",
+             f"- Project **{text(report['project'])}** · Status **{text(response['status'])}**",
+             f"- mapp 6D {text(review['mapp6DSelector'])} · Build {text(review['mapp6DBuild'])}",
+             f"- Interface review {text(review['state'])}"]
+    for block in review["blocks"]:
+        lines.extend(["", f"## {text(block['name'])}", ""])
+        if block["state"] != "verified":
+            lines.append(f"- {text(block['state'])}")
+            continue
+        source = block["source"]
+        lines.extend([f"- {text(source['library'])} {text(source['version'])} · {text(source['origin'])}",
+                      f"- {text(source['path'])} · Line {block['line']} · SHA-256 {source['sha256']}", "",
+                      "| Pin | Direction | IEC type | Line |", "| --- | --- | --- | ---: |"])
+        for pin in block["pins"]:
+            lines.append(f"| {text(pin['name'])} | {text(pin['direction'])} | {text(pin['type'])} | {pin['line']} |")
     lines.extend(markdown_diagnostics(report["diagnostics"], text))
     return "\n".join(lines)
 

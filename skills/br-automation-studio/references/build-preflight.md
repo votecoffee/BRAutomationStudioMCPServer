@@ -28,6 +28,27 @@ With br-studio 0.42.0 or later, set `verifyMotionDeclarations` to `true` in a `b
 
 Check `result.motionDeclarations` for the mapp 6D selector, internal build, library states, paths and hashes. Differences in membership, whitespace or encoding can change the exact-byte comparison. The check covers IEC declarations for the selected package. Use the [motion payload pins](native-build.md#verify-the-motion-payloads-in-the-ruc) for the packaged binaries.
 
+## Read selected function-block pins
+
+Use `motion_interface_review` with the same project, catalog and CPU selection and a list of up to 32 function-block names. The operation checks the declaration evidence before reading public `VAR_INPUT`, `VAR_OUTPUT` and `VAR_IN_OUT` declarations from the selected `McAcp6D.fun` and `MpTraffic.fun` files.
+
+```json
+{
+  "schemaVersion": 1,
+  "workspace": "review-motion-interface",
+  "operation": "motion_interface_review",
+  "arguments": {
+    "project": "Example/Example.apj",
+    "studioRoot": "C:/Program Files/BRAutomation4/AS412",
+    "configuration": "ARsim",
+    "cpu": "PC",
+    "blocks": ["MC_BR_AsmReadInfo_Acp6D", "MpTrafficStationMonitor"]
+  }
+}
+```
+
+Run `br-studio run --request <request.json> --format markdown` for the pin tables. The JSON includes the selected mapp 6D package build, library versions, source path and hash, and declaration lines. Multiple or missing definitions and unsupported syntax produce diagnostics. The report covers the named public formals in the supported AS4 `.fun` format. Use the exact selected package for nested type fields and runtime semantics.
+
 ## Interpret the evidence
 
 | Check | What the report establishes |

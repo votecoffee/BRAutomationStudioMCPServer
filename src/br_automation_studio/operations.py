@@ -17,6 +17,7 @@ from .layout_svg import layout_svg_review
 from .launchpad_frame import launchpad_frame_review
 from .launchpad_geometry import GeometryCriteria
 from .launchpad_route import launchpad_route_review
+from .motion_interfaces import SYMBOL, review_motion_interfaces
 from .native_build import execute_build, plan_build
 from .opcua_smoke import OpcUaProbe
 from .preflight import build_preflight
@@ -91,6 +92,15 @@ def run_widget_package_review(arguments, request_directory):
 def preflight(arguments, request_directory):
     return build_preflight(*build_inputs(arguments, request_directory),
                            verify_motion_declarations=arguments.get("verifyMotionDeclarations", False))
+
+
+def run_motion_interface_review(arguments, request_directory):
+    blocks = arguments["blocks"]
+    if any(SYMBOL.fullmatch(name) is None for name in blocks):
+        raise InvalidRequest("blocks must contain IEC function-block names")
+    if len({name.casefold() for name in blocks}) != len(blocks):
+        raise InvalidRequest("blocks must contain distinct function-block names")
+    return review_motion_interfaces(*build_inputs(arguments, request_directory), blocks)
 
 
 def run_simulation_environment(arguments, request_directory):
@@ -319,6 +329,18 @@ BUILD_PREFLIGHT = Operation(
     },
     required=("project", "studioRoot"),
     handler=preflight,
+)
+MOTION_INTERFACE_REVIEW = Operation(
+    name="motion_interface_review",
+    summary="Read selected public function-block pins from verified AS4 McAcp6D and MpTraffic declarations.",
+    arguments={
+        **{key: value for key, value in BUILD_PREFLIGHT.arguments.items() if key != "verifyMotionDeclarations"},
+        "blocks": {"type": "array", "minItems": 1, "maxItems": 32,
+                   "items": {"type": "string", "minLength": 1, "maxLength": 128},
+                   "description": "Distinct IEC function-block names in McAcp6D or MpTraffic."},
+    },
+    required=(*BUILD_PREFLIGHT.required, "blocks"),
+    handler=run_motion_interface_review,
 )
 SIMULATION_ENVIRONMENT = Operation(
     name="simulation_environment",
@@ -599,7 +621,7 @@ ARSIM_STATUS_SMOKE = Operation(
     handler=run_arsim_status_smoke,
 )
 OPERATIONS = {item.name: item for item in (
-    PROJECT_INSPECT, WIDGET_PACKAGE_REVIEW, BUILD_PREFLIGHT, SIMULATION_ENVIRONMENT, SIMULATION_PREFLIGHT, BUILD_PLAN, BUILD_EXECUTE, RUC_REVIEW,
+    PROJECT_INSPECT, WIDGET_PACKAGE_REVIEW, BUILD_PREFLIGHT, MOTION_INTERFACE_REVIEW, SIMULATION_ENVIRONMENT, SIMULATION_PREFLIGHT, BUILD_PLAN, BUILD_EXECUTE, RUC_REVIEW,
     ASSEMBLY_IO_REVIEW, LAYOUT_DEVICE_REVIEW, LAYOUT_SVG_REVIEW,
     LAUNCHPAD_ROUTE_REVIEW, LAUNCHPAD_STATION_REVIEW, STATION_TRACE_REVIEW, CYCLE_TRACE_REVIEW,
     LAUNCHPAD_RECOVERY_REVIEW, LAUNCHPAD_MOTION_REVIEW,
@@ -639,6 +661,12 @@ def execute(request, request_directory: Path):
         elif schema["type"] == "boolean":
             if type(value) is not bool:
                 raise InvalidRequest(f"{key} must be a Boolean")
+        elif schema["type"] == "array":
+            item = schema["items"]
+            if (not isinstance(value, list) or not schema["minItems"] <= len(value) <= schema["maxItems"]
+                    or any(not valid_text(entry) or not item["minLength"] <= len(entry) <= item["maxLength"]
+                           for entry in value)):
+                raise InvalidRequest(f"{key} must be an array of {schema['minItems']} to {schema['maxItems']} strings")
         elif not valid_text(value) or len(value) < schema["minLength"]:
             raise InvalidRequest(f"{key} must be a nonempty string of at least {schema['minLength']} characters")
 

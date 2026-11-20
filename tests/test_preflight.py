@@ -11,7 +11,7 @@ from zipfile import ZipFile
 
 from br_automation_studio.cli import markdown
 from br_automation_studio.native_build import execute_build, stage_inputs
-from br_automation_studio.operations import execute
+from br_automation_studio.operations import InvalidRequest, execute
 
 FIXTURE = Path(__file__).resolve().parent / "fixtures/Loop"
 PACKAGES = Path("AS/TechnologyPackages")
@@ -365,6 +365,58 @@ class BuildPreflightTests(unittest.TestCase):
         self.assertEqual({row["name"]: row["state"] for row in core["files"]},
                          {"mcacp6d.fun": "different_bytes", "mcacp6d.typ": "matched",
                           "mcacp6d.var": "different_membership"})
+
+    def test_extracts_selected_function_block_pins_with_source_lines(self):
+        saved, catalog = self.declaration_fixture()
+        declaration = (
+            "(* An example containing ' and an IEC comment (* nested *)\n"
+            "FUNCTION_BLOCK Phantom\nEND_FUNCTION_BLOCK *)\n"
+            "FUNCTION_BLOCK ExampleStatus\n"
+            "VAR_INPUT\n"
+            "    Enabled, Hold : BOOL;\n"
+            "    Label : STRING[20] := 'text;(*literal*)';\n"
+            "END_VAR\n"
+            "VAR_IN_OUT\n"
+            "    Target : REFERENCE TO DeviceType;\n"
+            "END_VAR\n"
+            "VAR_OUTPUT\n"
+            "    Total : ARRAY [0..4] OF UINT;\n"
+            "END_VAR\n"
+            "VAR\n"
+            "    Internal : DINT;\n"
+            "END_VAR\n"
+            "END_FUNCTION_BLOCK\n"
+        )
+        self.put(saved / "McAcp6D.fun", declaration)
+        self.put(catalog["McAcp6D"] / "McAcp6D.fun", declaration)
+        response = self.native_request("motion_interface_review", blocks=["examplestatus", "Phantom"])
+        result = response["result"]["motionInterfaceReview"]
+        example, phantom = result["blocks"]
+        self.assertEqual(result["state"], "issues")
+        self.assertEqual(example["name"], "ExampleStatus")
+        self.assertEqual(example["line"], 4)
+        self.assertEqual(example["source"]["origin"], "project")
+        self.assertEqual(example["pins"], [
+            {"name": "Enabled", "direction": "input", "type": "BOOL", "line": 6},
+            {"name": "Hold", "direction": "input", "type": "BOOL", "line": 6},
+            {"name": "Label", "direction": "input", "type": "STRING[20]", "line": 7},
+            {"name": "Target", "direction": "in_out", "type": "REFERENCE TO DeviceType", "line": 10},
+            {"name": "Total", "direction": "output", "type": "ARRAY [0..4] OF UINT", "line": 13},
+        ])
+        self.assertEqual(phantom["state"], "unverified")
+        self.assertIn("| Target | in_out | REFERENCE TO DeviceType | 10 |", markdown(response))
+
+    def test_function_block_review_rejects_ambiguous_and_invalid_inputs(self):
+        _, catalog = self.declaration_fixture()
+        self.put(catalog["MpTraffic"] / "MpTraffic.fun",
+                 "FUNCTION_BLOCK ExampleMonitor\nVAR_INPUT\nEnable : BOOL;\nEND_VAR\nEND_FUNCTION_BLOCK\n"
+                 "FUNCTION_BLOCK examplemonitor\nVAR_INPUT\nEnable : BOOL;\nEND_VAR\nEND_FUNCTION_BLOCK\n")
+        result = self.native_request("motion_interface_review", blocks=["ExampleMonitor"])["result"]
+        self.assertEqual(result["motionInterfaceReview"]["state"], "issues")
+        self.assertIn("found 2", result["diagnostics"][-1]["message"])
+        for blocks in ([], "ExampleMonitor", ["../unsafe"], ["Same", "same"], [False]):
+            with self.subTest(blocks=blocks), self.assertRaisesRegex(InvalidRequest, "blocks"):
+                self.native_request("motion_interface_review", blocks=blocks)
 
     def test_motion_catalog_declaration_drift_after_staging_prevents_dispatch(self):
         _, catalog = self.declaration_fixture()
