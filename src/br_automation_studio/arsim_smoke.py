@@ -166,16 +166,19 @@ def check_owned(ports, pids):
     return sorted(owned, key=lambda item: (item["protocol"], item["port"], item["address"], item["pid"]))
 
 
-def http_asset(port, asset):
+def loopback_get(port, request_path):
     connection = HTTPConnection(HOST, port, timeout=2)
     try:
-        connection.request("GET", quote(asset["path"], safe="/"), headers={"Accept-Encoding": "identity"})
+        connection.request("GET", request_path, headers={"Accept-Encoding": "identity"})
         response = connection.getresponse()
-        body = response.read(XML_LIMIT + 1)
-        return {"path": asset["path"], "status": response.status,
-                "bytes": len(body), "sha256": sha256(body).hexdigest()}
+        return response.status, response.getheader("Content-Type"), response.read(XML_LIMIT + 1)
     finally:
         connection.close()
+
+
+def http_asset(port, asset):
+    status, _, body = loopback_get(port, quote(asset["path"], safe="/"))
+    return {"path": asset["path"], "status": status, "bytes": len(body), "sha256": sha256(body).hexdigest()}
 
 
 def probe_http(session, profile, assets, receipt, timeout):

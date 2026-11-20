@@ -1,6 +1,6 @@
 # Review generated Assembly6D layout SVGs
 
-Use `layout_svg_review` after collecting both generated SVGs from an AS4 mapp View HMI rehearsal. Keep the associated RUC and native build receipts. The operation verifies the saved source against the build inputs and the RUC against its recorded hash. It reads the two SVGs as XML and records their SHA-256.
+Use `layout_svg_review` after collecting both generated SVGs from an AS4 mapp View HMI rehearsal. Enable `captureLayoutAssets` to collect them with `arsim_hmi_smoke` or `arsim_browser_smoke`. Keep the associated RUC and native build receipts. The operation verifies the saved source against the build inputs and the RUC against its recorded hash. It reads the two SVGs as XML and records their SHA-256. [Capture workflow](arsim-browser-smoke.md#save-the-generated-svgs)
 
 ## Run the comparison
 

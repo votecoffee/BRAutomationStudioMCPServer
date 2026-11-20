@@ -1,10 +1,14 @@
+from hashlib import sha256
 import json
+import os
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock, patch
 
 from br_automation_studio.browser_smoke import (
-    ASSEMBLY_WIDGET, Page, assembly_dom_id, debug_listener, layout_asset_paths, verify_navigation,
+    ASSEMBLY_WIDGET, Page, assembly_dom_id, capture_layout_assets, debug_listener, layout_asset_paths, verify_navigation,
 )
 
 URL = "http://127.0.0.1:18081/"
@@ -72,6 +76,40 @@ class TestBrowserSmoke(unittest.TestCase):
         for assembly in ("../other", "mapp6D::A/B", None):
             with self.subTest(assembly=assembly):
                 self.assertEqual(layout_asset_paths([dict(widget, assembly=assembly)], "Proof_Asmb"), {})
+
+    @patch("br_automation_studio.browser_smoke.loopback_get")
+    def test_capture_keeps_exact_svg_bytes_after_both_assets_pass(self, fetch):
+        paths = {"assembly": "/FileDevice:6DData/A.svg", "trafficManager": "/FileDevice:6DData/T.svg"}
+        assembly = b'<svg xmlns="http://www.w3.org/2000/svg" id="A"/>'
+        traffic = b'<svg xmlns="http://www.w3.org/2000/svg" id="T"/>'
+        responses = [(200, "image/svg+xml", assembly), (200, "image/svg+xml; charset=utf-8", traffic)]
+        failures = [
+            ("wrong mime type", [(200, "text/html", traffic)], None, "image/svg"),
+            ("invalid XML", [(200, "image/svg+xml", b"<svg")], None, "Invalid layout SVG"),
+            ("wrong root", [(200, "image/svg+xml", b"<svg/>")], None, "namespaced SVG"),
+            ("listener changed", responses[1:], ValueError("original listener changed"), "original listener"),
+        ]
+        for label, reply, guard_error, message in failures:
+            with self.subTest(label=label), TemporaryDirectory(dir=os.environ.get("BR_STUDIO_TEST_SCRATCH")) as scratch:
+                fetch.side_effect = responses[:1] + reply
+                guard = Mock(side_effect=[None, None, None, guard_error])
+                root = Path(scratch)
+                with self.assertRaisesRegex(ValueError, message):
+                    capture_layout_assets(root, 18081, paths, guard)
+                self.assertEqual(list(root.iterdir()), [])
+
+        with TemporaryDirectory(dir=os.environ.get("BR_STUDIO_TEST_SCRATCH")) as scratch:
+            fetch.reset_mock()
+            fetch.side_effect = responses
+            guard = Mock()
+            root = Path(scratch)
+            capture = capture_layout_assets(root, 18081, paths, guard)
+            self.assertEqual(guard.call_count, 5)
+            self.assertEqual([call.args for call in fetch.call_args_list], [(18081, path) for path in paths.values()])
+            self.assertEqual(capture["assembly"]["sha256"], sha256(assembly).hexdigest())
+            self.assertEqual((root / capture["assembly"]["file"]).read_bytes(), assembly)
+            self.assertEqual((root / capture["trafficManager"]["file"]).read_bytes(), traffic)
+            self.assertEqual(list(root.iterdir()), [root / "layout-assets"])
 
     @patch("br_automation_studio.browser_smoke.time.sleep")
     @patch("br_automation_studio.browser_smoke.time.monotonic", return_value=0)

@@ -43,7 +43,7 @@ Use the [binding review workflow](references/ruc-binding-review.md) to verify th
 
 For local runtime HTTP evidence on a reviewed RUC, follow the [ARsim smoke workflow](references/arsim-smoke.md).
 
-Use the [browser smoke workflow](references/arsim-browser-smoke.md) to verify an advancing PLC-bound counter, check Assembly6D layout SVG requests, and repeat those observations through a page reopen.
+Use the [browser smoke workflow](references/arsim-browser-smoke.md) to verify an advancing PLC-bound counter, check Assembly6D layout SVG requests, and repeat those observations through a page reopen. Set `captureLayoutAssets` to retain the SVGs for the offline layout comparison.
 
 Use the [direct OPC UA smoke workflow](references/arsim-opcua-smoke.md) for an independent read of the selected simulated PLC counter and its reported access levels.
 

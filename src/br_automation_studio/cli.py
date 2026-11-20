@@ -490,6 +490,11 @@ def markdown_browser(browser, text):
                 lines.append(f"  - Layout {text(layout['state'])} · Inline SVGs with layout bounds {text(layout['boundedSvgCount'])}")
                 for role, asset in layout["assets"].items():
                     lines.append(f"  - {text(role)} {text(asset['path'])} · HTTP {text(asset['httpStatus'])}")
+    if capture := browser.get("layoutCapture"):
+        lines.append(f"- Layout capture {text(capture['state'])} · Paths relative to the session directory")
+        for asset in capture["assets"].values():
+            lines.append(f"  - {text(asset['path'])} · {text(asset['contentType'])} · {asset['bytes']} bytes · "
+                         f"SHA-256 {asset['sha256']} · {text(asset['file'])}")
     return lines
 
 

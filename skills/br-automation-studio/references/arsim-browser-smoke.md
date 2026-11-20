@@ -45,6 +45,12 @@ The browser report includes the expected `6DData` SVG requests and an inline SVG
 
 The expected URLs are derived from the compiled widget links as `/FileDevice:6DData/<symbol>.svg`. The report uses browser resource timing for those exact URLs. An unavailable status or missing inline bounds leaves the layout unverified. An HTTP error is reported as `request_failed`. [B&R layout display troubleshooting](https://help.br-automation.com/#/en/4/motion/mapp_6d/leitfaden/getting_started_mapp_6d/faq.html)
 
+### Save the generated SVGs
+
+Set `captureLayoutAssets` to `true` in the request arguments. This also enables the required layout check in both browser documents. After the browser closes, the CLI makes a fresh GET for each expected URL on the same owned ARsim HTTP listener. Each response must be HTTP 200 with an `image/svg+xml` body and a namespaced SVG root. The browser status and capture refer to separate requests inside the same ARsim session.
+
+Keep `session.json` and the `layout-assets/` directory together. The `layoutCapture` section records the listener and each URL, local path, byte count, media type and SHA-256. Its `assembly` and `trafficManager` records identify the files to use for `assemblySvg` and `trafficSvg` in the [generated layout review](layout-svg-review.md). A widget with only an assembly link yields a single assembly SVG.
+
 ## Interpret the receipts
 
 - Check for `arsim_loopback_browser` in `result.evidence` and `complete` in `result.arsimSmoke.browser.state`. The receipt includes the pinned RUC and HTTP asset checks, Chrome version, owned debugger endpoint, widget IDs, and the numeric samples.

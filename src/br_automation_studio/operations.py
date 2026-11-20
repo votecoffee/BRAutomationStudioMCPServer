@@ -205,7 +205,8 @@ def run_arsim_smoke(arguments, request_directory, runtime_probe=None):
 def run_arsim_browser_smoke(arguments, request_directory):
     probe = ChromeProbe(request_directory / arguments["browserExecutable"], arguments["counterWidgetId"],
                         arguments.get("assemblyWidgetId"), arguments.get("browserTimeoutSeconds", 30),
-                        require_layout=arguments.get("requireLayoutAssets", False))
+                        require_layout=arguments.get("requireLayoutAssets", False),
+                        capture_layout=arguments.get("captureLayoutAssets", False))
     return run_arsim_smoke(arguments, request_directory, probe)
 
 
@@ -221,6 +222,7 @@ def run_arsim_hmi_smoke(arguments, request_directory):
         binding_target(arguments), request_directory / arguments["browserExecutable"],
         arguments.get("assemblyWidgetId"), arguments.get("browserTimeoutSeconds", 30),
         arguments.get("opcUaTimeoutSeconds", 20), require_layout=arguments.get("requireLayoutAssets", False),
+        capture_layout=arguments.get("captureLayoutAssets", False),
     )
 
 
@@ -420,6 +422,8 @@ ARSIM_BROWSER_SMOKE = Operation(
         "browserTimeoutSeconds": {"type": "integer", "minimum": 1, "maximum": 120, "default": 30},
         "requireLayoutAssets": {"type": "boolean", "default": False,
                                 "description": "Require expected 6DData requests with HTTP 200 or 304 and a bounded inline SVG in each HMI document."},
+        "captureLayoutAssets": {"type": "boolean", "default": False,
+                                "description": "Require browser layout evidence and save the expected SVGs from the owned ARsim HTTP listener."},
     },
     required=(*ARSIM_SMOKE.required, "browserExecutable", "counterWidgetId"),
     handler=run_arsim_browser_smoke,
@@ -446,6 +450,7 @@ ARSIM_HMI_SMOKE = Operation(
         "assemblyWidgetId": ARSIM_BROWSER_SMOKE.arguments["assemblyWidgetId"],
         "browserTimeoutSeconds": ARSIM_BROWSER_SMOKE.arguments["browserTimeoutSeconds"],
         "requireLayoutAssets": ARSIM_BROWSER_SMOKE.arguments["requireLayoutAssets"],
+        "captureLayoutAssets": ARSIM_BROWSER_SMOKE.arguments["captureLayoutAssets"],
         "opcUaTimeoutSeconds": ARSIM_OPCUA_SMOKE.arguments["opcUaTimeoutSeconds"],
     },
     required=(*ARSIM_SMOKE.required, "visualizationId", "contentId", "widgetId", "stringIdentifier", "browserExecutable"),

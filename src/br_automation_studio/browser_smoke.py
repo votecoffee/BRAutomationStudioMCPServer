@@ -2,17 +2,21 @@
 
 from dataclasses import dataclass
 from decimal import Decimal
+from hashlib import sha256
 from http.client import HTTPConnection, HTTPException
 from math import isfinite
 from pathlib import Path
 import json
 import re
+from tempfile import TemporaryDirectory
 import time
 from typing import ClassVar
 from urllib.parse import urlsplit
+from xml.etree import ElementTree as ET
 
-from .arsim_smoke import HOST
+from .arsim_smoke import HOST, loopback_get
 from .native_build import fingerprint
+from .project import ProjectXml, XML_LIMIT
 from .windows_job import observed_process
 from .windows_network import endpoints
 from .windows_version import product_version
@@ -21,6 +25,7 @@ ASSEMBLY_WIDGET = "widgets/mapp6D/Assembly6D"
 NUMBER = re.compile(r"[+-]?[0-9]+(?:\.[0-9]+)?")
 PAGE_SOCKET = re.compile(r"/devtools/page/[a-zA-Z0-9_-]+")
 LINK_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+SVG_ROOT = "{http://www.w3.org/2000/svg}svg"
 TRANSIENT_CONTEXT_ERRORS = {"Cannot find default execution context", "Execution context was destroyed."}
 
 
@@ -260,6 +265,45 @@ def verify_navigation(page, url, receipt):
                     layout_paths=paths, require_layout=required)
 
 
+def capture_layout_assets(session_dir, http_port, paths, guard_runtime):
+    bodies, assets = {}, {}
+    for role, path in paths.items():
+        guard_runtime()
+        status, media_type, body = loopback_get(http_port, path)
+        guard_runtime()
+        if status != 200 or (media_type or "").partition(";")[0].strip().lower() != "image/svg+xml":
+            raise ValueError(f"Layout capture expected HTTP 200 and image/svg+xml for {path}, "
+                             f"received HTTP {status} and {media_type!r}")
+        if len(body) > XML_LIMIT:
+            raise ValueError(f"Layout SVG exceeds the capture limit for {path}")
+        try:
+            root = ET.fromstring(body, parser=ET.XMLParser(target=ProjectXml()))
+        except (ET.ParseError, LookupError, ValueError) as error:
+            raise ValueError(f"Invalid layout SVG at {path}: {error}") from error
+        if root.tag != SVG_ROOT:
+            raise ValueError(f"Expected a namespaced SVG at {path}")
+        bodies[role] = body
+        assets[role] = {"path": path, "status": status, "contentType": media_type,
+                        "bytes": len(body), "sha256": sha256(body).hexdigest(),
+                        "file": f"layout-assets/{role}.svg"}
+
+    root = session_dir.resolve(strict=True)
+    target = root / "layout-assets"
+    if target.exists() or target.is_symlink():
+        raise ValueError("The session already has a layout asset directory")
+    with TemporaryDirectory(prefix=".layout-assets-", dir=root) as temporary:
+        source = Path(temporary) / target.name
+        source.mkdir()
+        for role, body in bodies.items():
+            with (source / f"{role}.svg").open("xb") as stream:
+                stream.write(body)
+        guard_runtime()
+        if not all(path.resolve().is_relative_to(root) for path in (source, target)):
+            raise ValueError("Layout capture paths must stay in the owned session")
+        source.rename(target)
+    return assets
+
+
 @dataclass(frozen=True)
 class ChromeProbe:
     executable: Path
@@ -267,6 +311,7 @@ class ChromeProbe:
     assembly_widget: str | None
     timeout: int
     require_layout: bool = False
+    capture_layout: bool = False
     key: ClassVar[str] = "browser"
     evidence: ClassVar[str] = "arsim_loopback_browser"
 
@@ -281,11 +326,14 @@ class ChromeProbe:
             raise ValueError("Select an installed Google Chrome chrome.exe")
         widget = assembly_dom_id(reviewed["widgets"], self.assembly_widget, self.counter_widget)
         paths = layout_asset_paths(reviewed["widgets"], widget)
-        if self.require_layout and not paths:
+        require_layout = self.require_layout or self.capture_layout
+        if require_layout and not paths:
             raise ValueError("The reviewed widget has no supported 6DData SVG paths")
-        receipt.update(state="ready", assemblyWidgetId=widget, layoutPaths=paths, requireLayoutAssets=self.require_layout,
+        receipt.update(state="ready", assemblyWidgetId=widget, layoutPaths=paths, requireLayoutAssets=require_layout,
                        counterWidgetId=self.counter_widget,
                        chrome={"path": str(chrome), "version": version, "sha256": fingerprint(chrome)})
+        if self.capture_layout:
+            receipt["layoutCapture"] = {"state": "not_started", "assets": {}}
 
         http_port = profile["httpPort"]
 
@@ -302,6 +350,17 @@ class ChromeProbe:
                 self.observe(chrome, session_dir, http_port, guard_runtime, receipt, create_connection)
             except WebSocketException as error:
                 raise ValueError(f"Chrome DevTools transport failed: {error}") from error
+            if self.capture_layout:
+                receipt["state"] = "capturing_layout"
+                capture = receipt["layoutCapture"]
+                capture.update(state="fetching", ownedListener=listener)
+                try:
+                    assets = capture_layout_assets(session_dir, http_port, paths, guard_runtime)
+                except (HTTPException, OSError, RuntimeError, ValueError):
+                    capture["state"] = "failed"
+                    raise
+                capture.update(state="complete", assets=assets)
+                receipt["state"] = "complete"
 
         return probe
 

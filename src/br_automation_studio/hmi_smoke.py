@@ -77,13 +77,14 @@ class HmiProbe:
 
 
 def arsim_hmi_smoke(project, job_dir, pvi, session_dir, timeout, target, chrome,
-                    assembly_widget, browser_timeout, opcua_timeout, *, require_layout=False):
+                    assembly_widget, browser_timeout, opcua_timeout, *, require_layout=False, capture_layout=False):
     binding_report = review_ruc(project, job_dir, replace(target, require_default=True))
     if binding_report["evidence"] != "ruc_binding_readback":
         binding_report["arsimSmoke"] = {"state": "not_started", "packageSha256": None, "assets": [], "cleanup": None}
         return binding_report
 
-    browser = ChromeProbe(chrome, target.dom_id, assembly_widget, browser_timeout, require_layout=require_layout)
+    browser = ChromeProbe(chrome, target.dom_id, assembly_widget, browser_timeout,
+                          require_layout=require_layout, capture_layout=capture_layout)
     probe = HmiProbe(binding_report, browser, opcua_timeout)
     report = arsim_smoke(project, job_dir, pvi, session_dir, timeout, probe, extra_content=(target.content,))
     report["bindingReview"] = binding_report["bindingReview"]

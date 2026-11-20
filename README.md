@@ -93,7 +93,7 @@ Use `ruc_binding_review` to trace a selected one-way mapp View status binding th
 
 For a private loopback fixture, `arsim_smoke` materializes the reviewed RUC and compares served mapp View assets with their packaged bytes. [ARsim smoke workflow](skills/br-automation-studio/references/arsim-smoke.md)
 
-With the optional `browser` extra and Google Chrome, `arsim_browser_smoke` verifies the Assembly6D widget and advancing PLC-bound counter across a page reopen. It reports the layout SVG requests and can require that they succeed. [Headless browser workflow](skills/br-automation-studio/references/arsim-browser-smoke.md)
+With the optional `browser` extra and Google Chrome, `arsim_browser_smoke` verifies the Assembly6D widget and advancing PLC-bound counter across a page reopen. Set `captureLayoutAssets` in the browser or combined HMI check to save the generated SVGs for offline review. [Headless browser workflow](skills/br-automation-studio/references/arsim-browser-smoke.md)
 
 With the optional `opcua` extra, `arsim_opcua_smoke` reads an explicitly selected PLC counter directly from the reviewed ARsim instance and records the reported access levels and advancing values. [Direct OPC UA workflow](skills/br-automation-studio/references/arsim-opcua-smoke.md)
 
