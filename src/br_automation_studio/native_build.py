@@ -13,6 +13,7 @@ from uuid import uuid4
 from zipfile import BadZipFile, ZipFile
 
 from .motion_payloads import plan_motion_payloads, verify_packaged_motion
+from .motion_symbols import plan_motion_symbols, read_motion_symbols
 from .mptraffic_definition import check_installed_definition, verify_packaged_mptraffic
 from .preflight import build_preflight
 from .windows_job import run_build
@@ -79,7 +80,8 @@ def source_tree(root):
 
 
 def plan_build(path, studio_root, runtime_root=None, configuration=None, cpu=None, *,
-               verify_mptraffic_enum=False, verify_motion_payloads=False, verify_motion_declarations=False):
+               verify_mptraffic_enum=False, verify_motion_payloads=False, verify_motion_declarations=False,
+               verify_motion_symbols=False):
     report = build_preflight(path, studio_root, runtime_root, configuration, cpu,
                              verify_motion_declarations=verify_motion_declarations)
     report["buildPlan"] = None
@@ -152,6 +154,12 @@ def plan_build(path, studio_root, runtime_root=None, configuration=None, cpu=Non
         plan["motionPayloads"] = motion
     if verify_motion_declarations:
         plan["motionDeclarations"] = report["motionDeclarations"]
+    if verify_motion_symbols:
+        try:
+            plan["motionSymbols"] = plan_motion_symbols(report)
+        except ValueError as error:
+            issue(report, "error", "motion_symbols_unverified", str(error))
+            return report
     report["buildPlan"] = {"sha256": identity(plan), "manifest": plan}
     return report
 
@@ -206,10 +214,11 @@ def package_evidence(path, job_dir, *, mptraffic=None, motion=None):
 
 def execute_build(path, studio_root, runtime_root, configuration, cpu, plan_sha256, job_directory,
                   timeout_seconds=180, *, verify_mptraffic_enum=False, verify_motion_payloads=False,
-                  verify_motion_declarations=False):
+                  verify_motion_declarations=False, verify_motion_symbols=False):
     report = plan_build(path, studio_root, runtime_root, configuration, cpu,
                         verify_mptraffic_enum=verify_mptraffic_enum, verify_motion_payloads=verify_motion_payloads,
-                        verify_motion_declarations=verify_motion_declarations)
+                        verify_motion_declarations=verify_motion_declarations,
+                        verify_motion_symbols=verify_motion_symbols)
     plan = report["buildPlan"]
     if plan is None:
         return report
@@ -285,14 +294,19 @@ def execute_build(path, studio_root, runtime_root, configuration, cpu, plan_sha2
             issue(report, "error", "native_build_unknown", "Builder exit code and build summary did not establish an outcome")
         else:
             ruc = output / manifest["configuration"] / manifest["cpu"] / "RUCPackage/RUCPackage.zip"
+            artifact_error = "ruc_verification_failed"
             try:
                 job["package"] = package_evidence(ruc, job_dir, mptraffic=definition, motion=motion)
+                if "motionSymbols" in manifest:
+                    artifact_error = "motion_symbols_unverified"
+                    job["motionSymbols"] = read_motion_symbols(job_dir, manifest["configuration"],
+                                                               manifest["motionSymbols"])
                 job["status"] = "succeeded"
                 if summary["warnings"]:
                     issue(report, "warning", "native_build_warnings", f"Automation Studio reported {summary['warnings']} warnings")
             except (BadZipFile, OSError, ValueError) as error:
                 job["status"] = "artifact_failed"
-                issue(report, "error", "ruc_verification_failed", str(error))
+                issue(report, "error", artifact_error, str(error))
     except (OSError, ValueError, RuntimeError) as error:
         job["status"] = "unknown" if job["status"] == "dispatched" else "not_dispatched"
         issue(report, "error", "native_build_error", str(error))

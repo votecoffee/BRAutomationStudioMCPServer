@@ -135,7 +135,8 @@ def build_plan(arguments, request_directory):
     return plan_build(*build_inputs(arguments, request_directory),
                       verify_mptraffic_enum=arguments.get("verifyMpTrafficEnum", False),
                       verify_motion_payloads=arguments.get("verifyMotionPayloads", False),
-                      verify_motion_declarations=arguments.get("verifyMotionDeclarations", False))
+                      verify_motion_declarations=arguments.get("verifyMotionDeclarations", False),
+                      verify_motion_symbols=arguments.get("verifyMotionSymbols", False))
 
 
 def build_execute(arguments, request_directory):
@@ -145,6 +146,7 @@ def build_execute(arguments, request_directory):
         arguments.get("timeoutSeconds", 180), verify_mptraffic_enum=arguments.get("verifyMpTrafficEnum", False),
         verify_motion_payloads=arguments.get("verifyMotionPayloads", False),
         verify_motion_declarations=arguments.get("verifyMotionDeclarations", False),
+        verify_motion_symbols=arguments.get("verifyMotionSymbols", False),
     )
 
 
@@ -387,6 +389,8 @@ BUILD_PLAN = Operation(
         "verifyMpTrafficEnum": SIMULATION_PREFLIGHT.arguments["verifyMpTrafficEnum"],
         "verifyMotionPayloads": {"type": "boolean", "default": False,
                                  "description": "Pin the six AS4 SG4/IA32 motion payloads and verify the produced RUC."},
+        "verifyMotionSymbols": {"type": "boolean", "default": False,
+                                "description": "Verify the generated IEC globals for the 6D assembly and Traffic Manager."},
     },
     required=BUILD_PREFLIGHT.required,
     handler=build_plan,

@@ -14,6 +14,7 @@ from .inspection import inspect_project
 from .json_io import invalid_constant, read_json, unique_object
 from .links import MotionLinks, RULE_ROLES
 from .motion_payloads import verify_packaged_motion
+from .motion_symbols import plan_motion_symbols, read_motion_symbols
 from .native_build import identity, source_tree
 from .project import ProjectXml, SavedFiles, XML_LIMIT, children, tag
 
@@ -335,6 +336,14 @@ def review_ruc(path, job_directory, binding=None, *, geometry_manager=None, incl
                     if payloads != job["package"].get("motionPayloads"):
                         raise ValueError("The packaged motion payloads differ from the job receipt")
                     review["motionPayloads"] = payloads
+                if "motionSymbols" in manifest:
+                    symbols = manifest["motionSymbols"]
+                    if binding is None and symbols != plan_motion_symbols(saved):
+                        raise ValueError("The motion symbol plan differs from the saved configuration")
+                    generated = read_motion_symbols(reader.root, manifest["configuration"], symbols)
+                    if generated != job.get("motionSymbols"):
+                        raise ValueError("The generated motion declarations differ from the job receipt")
+                    review["motionSymbols"] = generated
                 if binding is not None:
                     source = SavedFiles(path.parent)
                     binding_report = result["bindingReview"]

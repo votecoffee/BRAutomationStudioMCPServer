@@ -120,6 +120,8 @@ def markdown(response):
         lines.extend(["", "## Build plan", "",
                       f"- SHA-256 **{plan['sha256']}**",
                       f"- Staged files **{len(plan['manifest']['inputs']['files'])}**"])
+        if symbols := plan["manifest"].get("motionSymbols"):
+            lines.append(f"- Expected generated motion globals {sum(map(len, symbols.values()))}")
     if job := report.get("nativeBuild"):
         lines.extend(["", "## Native job", "",
                       f"- Job {text(job['jobId'])} · {text(job['status'])} at {text(job['directory'])}"])
@@ -131,8 +133,20 @@ def markdown(response):
                 lines.append(f"- Packaged MpTraffic {text(payload['path'])} · SHA-256 {payload['sha256']}")
             if payloads := package.get("motionPayloads"):
                 lines.append(f"- Verified motion payloads {len(payloads)}")
+        if symbols := job.get("motionSymbols"):
+            lines.extend(markdown_motion_symbols(symbols, text))
     lines.extend(markdown_diagnostics(report["diagnostics"], text))
     return "\n".join(lines)
+
+
+def markdown_motion_symbols(files, text):
+    lines = ["", "## Generated motion declarations"]
+    for file in files:
+        lines.extend(["", f"{text(file['path'])} · SHA-256 {file['sha256']}", "",
+                      "| Symbol | IEC type | Line |", "| --- | --- | ---: |"])
+        for row in file["declarations"]:
+            lines.append(f"| {text(row['name'])} | {text(row['type'])} | {row['line']} |")
+    return lines
 
 
 def markdown_motion_interfaces(response, text):
@@ -323,6 +337,8 @@ def markdown_ruc(response, text):
             lines.append(f"- 6D module elements read {len(review['modules'])} · Rendered widgets read {len(review['widgets'])}")
     if summary := review["buildSummary"]:
         lines.append(f"- Builder errors {text(summary['errors'])} · Builder warnings {text(summary['warnings'])}")
+    if symbols := review.get("motionSymbols"):
+        lines.extend(markdown_motion_symbols(symbols, text))
     if smoke is not None:
         lines.extend(["", "## Loopback HTTP", "",
                       f"- Session {text(smoke['state'])} · Runtime {text(smoke.get('runtimeVersion'))}",

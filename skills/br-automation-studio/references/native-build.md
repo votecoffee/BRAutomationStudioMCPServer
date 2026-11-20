@@ -26,6 +26,14 @@ The build needs one exact copy of each pinned payload under `FilesToTransfer/Dat
 
 Set `verifyMotionDeclarations` to `true` on both `build_plan` and `build_execute` to include the [McAcp6D and MpTraffic declaration review](build-preflight.md#verify-mapp-6d-iec-declarations) in the plan. The build records the selected catalog and project evidence in `manifest.motionDeclarations`. The existing staged source and catalog checks rehash the declaration files before dispatch. This option can be used with both `verifyMotionPayloads` and `verifyMpTrafficEnum`.
 
+### Verify the generated assembly and Traffic Manager globals
+
+With br-studio 0.46.0 or later, set `verifyMotionSymbols` to `true` on both `build_plan` and `build_execute`. The plan records the expected IEC names and types under `manifest.motionSymbols`, based on the selected CPU's registered assemblies, Traffic Managers and linked station and waypoint objects.
+
+When the builder completes, the CLI checks `Mc6DElements.var` and, for a Traffic Manager, `TrafficElements.var` under `temporary/Includes/AS_TempDecl/<configuration>/GlobalComponents`. A missing name, duplicate symbol or unexpected type fails artifact verification. The receipt records the original declaration paths, hashes and source lines under `nativeBuild.motionSymbols`. Keep those exact files with `plan.json`, `job.json`, the build log and the RUC. [Retained RUC workflow](ruc-review.md)
+
+Use the generated names when assigning the inputs of the assembly and station function blocks. Read the verified library's [public pin and type declarations](build-preflight.md#read-selected-function-block-pins) to confirm how each generated name is passed to the selected function block.
+
 ## Run the pinned copy
 
 Create a request using the same arguments as the plan. Below, replace the example hash with `result.buildPlan.sha256` and choose an unused `jobDirectory` under an existing parent outside the input roots.

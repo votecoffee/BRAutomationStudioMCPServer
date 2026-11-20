@@ -34,6 +34,7 @@ The report at `rucReview.startPageWidget` identifies the saved files and the mat
 | Archive | The current ZIP's size, SHA-256, and member count match the job receipt. The reviewer reads selected members directly, using their ZIP CRCs. |
 | ACOPOS 6D | Readable XML in the expected `FilesToTransfer/Data0/*.br` modules preserves module identities and assembly–layout and manager–list references. The comparison includes station and waypoint types and the multiplicity of each directed edge. Each compiled endpoint is resolved within its own manager. |
 | Pinned motion payloads | For a job built with `verifyMotionPayloads`, the review checks all six SG4/IA32 binary hashes against the plan and the retained job. [Motion payload pins](native-build.md#verify-the-motion-payloads-in-the-ruc) |
+| Generated motion globals | For a job built with `verifyMotionSymbols`, retain the generated declaration files at their receipt-relative paths. The review checks their names, types, source lines and file hashes against the saved configuration and job. Read `rucReview.motionSymbols` for the result. [Generated motion globals](native-build.md#verify-the-generated-assembly-and-traffic-manager-globals) |
 | Traffic rules | The linked exclusivity groups preserve their names and typed member, entry and exit references. [Traffic rule review](traffic-rule-review.md) |
 | mapp View | The expected AS4 content's rendered `brease.setOptions` JSON identifies the widget class, `mpLink` and `mpLinkTrafficManager`. The corresponding Assembly6D script path is present in the archive. |
 

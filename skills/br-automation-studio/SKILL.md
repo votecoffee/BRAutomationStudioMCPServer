@@ -13,7 +13,7 @@ Use `build_preflight` when checking an identified AS4 installation against the s
 
 Use `simulation_environment` to check the installed AS4 packages and simulator during workstation setup. Use the [complete simulation preflight](references/simulation-preflight.md) with the saved project and native LaunchPad export before the motion run.
 
-For a native build on a trusted saved copy, follow the [native AS4 build workflow](references/native-build.md). It pins the source and toolchain and retains the RUC and builder log.
+For a native build on a trusted saved copy, follow the [native AS4 build workflow](references/native-build.md). It pins the source and toolchain and retains the RUC and builder log. Use [generated motion globals](references/native-build.md#verify-the-generated-assembly-and-traffic-manager-globals) when wiring the configured assembly, manager and station references.
 
 Use the [RUC review workflow](references/ruc-review.md) to bind the package to a successful job and compare its compiled 6D routes and widget links with the matching saved project.
 

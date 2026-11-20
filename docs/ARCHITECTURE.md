@@ -15,6 +15,7 @@ The standalone CLI exposes `project_inspect` for a saved project and `build_pref
 | `src/br_automation_studio/preflight.py` | Compare saved selections and selected library dependencies with local AS4 catalogs. |
 | `src/br_automation_studio/simulation_preflight.py` | Check a reviewed AS4 mapp 6D pair, exact package selection, simulator media and registration, and native LaunchPad export identity. |
 | `src/br_automation_studio/native_build.py` and `windows_job.py` | Pin an installed AS4 toolchain and source tree, stage a private copy, run the native PC simulation build, and retain a job receipt with RUC evidence. |
+| `src/br_automation_studio/motion_symbols.py` | Compare generated AS4 IEC globals with the selected assembly, Traffic Manager and linked station and waypoint declarations. |
 | `src/br_automation_studio/links.py` | Resolve assemblies, traffic objects, mappings, linked exclusivity groups and widget references. |
 | `src/br_automation_studio/ruc_review.py` | Bind a retained archive to a completed build and compare the saved and compiled links, routes and linked rules. |
 | `scripts/decode-launchpad.cjs` and `src/br_automation_studio/launchpad_route.py` | Decode a known LaunchPad save locally, bind its readback to the source hash, and compare typed edges with a selected saved or compiled manager. |

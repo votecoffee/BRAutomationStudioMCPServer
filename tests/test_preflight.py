@@ -207,6 +207,56 @@ class BuildPreflightTests(unittest.TestCase):
         self.assertEqual(json.loads((self.root / "job1/job.json").read_bytes()), result)
         self.assertEqual((self.project / "BuildOnly/old.txt").read_text(encoding="utf-8"), "previous output")
 
+    def test_generated_motion_symbols_are_pinned_and_verified_after_native_build(self):
+        self.local_core("5.29.1")
+        plan = self.native_request("build_plan", verifyMotionSymbols=True)["result"]["buildPlan"]
+        expected = plan["manifest"]["motionSymbols"]
+        self.assertEqual(expected["Mc6DElements.var"], [{"name": "FixtureAssembly", "type": "Mc6DAssemblyType"}])
+        self.assertEqual(expected["TrafficElements.var"], [
+            {"name": "DemoTraffic", "type": "MpTrafficManagerType"},
+            {"name": "Load", "type": "MpTrafficStationType"},
+            {"name": "Transit", "type": "MpTrafficWaypointType"},
+            {"name": "Inspect", "type": "MpTrafficStationType"},
+        ])
+
+        def worker(args, project, dispatch, log, timeout):
+            dispatch(42)
+            ruc = Path(args[args.index("-o") + 1]) / "ARsim/PC/RUCPackage/RUCPackage.zip"
+            ruc.parent.mkdir(parents=True)
+            with ZipFile(ruc, "w") as archive:
+                archive.writestr("FilesToTransfer/Data0/Test.br", "synthetic build")
+            generated = Path(args[args.index("-t") + 1]) / "Includes/AS_TempDecl/ARsim/GlobalComponents"
+            for filename, rows in expected.items():
+                lines = ["VAR"]
+                for row in rows:
+                    lines.append(f"    {row['name']} : {{REDUND_UNREPLICABLE}} {row['type']}; (* trace *)")
+                content = "\n".join(lines + ["END_VAR", ""])
+                if project.parent.name == "mistyped":
+                    content = content.replace("Transit : {REDUND_UNREPLICABLE} MpTrafficWaypointType;",
+                                              "Transit : {REDUND_UNREPLICABLE} MpTrafficStationType;")
+                self.put(generated / filename, content)
+            log.write(b"Build: 0 error(s), 0 warning(s)\r\n")
+            return 0, False, "empty"
+
+        with patch("br_automation_studio.native_build.run_build", side_effect=worker) as native:
+            omitted = self.native_request("build_execute", planSha256=plan["sha256"], jobDirectory="omitted")
+            self.assertEqual(omitted["result"]["diagnostics"][-1]["code"], "build_plan_changed")
+            native.assert_not_called()
+            result = self.native_request("build_execute", planSha256=plan["sha256"], verifyMotionSymbols=True,
+                                         jobDirectory="recognized")
+            bad = self.native_request("build_execute", planSha256=plan["sha256"], verifyMotionSymbols=True,
+                                      jobDirectory="mistyped")["result"]
+        job = result["result"]["nativeBuild"]
+        self.assertEqual(job["status"], "succeeded")
+        self.assertEqual(job, json.loads((self.root / "recognized/job.json").read_bytes()))
+        assembly, traffic = job["motionSymbols"]
+        self.assertEqual(sha256((self.root / "recognized" / assembly["path"]).read_bytes()).hexdigest(),
+                         assembly["sha256"])
+        self.assertEqual(traffic["declarations"][2], {"name": "Transit", "type": "MpTrafficWaypointType", "line": 4})
+        self.assertIn("| Transit | MpTrafficWaypointType | 4 |", markdown(result))
+        self.assertEqual(bad["nativeBuild"]["status"], "artifact_failed")
+        self.assertEqual(bad["diagnostics"][-1]["code"], "motion_symbols_unverified")
+
     def test_mptraffic_read_set_is_part_of_the_native_plan_identity(self):
         _, catalog, enum = self.prepare_mptraffic_definition()
         plan = self.native_request("build_plan", verifyMpTrafficEnum=True)["result"]["buildPlan"]
