@@ -153,6 +153,14 @@ def markdown_motion_interfaces(response, text):
                       "| Pin | Direction | IEC type | Line |", "| --- | --- | --- | ---: |"])
         for pin in block["pins"]:
             lines.append(f"| {text(pin['name'])} | {text(pin['direction'])} | {text(pin['type'])} | {pin['line']} |")
+    if fields := review.get("fields"):
+        lines.extend(["", "## Requested STRUCT fields", "", "| Field | State | IEC type | Owner | Source line |",
+                      "| --- | --- | --- | --- | --- |"])
+        for row in fields:
+            source = row.get("source", {})
+            location = f"{source['path']}:{row['line']}" if source else None
+            lines.append(f"| {text(row['path'])} | {text(row['state'])} | {text(row.get('type'))} "
+                         f"| {text(row.get('owner'))} | {text(location)} |")
     lines.extend(markdown_diagnostics(report["diagnostics"], text))
     return "\n".join(lines)
 

@@ -75,7 +75,7 @@ Use `build_plan` and `build_execute` to compile a pinned AS4 PC simulation proje
 
 After building, use `ruc_review` to compare the retained package's 6D modules, typed routes, linked exclusivity groups, and rendered widget links with the saved inputs. Supply `startPageWidgetId` to verify the default page placement of an Assembly6D widget. [RUC review workflow](skills/br-automation-studio/references/ruc-review.md) · [Traffic rule review](skills/br-automation-studio/references/traffic-rule-review.md)
 
-Use `motion_interface_review` to look up the public pins and IEC types of selected McAcp6D and MpTraffic blocks in the verified package. [Function-block interface workflow](skills/br-automation-studio/references/build-preflight.md#read-selected-function-block-pins)
+Use `motion_interface_review` to look up the public pins and nested IEC types of selected McAcp6D and MpTraffic blocks in the verified package. [Function-block interface workflow](skills/br-automation-studio/references/build-preflight.md#read-selected-function-block-pins)
 
 Use `assembly_io_review` to trace the selected assembly's communication variable references to saved IEC declarations and check its compiled read-axis flags. [Assembly I/O workflow](skills/br-automation-studio/references/assembly-io-review.md)
 

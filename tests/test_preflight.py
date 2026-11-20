@@ -406,6 +406,37 @@ class BuildPreflightTests(unittest.TestCase):
         self.assertEqual(phantom["state"], "unverified")
         self.assertIn("| Target | in_out | REFERENCE TO DeviceType | 10 |", markdown(response))
 
+    def test_motion_field_lookup_traces_structs_and_distinguishes_missing_fields(self):
+        saved, catalog = self.declaration_fixture()
+        formals = ("FUNCTION_BLOCK ExampleStatus\nVAR_OUTPUT\nInfo : PublicStatus;\n"
+                   "Scalar : INT;\nEND_VAR\nEND_FUNCTION_BLOCK\n")
+        types = ("TYPE\nPublicStatus : STRUCT\nBus : CatalogBus;\n"
+                 "END_STRUCT;\nEND_TYPE\n")
+        for folder in (saved, catalog["McAcp6D"]):
+            self.put(folder / "McAcp6D.fun", formals)
+            self.put(folder / "McAcp6D.typ", types)
+        self.put(catalog["MpTraffic"] / "MpTraffic.typ",
+                 "TYPE\nCatalogBus : STRUCT\nCount : UINT;\nEND_STRUCT;\nEND_TYPE\n")
+
+        paths = ["ExampleStatus.Info.Bus.Count", "ExampleStatus.Info.CommunicationReady", "ExampleStatus.Scalar.Value"]
+        response = self.native_request("motion_interface_review", blocks=["ExampleStatus"], fieldPaths=paths)
+        report = response["result"]
+        readback = report["motionInterfaceReview"]["fields"]
+        verified, missing, unverified = readback
+        self.assertEqual([row["state"] for row in readback], ["verified", "missing", "unverified"])
+        self.assertEqual(verified["type"], "UINT")
+        self.assertEqual(verified["line"], 3)
+        self.assertEqual([step["owner"] for step in verified["trace"]], ["ExampleStatus", "PublicStatus", "CatalogBus"])
+        self.assertEqual([step["source"]["origin"] for step in verified["trace"]], ["project", "project", "catalog"])
+        self.assertEqual(missing["owner"], "PublicStatus")
+        self.assertEqual(missing["line"], 2)
+        self.assertEqual([item["code"] for item in report["diagnostics"][-2:]],
+                         ["motion_field_missing", "motion_field_unverified"])
+        self.assertIn("ExampleStatus.Info.Bus.Count | verified | UINT | CatalogBus", markdown(response))
+        with self.assertRaisesRegex(InvalidRequest, "selected block"):
+            self.native_request("motion_interface_review", blocks=["ExampleStatus"],
+                                fieldPaths=["Other.Info.Bus.Count"])
+
     def test_function_block_review_rejects_ambiguous_and_invalid_inputs(self):
         _, catalog = self.declaration_fixture()
         self.put(catalog["MpTraffic"] / "MpTraffic.fun",

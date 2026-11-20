@@ -49,6 +49,12 @@ Use `motion_interface_review` with the same project, catalog and CPU selection a
 
 Run `br-studio run --request <request.json> --format markdown` for the pin tables. The JSON includes the selected mapp 6D package build, library versions, source path and hash, and declaration lines. Multiple or missing definitions and unsupported syntax produce diagnostics. The report covers the named public formals in the supported AS4 `.fun` format. Use the exact selected package for nested type fields and runtime semantics.
 
+### Trace nested STRUCT members
+
+With br-studio 0.44.0 or later, add `fieldPaths` to the `motion_interface_review` request to resolve selected nested members. Each path starts with a block included in `blocks` and follows the public pin and named fields. For example, `["MpTrafficStationMonitor.DetectedShuttle.Shuttle.ShuttleID"]` reads the declaration chain for the detected shuttle ID.
+
+The result includes the type and source line of each hop through the verified `.fun` and `.typ` files. A `missing` path identifies a field omitted from an inspected declaration. An `unverified` path identifies a chain the tool could not resolve, including ambiguous types and indirect references. The check follows directly declared `STRUCT` members. Use [the event-code review](cycle-scan-capture.md) for numeric values of the selected detection enum.
+
 ## Interpret the evidence
 
 | Check | What the report establishes |

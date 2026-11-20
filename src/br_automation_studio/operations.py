@@ -17,7 +17,7 @@ from .layout_svg import layout_svg_review
 from .launchpad_frame import launchpad_frame_review
 from .launchpad_geometry import GeometryCriteria
 from .launchpad_route import launchpad_route_review
-from .motion_interfaces import SYMBOL, review_motion_interfaces
+from .motion_interfaces import FIELD_PATH, SYMBOL, review_motion_interfaces
 from .native_build import execute_build, plan_build
 from .opcua_smoke import OpcUaProbe
 from .preflight import build_preflight
@@ -100,7 +100,13 @@ def run_motion_interface_review(arguments, request_directory):
         raise InvalidRequest("blocks must contain IEC function-block names")
     if len({name.casefold() for name in blocks}) != len(blocks):
         raise InvalidRequest("blocks must contain distinct function-block names")
-    return review_motion_interfaces(*build_inputs(arguments, request_directory), blocks)
+    paths = arguments.get("fieldPaths", ())
+    labels = {name.casefold() for name in blocks}
+    if any(FIELD_PATH.fullmatch(path) is None or path.partition(".")[0].casefold() not in labels for path in paths):
+        raise InvalidRequest("fieldPaths must name a selected block and its pin and STRUCT fields")
+    if len({path.casefold() for path in paths}) != len(paths):
+        raise InvalidRequest("fieldPaths must contain distinct field paths")
+    return review_motion_interfaces(*build_inputs(arguments, request_directory), blocks, paths)
 
 
 def run_simulation_environment(arguments, request_directory):
@@ -338,6 +344,9 @@ MOTION_INTERFACE_REVIEW = Operation(
         "blocks": {"type": "array", "minItems": 1, "maxItems": 32,
                    "items": {"type": "string", "minLength": 1, "maxLength": 128},
                    "description": "Distinct IEC function-block names in McAcp6D or MpTraffic."},
+        "fieldPaths": {"type": "array", "minItems": 1, "maxItems": 64,
+                       "items": {"type": "string", "minLength": 1, "maxLength": 512},
+                       "description": "Optional Block.Pin.Field paths through directly declared STRUCT members."},
     },
     required=(*BUILD_PREFLIGHT.required, "blocks"),
     handler=run_motion_interface_review,
