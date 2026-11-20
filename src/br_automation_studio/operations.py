@@ -23,6 +23,7 @@ from .preflight import build_preflight
 from .ruc_review import review_ruc
 from .runtime_capture import RuntimeScanCapture
 from .simulation_preflight import PAIRS, simulation_environment, simulation_preflight
+from .start_page import StartPageWidget
 from .station_trace import station_trace_review
 from .widget_packages import widget_package_review
 
@@ -125,8 +126,10 @@ def build_execute(arguments, request_directory):
 
 
 def ruc_review(arguments, request_directory):
+    widget = arguments.get("startPageWidgetId")
     return review_ruc(project_path(arguments, request_directory),
-                      request_directory / arguments["jobDirectory"])
+                      request_directory / arguments["jobDirectory"],
+                      start_widget=StartPageWidget(widget) if widget is not None else None)
 
 
 def run_assembly_io_review(arguments, request_directory):
@@ -350,12 +353,18 @@ BUILD_EXECUTE = Operation(
     required=(*BUILD_PLAN.required, "planSha256", "jobDirectory"),
     handler=build_execute,
 )
+RUC_INPUTS = {
+    "project": PROJECT_INSPECT.arguments["project"],
+    "jobDirectory": {"type": "string", "minLength": 1, "description": "Directory holding the retained build receipts and RUC archive."},
+}
+
 RUC_REVIEW = Operation(
     name="ruc_review",
     summary="Verify a retained AS4 RUC job and compare its 6D modules, routes and widget links with saved sources.",
     arguments={
-        "project": PROJECT_INSPECT.arguments["project"],
-        "jobDirectory": {"type": "string", "minLength": 1, "description": "Directory holding the retained build receipts and RUC archive."},
+        **RUC_INPUTS,
+        "startPageWidgetId": {"type": "string", "minLength": 1,
+                              "description": "Optional Assembly6D DOM ID to verify on the default visualization's start page."},
     },
     required=("project", "jobDirectory"),
     handler=ruc_review,
@@ -382,7 +391,7 @@ LAYOUT_SVG_REVIEW = Operation(
     name="layout_svg_review",
     summary="Compare retained AS4 layout SVG geometry and traffic links with the saved project and RUC.",
     arguments={
-        **RUC_REVIEW.arguments,
+        **RUC_INPUTS,
         "managerId": {"type": "string", "minLength": 1, "description": "Selected Traffic Manager element ID."},
         "assemblySvg": {"type": "string", "minLength": 1, "description": "Retained generated assembly SVG file."},
         "trafficSvg": {"type": "string", "minLength": 1, "description": "Retained generated Traffic Manager SVG file."},
@@ -489,7 +498,7 @@ RUC_BINDING_REVIEW = Operation(
     name="ruc_binding_review",
     summary="Trace a one-way mapp View value binding from saved sources through a reviewed AS4 RUC.",
     arguments={
-        **RUC_REVIEW.arguments,
+        **RUC_INPUTS,
         "visualizationId": {"type": "string", "minLength": 1, "description": "Saved visualization ID."},
         "contentId": {"type": "string", "minLength": 1, "description": "Saved content ID."},
         "widgetId": {"type": "string", "minLength": 1, "description": "Saved widget ID within that content."},
@@ -502,7 +511,7 @@ ARSIM_SMOKE = Operation(
     name="arsim_smoke",
     summary="Materialize a reviewed AS4 RUC and verify its mapp View assets over owned loopback HTTP.",
     arguments={
-        **RUC_REVIEW.arguments,
+        **RUC_INPUTS,
         "pviTransfer": {"type": "string", "minLength": 1, "description": "Path to installed PVI 4 PVITransfer.exe."},
         "sessionDirectory": {"type": "string", "minLength": 1, "description": "New private directory for the ARsim smoke session."},
         "timeoutSeconds": {"type": "integer", "minimum": 1, "maximum": 120, "default": 30},

@@ -308,6 +308,15 @@ def markdown_ruc(response, text):
                     lines.append(f"- {text(endpoint['host'])}:{text(endpoint['port'])} · {text(endpoint['namespaceUri'])}")
                 if "accessLevel" in values:
                     lines.append(f"- Data type {text(values['dataType'])} · AccessLevel {text(values['accessLevel'])}")
+    if start := review.get("startPageWidget"):
+        lines.extend(["", "## Default visualization start page", "",
+                      f"- {text(start['state'])} · Assembly6D widget {text(start['domId'])}"])
+        if saved := start.get("saved"):
+            identifiers = ("visualizationId", "pageId", "layoutId", "areaId", "contentId")
+            lines.append("- " + " → ".join(text(saved[key]) for key in identifiers))
+        if compiled := start.get("compiled"):
+            lines.append(f"- Generated client map {text(compiled['clientMap'])}")
+            lines.append(f"- Generated content {text(compiled['contentUrl'])}")
     if layout_device := report.get("layoutDeviceReview"):
         lines.extend(markdown_layout_device(layout_device, text))
     if layout_svg := report.get("layoutSvgReview"):

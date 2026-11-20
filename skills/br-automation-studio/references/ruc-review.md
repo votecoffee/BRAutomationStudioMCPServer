@@ -20,6 +20,12 @@ Discover the contract with `br-studio operation-help ruc_review`. Write a UTF-8 
 
 Run `br-studio run --request <review-request.json>`. Add `--format markdown` to read the result as a report. If you save both formats, confirm that the RUC and plan hashes agree.
 
+## Verify the default page placement of Assembly6D
+
+With br-studio 0.39.0 or later, add `"startPageWidgetId": "Overview_PlanarDisplay"` to the `ruc_review` request arguments. Use the exact `ContentId_WidgetId` of the Assembly6D widget expected on the default page. The review follows the selected CPU's registered mapp View server configuration and visualization to the saved start page, layout, and area with a direct content assignment.
+
+The report at `rucReview.startPageWidget` identifies the saved files and the matching compiled server configuration, visualization, generated client JSON, and content HTML. The review checks the same content URL in the client map, the single DOM element with the selected ID and Assembly6D class, and the saved and rendered assembly and manager links. This workflow covers the direct AS4 v2 start-page assignment. Continue with the [browser and bundle check](arsim-browser-smoke.md) for runtime evidence.
+
 ## Evidence in the result
 
 | Check | Evidence |

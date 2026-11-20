@@ -14,7 +14,7 @@ from br_automation_studio.binding_review import NODESETS, SERVER
 from br_automation_studio.cli import markdown
 from br_automation_studio.native_build import identity, source_tree
 from br_automation_studio.operations import execute
-from br_automation_studio.ruc_review import CONTENT, DATA, WIDGET_SCRIPT
+from br_automation_studio.ruc_review import CONTENT, DATA, VIEW, WIDGET_SCRIPT
 
 FIXTURE = Path(__file__).resolve().parent / "fixtures/Loop"
 RUC_PATH = "binary/ARsim/PC/RUCPackage/RUCPackage.zip"
@@ -77,9 +77,81 @@ class RucReviewTests(unittest.TestCase):
         self.write("job.json", job)
         return job
 
-    def review(self):
+    def review(self, **options):
         return execute({"schemaVersion": 1, "workspace": "readback", "operation": "ruc_review",
-                        "arguments": {"project": "Loop/Loop.apj", "jobDirectory": "retained"}}, self.root)
+                        "arguments": {"project": "Loop/Loop.apj", "jobDirectory": "retained", **options}}, self.root)
+
+    def add_start_page(self):
+        cpu = self.project / "Physical/ARsim/PC/Cpu.pkg"
+        cpu.write_bytes(cpu.read_bytes().replace(
+            b"</Objects>", b'<Object Type="File">Server.mappviewcfg</Object>'
+            b'<Object Type="File">Panel.vis</Object></Objects>'))
+        logical = self.project / "Logical/mappView/Package.pkg"
+        logical.write_bytes(logical.read_bytes().replace(
+            b"</Objects>", b'<Object Type="File">Overview.page</Object>'
+            b'<Object Type="File">Panel.layout</Object></Objects>'))
+        configuration = (b'<Configuration><Element Type="MAPPVIEWCFG"><Group ID="Client">'
+                         b'<Property ID="defaultVisu" Value="CounterPanel"/></Group></Element></Configuration>')
+        visualization = (b'<v:Visualization xmlns:v="http://www.br-automation.com/iat2015/visualizationDefinition/v2"'
+                         b' id="CounterPanel"><StartPage pageRefId="Overview"/><Pages><Page refId="Overview"/></Pages>'
+                         b'<Contents><Content refId="DemoOverview"/></Contents></v:Visualization>')
+        (cpu.parent / "Server.mappviewcfg").write_bytes(configuration)
+        (cpu.parent / "Panel.vis").write_bytes(visualization)
+        page = logical.parent / "Overview.page"
+        page.write_bytes(b'<p:Page xmlns:p="http://www.br-automation.com/iat2015/pageDefinition/v2"'
+                         b' id="Overview" layoutRefId="Panel"><Assignments>'
+                         b'<Assignment type="Content" areaRefId="Main" baseContentRefId="DemoOverview"/>'
+                         b'</Assignments></p:Page>')
+        (logical.parent / "Panel.layout").write_bytes(
+            b'<l:Layout xmlns:l="http://www.br-automation.com/iat2015/layoutDefinition/v2" id="Panel">'
+            b'<Areas><Area id="Main"/><Area id="Side"/></Areas></l:Layout>')
+        self.plan["manifest"]["inputs"] = source_tree(self.project)
+        self.plan["sha256"] = identity(self.plan["manifest"])
+        self.write("plan.json", self.plan)
+        self.members[f"{SERVER}/Server.mappviewcfg"] = configuration
+        self.members[DISPLAY] = visualization
+        self.members[WIDGET] += (
+            b'<div id="DemoOverview_LoopOverview" data-brease-widget="widgets/mapp6D/Assembly6D">CONTENT</div>')
+        client = {"startPage": "Overview",
+                  "pages": {"Overview": {"layout": "Panel", "assignments": [
+                      {"areaId": "Main", "type": "Content", "contentId": "DemoOverview"}]}},
+                  "layouts": {"Panel": {"areas": {"Main": {}, "Side": {}}}},
+                  "contents": {"DemoOverview": {"path": "/contents/mappView/DemoOverview.html"}}}
+        self.members[f"{VIEW}/CounterPanel.json"] = json.dumps(client).encode("utf-8")
+        return client
+
+    def test_start_page_widget_matches_the_saved_and_generated_startup_path(self):
+        self.add_start_page()
+        self.package()
+        response = self.review(startPageWidgetId="DemoOverview_LoopOverview")
+        self.assertEqual(response["status"], "complete", response["result"]["diagnostics"])
+        found = response["result"]["rucReview"]["startPageWidget"]
+        self.assertEqual(found["state"], "matched")
+        self.assertEqual(found["saved"]["areaId"], "Main")
+        self.assertEqual(found["compiled"]["clientMap"], f"{VIEW}/CounterPanel.json")
+        self.assertEqual(found["compiled"]["assembly"], "FixtureAssembly")
+        self.assertIn("CounterPanel → Overview → Panel → Main → DemoOverview", markdown(response))
+
+    def test_widget_options_cannot_substitute_for_the_generated_placement_or_dom(self):
+        client = self.add_start_page()
+        path = f"{VIEW}/CounterPanel.json"
+        original = self.members[path]
+        placement = client["pages"]["Overview"]["assignments"][0]
+        placement["areaId"] = "Side"
+        self.members[path] = json.dumps(client).encode("utf-8")
+        self.package()
+        response = self.review(startPageWidgetId="DemoOverview_LoopOverview")
+        self.assertEqual(self.codes(response), ["start_page_widget_mismatch"])
+        self.assertIn("assignment differs", response["result"]["diagnostics"][0]["message"])
+
+        self.members[path] = original
+        self.members[WIDGET] = self.members[WIDGET].split(b"<div", 1)[0]
+        self.package()
+        response = self.review(startPageWidgetId="DemoOverview_LoopOverview")
+        self.assertEqual(self.codes(response), ["start_page_widget_mismatch"])
+        self.assertIn("DOM element", response["result"]["diagnostics"][0]["message"])
+        self.assertEqual(self.review()["status"], "complete")
+
 
     def codes(self, response):
         return [item["code"] for item in response["result"]["diagnostics"]]

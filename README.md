@@ -73,7 +73,7 @@ Use `simulation_environment` to check the AS4 package catalog, simulator registr
 
 Use `build_plan` and `build_execute` to compile a pinned AS4 PC simulation project and collect the RUC archive and builder log. Build dispatch supports short Windows drive aliases for deeply nested jobs. [Native build and pinned MpTraffic workflow](skills/br-automation-studio/references/native-build.md)
 
-After building, use `ruc_review` to compare the retained package's 6D modules, typed routes, linked exclusivity groups, and rendered widget links with the saved inputs. [RUC review workflow](skills/br-automation-studio/references/ruc-review.md) · [Traffic rule review](skills/br-automation-studio/references/traffic-rule-review.md)
+After building, use `ruc_review` to compare the retained package's 6D modules, typed routes, linked exclusivity groups, and rendered widget links with the saved inputs. Supply `startPageWidgetId` to verify the default page placement of an Assembly6D widget. [RUC review workflow](skills/br-automation-studio/references/ruc-review.md) · [Traffic rule review](skills/br-automation-studio/references/traffic-rule-review.md)
 
 Use `assembly_io_review` to trace the selected assembly's communication variable references to saved IEC declarations and check its compiled read-axis flags. [Assembly I/O workflow](skills/br-automation-studio/references/assembly-io-review.md)
 

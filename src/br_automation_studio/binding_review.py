@@ -47,6 +47,12 @@ def nested(node, *names):
     return level
 
 
+def default_visualizations(root):
+    return [item.get("Value") for element in nested(root, "Element") if element.get("Type") == "MAPPVIEWCFG"
+            for group in nested(element, "Group") if group.get("ID") == "Client"
+            for item in nested(group, "Property") if item.get("ID") == "defaultVisu"]
+
+
 def saved_documents(source, paths, suffix, root):
     for path in paths:
         if path.suffix.lower() == suffix:
@@ -192,10 +198,7 @@ class BindingTarget:
         output.update(visualization=visu_path, binding=binding.as_posix())
 
     def check_default(self, root, path):
-        values = [item.get("Value") for element in nested(root, "Element") if element.get("Type") == "MAPPVIEWCFG"
-                  for group in nested(element, "Group") if group.get("ID") == "Client"
-                  for item in nested(group, "Property") if item.get("ID") == "defaultVisu"]
-        require(values == [self.visualization], path,
+        require(default_visualizations(root) == [self.visualization], path,
                 f"The default visualization must be {self.visualization!r} for the browser check")
 
     def check(self, archive, source, manifest, report):
