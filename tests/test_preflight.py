@@ -277,6 +277,116 @@ class BuildPreflightTests(unittest.TestCase):
                     self.assertIsNone(job["package"])
                     self.assertEqual(response["result"]["diagnostics"][-1]["code"], "ruc_verification_failed")
 
+    def motion_payload_fixture(self):
+        logical = self.project / "Logical"
+        package = logical / "Package.pkg"
+        package.write_bytes(package.read_bytes().replace(
+            b"</Objects>", b'<Object Type="Package">Libraries</Object>'
+            b'<Object Type="File">McDriveLog.br</Object></Objects>'))
+        self.put(logical / "Libraries/Package.pkg",
+                 '<Package><Objects><Object Type="Library">McBase</Object>'
+                 '<Object Type="Library">MpBase</Object></Objects></Package>')
+        self.put(self.project / "Physical/ARsim/PC/Cpu.sw",
+                 '<SwConfiguration><Libraries>'
+                 '<LibraryObject Name="McBase" Source="Libraries.McBase.lby"/>'
+                 '<LibraryObject Name="MpBase" Source="Libraries.MpBase.lby"/>'
+                 '</Libraries><Binaries><BinaryObject Name="McDriveLog" Source="McDriveLog.br"/>'
+                 '</Binaries></SwConfiguration>')
+        for name, version in (("McBase", "5.29.1"), ("MpBase", "5.24.1")):
+            self.put(logical / f"Libraries/{name}/binary.lby", self.library(version))
+        catalog = self.studio / PACKAGES / "mapp6D/2.2.0"
+        system = catalog / "Modules/McAcp6DSys/V2.02.0/SG4/IA32/McAcp6DSys.br"
+        payloads = {
+            **{name: catalog / f"Library/{name}/V2.02.0/SG4/IA32/{name}.br" for name in ("McAcp6D", "MpTraffic")},
+            **{name: logical / f"Libraries/{name}/SG4/IA32/{name}.br" for name in ("McBase", "MpBase")},
+            "McAcp6DSys": system, "McDriveLog": logical / "McDriveLog.br",
+        }
+        for name, path in payloads.items():
+            self.put(path, f"synthetic payload for {name}")
+        return payloads
+
+    def test_project_and_catalog_motion_libraries_must_agree(self):
+        sources = self.motion_payload_fixture()
+        registry = self.project / "Logical/Libraries/Package.pkg"
+        registry.write_bytes(registry.read_bytes().replace(
+            b"</Objects>", b'<Object Type="Library">McAcp6D</Object></Objects>'))
+        folder = registry.parent / "McAcp6D"
+        self.put(folder / "binary.lby", self.library("2.02.0"))
+        payload = folder / "SG4/IA32/McAcp6D.br"
+        payload.parent.mkdir(parents=True)
+        shutil.copyfile(sources["McAcp6D"], payload)
+        response = self.native_request("build_plan", verifyMotionPayloads=True)
+        motion = response["result"]["buildPlan"]["manifest"]["motionPayloads"]
+        pin, = (pin for pin in motion["pins"] if pin["name"] == "McAcp6D")
+        catalog_path = sources["McAcp6D"].relative_to(self.studio).as_posix()
+        self.assertEqual(pin["matchingCatalogPath"], catalog_path)
+        self.assertIn({"path": catalog_path, "sha256": pin["sha256"]}, motion["studioSnapshot"]["files"])
+        self.put(payload, "a different library with the same descriptor version")
+        rejected = self.native_request("build_plan", verifyMotionPayloads=True)["result"]
+        self.assertIsNone(rejected["buildPlan"])
+        self.assertEqual(rejected["diagnostics"][-1]["code"], "motion_payloads_unverified")
+        self.assertIn("differ for McAcp6D", rejected["diagnostics"][-1]["message"])
+
+    def test_motion_catalog_binary_is_checked_again_after_staging(self):
+        sources = self.motion_payload_fixture()
+        plan = self.native_request("build_plan", verifyMotionPayloads=True)["result"]["buildPlan"]
+
+        def stage_and_change(manifest, destination):
+            stage_inputs(manifest, destination)
+            self.put(sources["McAcp6DSys"], "changed version of the same file name")
+
+        with (patch("br_automation_studio.native_build.stage_inputs", side_effect=stage_and_change),
+              patch("br_automation_studio.native_build.run_build") as worker):
+            outcome = self.native_request("build_execute", verifyMotionPayloads=True, planSha256=plan["sha256"],
+                                          jobDirectory="changed-catalog")
+            worker.assert_not_called()
+        result = outcome["result"]
+        self.assertEqual(result["nativeBuild"]["status"], "not_dispatched")
+        self.assertIn("Installation evidence changed before dispatch", result["diagnostics"][-1]["message"])
+        self.assertTrue(result["diagnostics"][-1]["message"].endswith("McAcp6DSys.br"))
+
+    def test_motion_pin_requires_all_six_exact_ruc_members(self):
+        sources = self.motion_payload_fixture()
+        payloads = {name: path.read_bytes() for name, path in sources.items()}
+        plan = self.native_request("build_plan", verifyMotionPayloads=True)["result"]["buildPlan"]
+        pins = {row["name"]: row for row in plan["manifest"]["motionPayloads"]["pins"]}
+        self.assertEqual(pins["MpTraffic"]["origin"], "catalog")
+        self.assertEqual(pins["McDriveLog"]["origin"], "project")
+
+        for case in ("matched", "changed", "absent", "duplicate"):
+            with self.subTest(case=case):
+                def worker(args, cwd, dispatch, log, timeout):
+                    dispatch(45)
+                    artifact = Path(args[args.index("-o") + 1]) / "ARsim/PC/RUCPackage/RUCPackage.zip"
+                    artifact.parent.mkdir(parents=True)
+                    with ZipFile(artifact, "w") as archive:
+                        for name, payload in payloads.items():
+                            if name == "McBase" and case == "absent":
+                                continue
+                            if name == "McBase" and case == "changed":
+                                payload = b"wrong payload, same module name"
+                            archive.writestr(f"FilesToTransfer/Data0/{name}.br", payload)
+                        if case == "duplicate":
+                            archive.writestr("FilesToTransfer/Data0/MCBASE.br", payloads["McBase"])
+                    log.write(b"Build: 0 error(s), 0 warning(s)\n")
+                    return 0, False, "empty"
+
+                with patch("br_automation_studio.native_build.run_build", side_effect=worker):
+                    outcome = self.native_request("build_execute", verifyMotionPayloads=True, planSha256=plan["sha256"],
+                                                  jobDirectory=case)
+                result = outcome["result"]
+                job = result["nativeBuild"]
+                if case == "matched":
+                    self.assertEqual(job["status"], "succeeded")
+                    self.assertEqual({row["name"]: row["sha256"] for row in job["package"]["motionPayloads"]},
+                                     {name: sha256(data).hexdigest() for name, data in payloads.items()})
+                    self.assertIn("Verified motion payloads 6", markdown(outcome))
+                else:
+                    self.assertEqual(job["status"], "artifact_failed")
+                    self.assertIsNone(job["package"])
+                    self.assertEqual(result["diagnostics"][-1]["code"], "ruc_verification_failed")
+                    self.assertIn("McBase", result["diagnostics"][-1]["message"])
+
     def test_native_build_uses_checked_drive_alias_at_launch(self):
         self.local_core("5.29.1")
         plan = self.native_request("build_plan")["result"]["buildPlan"]

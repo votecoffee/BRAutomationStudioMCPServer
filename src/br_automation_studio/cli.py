@@ -102,6 +102,13 @@ def markdown(response):
             lines.append(f"- LaunchPad export {text(export['path'])} · SHA-256 {text(export['sha256'])}")
     if definition := report.get("mpTrafficDefinition"):
         lines.extend(["", "## MpTraffic build verification", "", *markdown_mptraffic_definition(definition, text)])
+    if motion := report.get("motionPayloads"):
+        lines.extend(["", "## Motion payload pins", "", f"- Target {text(motion['target'])}"])
+        for pin in motion["pins"]:
+            lines.append(f"- {text(pin['name'])} · {text(pin['version'])} · {text(pin['origin'])} "
+                         f"· {text(pin['path'])} · SHA-256 {pin['sha256']}")
+            if match := pin.get("matchingCatalogPath"):
+                lines.append(f"  - Matching catalog payload {text(match)}")
     if plan := report.get("buildPlan"):
         lines.extend(["", "## Build plan", "",
                       f"- SHA-256 **{plan['sha256']}**",
@@ -115,6 +122,8 @@ def markdown(response):
             lines.append(f"- RUC {text(package['path'])} · {package['entries']} ZIP entries · {package['sha256']}")
             if payload := package.get("mpTrafficPayload"):
                 lines.append(f"- Packaged MpTraffic {text(payload['path'])} · SHA-256 {payload['sha256']}")
+            if payloads := package.get("motionPayloads"):
+                lines.append(f"- Verified motion payloads {len(payloads)}")
     lines.extend(markdown_diagnostics(report["diagnostics"], text))
     return "\n".join(lines)
 
@@ -261,6 +270,8 @@ def markdown_ruc(response, text):
     ]
     if archive := review["archive"]:
         lines.append(f"- RUC SHA-256 **{archive['sha256']}** · {archive['entries']} archive entries")
+        if payloads := review.get("motionPayloads"):
+            lines.append(f"- Verified motion payloads {len(payloads)}")
         if binding is None or review["modules"] or review["widgets"]:
             lines.append(f"- 6D module elements read {len(review['modules'])} · Rendered widgets read {len(review['widgets'])}")
     if summary := review["buildSummary"]:

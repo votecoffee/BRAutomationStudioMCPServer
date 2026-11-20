@@ -114,7 +114,8 @@ def run_simulation_preflight(arguments, request_directory):
 
 def build_plan(arguments, request_directory):
     return plan_build(*build_inputs(arguments, request_directory),
-                      verify_mptraffic_enum=arguments.get("verifyMpTrafficEnum", False))
+                      verify_mptraffic_enum=arguments.get("verifyMpTrafficEnum", False),
+                      verify_motion_payloads=arguments.get("verifyMotionPayloads", False))
 
 
 def build_execute(arguments, request_directory):
@@ -122,6 +123,7 @@ def build_execute(arguments, request_directory):
         *build_inputs(arguments, request_directory),
         arguments["planSha256"], request_directory / arguments["jobDirectory"],
         arguments.get("timeoutSeconds", 180), verify_mptraffic_enum=arguments.get("verifyMpTrafficEnum", False),
+        verify_motion_payloads=arguments.get("verifyMotionPayloads", False),
     )
 
 
@@ -339,7 +341,12 @@ SIMULATION_PREFLIGHT = Operation(
 BUILD_PLAN = Operation(
     name="build_plan",
     summary="Pin an offline AS4 PC_any simulation build to the source and installation read sets.",
-    arguments={**BUILD_PREFLIGHT.arguments, "verifyMpTrafficEnum": SIMULATION_PREFLIGHT.arguments["verifyMpTrafficEnum"]},
+    arguments={
+        **BUILD_PREFLIGHT.arguments,
+        "verifyMpTrafficEnum": SIMULATION_PREFLIGHT.arguments["verifyMpTrafficEnum"],
+        "verifyMotionPayloads": {"type": "boolean", "default": False,
+                                 "description": "Pin the six AS4 SG4/IA32 motion payloads and verify the produced RUC."},
+    },
     required=BUILD_PREFLIGHT.required,
     handler=build_plan,
 )

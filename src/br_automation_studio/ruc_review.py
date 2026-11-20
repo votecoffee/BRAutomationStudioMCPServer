@@ -13,6 +13,7 @@ from .file_device import SYSTEM_CONFIG, read_compiled_layout_device
 from .inspection import inspect_project
 from .json_io import invalid_constant, read_json, unique_object
 from .links import MotionLinks, RULE_ROLES
+from .motion_payloads import verify_packaged_motion
 from .native_build import identity, source_tree
 from .project import ProjectXml, SavedFiles, XML_LIMIT, children, tag
 
@@ -329,6 +330,11 @@ def review_ruc(path, job_directory, binding=None, *, geometry_manager=None, incl
                 archive = Archive(package, reader)
                 review["archive"] = {"path": job["package"]["path"], "sha256": digest,
                                      "bytes": size, "entries": entries}
+                if "motionPayloads" in manifest:
+                    payloads = verify_packaged_motion(package, manifest["motionPayloads"])
+                    if payloads != job["package"].get("motionPayloads"):
+                        raise ValueError("The packaged motion payloads differ from the job receipt")
+                    review["motionPayloads"] = payloads
                 if binding is not None:
                     source = SavedFiles(path.parent)
                     binding_report = result["bindingReview"]

@@ -12,6 +12,7 @@ import stat
 from uuid import uuid4
 from zipfile import BadZipFile, ZipFile
 
+from .motion_payloads import plan_motion_payloads, verify_packaged_motion
 from .mptraffic_definition import check_installed_definition, verify_packaged_mptraffic
 from .preflight import build_preflight
 from .windows_job import run_build
@@ -77,7 +78,8 @@ def source_tree(root):
     return {"directories": sorted(directories), "files": sorted(files, key=lambda row: row["path"])}
 
 
-def plan_build(path, studio_root, runtime_root=None, configuration=None, cpu=None, *, verify_mptraffic_enum=False):
+def plan_build(path, studio_root, runtime_root=None, configuration=None, cpu=None, *,
+               verify_mptraffic_enum=False, verify_motion_payloads=False):
     report = build_preflight(path, studio_root, runtime_root, configuration, cpu)
     report["buildPlan"] = None
     if blocked(report):
@@ -104,6 +106,15 @@ def plan_build(path, studio_root, runtime_root=None, configuration=None, cpu=Non
         if definition["state"] != "matched":
             return report
 
+    motion = None
+    if verify_motion_payloads:
+        try:
+            motion = report["motionPayloads"] = plan_motion_payloads(
+                path, preflight, report["selectedConfiguration"], report["selectedCpu"])
+        except (OSError, RuntimeError, ValueError) as error:
+            issue(report, "error", "motion_payloads_unverified", str(error))
+            return report
+
     root = path.parent.resolve()
     try:
         inputs = source_tree(root)
@@ -117,6 +128,8 @@ def plan_build(path, studio_root, runtime_root=None, configuration=None, cpu=Non
     reviewed_sources = list(report["snapshot"]["files"])
     if definition is not None:
         reviewed_sources.extend(definition["saved"]["snapshot"]["files"])
+    if motion is not None:
+        reviewed_sources.extend(motion["projectSnapshot"]["files"])
     if any(files.get(os.path.normcase(row["path"])) != row["sha256"] for row in reviewed_sources):
         issue(report, "error", "project_changed", "The source tree changed during build planning")
         return report
@@ -134,6 +147,8 @@ def plan_build(path, studio_root, runtime_root=None, configuration=None, cpu=Non
     }
     if definition is not None:
         plan["mpTrafficDefinition"] = definition
+    if motion is not None:
+        plan["motionPayloads"] = motion
     report["buildPlan"] = {"sha256": identity(plan), "manifest": plan}
     return report
 
@@ -171,7 +186,7 @@ def log_summary(path):
     return summary
 
 
-def package_evidence(path, job_dir, *, mptraffic=None):
+def package_evidence(path, job_dir, *, mptraffic=None, motion=None):
     with ZipFile(path) as bundle:
         if not bundle.namelist() or bundle.testzip() is not None:
             raise ValueError("RUC archive failed ZIP integrity verification")
@@ -181,12 +196,15 @@ def package_evidence(path, job_dir, *, mptraffic=None):
         }
         if mptraffic is not None:
             evidence["mpTrafficPayload"] = verify_packaged_mptraffic(bundle, mptraffic["saved"]["payloadSha256"])
+        if motion is not None:
+            evidence["motionPayloads"] = verify_packaged_motion(bundle, motion)
         return evidence
 
 
 def execute_build(path, studio_root, runtime_root, configuration, cpu, plan_sha256, job_directory,
-                  timeout_seconds=180, *, verify_mptraffic_enum=False):
-    report = plan_build(path, studio_root, runtime_root, configuration, cpu, verify_mptraffic_enum=verify_mptraffic_enum)
+                  timeout_seconds=180, *, verify_mptraffic_enum=False, verify_motion_payloads=False):
+    report = plan_build(path, studio_root, runtime_root, configuration, cpu,
+                        verify_mptraffic_enum=verify_mptraffic_enum, verify_motion_payloads=verify_motion_payloads)
     plan = report["buildPlan"]
     if plan is None:
         return report
@@ -236,6 +254,9 @@ def execute_build(path, studio_root, runtime_root, configuration, cpu, plan_sha2
         definition = manifest.get("mpTrafficDefinition")
         if definition is not None:
             checks.append((Path(catalog["studioRoot"]), definition["installed"]["snapshot"]))
+        motion = manifest.get("motionPayloads")
+        if motion is not None:
+            checks.append((Path(catalog["studioRoot"]), motion["studioSnapshot"]))
         for root, snapshot in checks:
             for pinned in snapshot["files"]:
                 if fingerprint(root / pinned["path"]) != pinned["sha256"]:
@@ -260,7 +281,7 @@ def execute_build(path, studio_root, runtime_root, configuration, cpu, plan_sha2
         else:
             ruc = output / manifest["configuration"] / manifest["cpu"] / "RUCPackage/RUCPackage.zip"
             try:
-                job["package"] = package_evidence(ruc, job_dir, mptraffic=definition)
+                job["package"] = package_evidence(ruc, job_dir, mptraffic=definition, motion=motion)
                 job["status"] = "succeeded"
                 if summary["warnings"]:
                     issue(report, "warning", "native_build_warnings", f"Automation Studio reported {summary['warnings']} warnings")

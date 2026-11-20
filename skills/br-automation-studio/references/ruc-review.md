@@ -33,6 +33,7 @@ The report at `rucReview.startPageWidget` identifies the saved files and the mat
 | Receipt and source | The plan hash recomputed from `plan.json` matches `job.json`. The job records a successful AS4 ARsim build. The supplied saved tree matches the manifest of staged inputs. |
 | Archive | The current ZIP's size, SHA-256, and member count match the job receipt. The reviewer reads selected members directly, using their ZIP CRCs. |
 | ACOPOS 6D | Readable XML in the expected `FilesToTransfer/Data0/*.br` modules preserves module identities and assembly–layout and manager–list references. The comparison includes station and waypoint types and the multiplicity of each directed edge. Each compiled endpoint is resolved within its own manager. |
+| Pinned motion payloads | For a job built with `verifyMotionPayloads`, the review checks all six SG4/IA32 binary hashes against the plan and the retained job. [Motion payload pins](native-build.md#verify-the-motion-payloads-in-the-ruc) |
 | Traffic rules | The linked exclusivity groups preserve their names and typed member, entry and exit references. [Traffic rule review](traffic-rule-review.md) |
 | mapp View | The expected AS4 content's rendered `brease.setOptions` JSON identifies the widget class, `mpLink` and `mpLinkTrafficManager`. The corresponding Assembly6D script path is present in the archive. |
 

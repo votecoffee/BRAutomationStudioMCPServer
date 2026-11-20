@@ -14,6 +14,14 @@ Since br-studio 0.35.0, set `verifyMpTrafficEnum` to true in both the plan and e
 
 Execution repeats the comparison and rehashes the installed files after staging and before running the builder. A missing option or a changed pinned file, including a formatting-only edit to a declaration, requires a fresh reviewed plan. A completed build also needs the same MpTraffic binary in the RUC to pass package verification. Read `nativeBuild.package.mpTrafficPayload` for its member path, SHA-256 and size.
 
+### Verify the motion payloads in the RUC
+
+With br-studio 0.41.0 or later, set `verifyMotionPayloads` to `true` on both `build_plan` and `build_execute`. The request pins `McAcp6D`, `MpTraffic`, `McBase`, `MpBase`, `McAcp6DSys` and `McDriveLog` for the selected SG4/IA32 PC simulation. Use the same options when executing the plan.
+
+The plan records each payload's origin, path, and SHA-256. The supported inputs include project Libraries registered in the saved logical tree and selected by the technology package or CPU, and explicit library or module versions from the selected catalog. A project copy of `McDriveLog.br` is resolved from the selected CPU's BinaryObject and its registered Logical file. When both the project and the selected catalog provide a library, their SG4/IA32 bytes must agree. The staged project and selected catalog files are rechecked before dispatch.
+
+The build needs one exact copy of each pinned payload under `FilesToTransfer/Data0` in its RUC. The successful job records all six package paths, sizes, and hashes. Use [RUC review](ruc-review.md) to recheck that evidence from a retained build. `verifyMpTrafficEnum` can be used with the motion pins to check the selected MpTraffic event declarations.
+
 ## Run the pinned copy
 
 Create a request using the same arguments as the plan. Below, replace the example hash with `result.buildPlan.sha256` and choose an unused `jobDirectory` under an existing parent outside the input roots.
