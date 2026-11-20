@@ -32,6 +32,7 @@ $brStudio = '.\.local\venv\Scripts\br-studio.exe'
 & $brStudio operation-help ruc_review
 & $brStudio operation-help launchpad_route_review
 & $brStudio operation-help launchpad_station_review
+& $brStudio operation-help launchpad_recovery_review
 & $brStudio operation-help launchpad_geometry_review
 & $brStudio operation-help launchpad_layout_review
 & $brStudio operation-help launchpad_frame_review
@@ -57,6 +58,8 @@ After building, use `ruc_review` to compare the retained package's 6D modules, t
 Use `launchpad_route_review` to compare a locally decoded LaunchPad cycle with a selected saved or compiled Traffic Manager. [LaunchPad route workflow](skills/br-automation-studio/references/launchpad-route-review.md)
 
 Use `launchpad_station_review` to verify each station-to-station path and read the source station's LaunchPad model waits before reviewing the native recipe. [Station path workflow](skills/br-automation-studio/references/launchpad-station-review.md)
+
+Use `launchpad_recovery_review` to compare station recovery declarations and check the saved-to-compiled AS4 point sequence. [Recovery declaration workflow](skills/br-automation-studio/references/launchpad-recovery-review.md)
 
 Use `launchpad_geometry_review` to compare station and waypoint distances and handedness in the saved or compiled manager. [LaunchPad geometry workflow](skills/br-automation-studio/references/launchpad-geometry-review.md)
 

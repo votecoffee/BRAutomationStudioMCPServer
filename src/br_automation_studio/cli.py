@@ -29,6 +29,7 @@ def markdown(response):
         "project_inspect": "Saved Automation Studio project inspection",
         "launchpad_route_review": "Saved Traffic Manager route review",
         "launchpad_station_review": "Saved Traffic Manager station review",
+        "launchpad_recovery_review": "Saved Traffic Manager recovery review",
         "launchpad_geometry_review": "Saved Traffic Manager geometry review",
         "launchpad_layout_review": "Saved ACOPOS 6D segment layout review",
         "launchpad_frame_review": "Saved LaunchPad coordinate frame review",
@@ -52,6 +53,8 @@ def markdown(response):
         lines.extend(markdown_route(route, text))
         if stations := report.get("stationReview"):
             lines.extend(markdown_stations(stations, text))
+        if recovery := report.get("recoveryReview"):
+            lines.extend(markdown_recovery(recovery, text))
         if geometry := report.get("geometryReview"):
             lines.extend(markdown_geometry(geometry, text))
         if layout := report.get("layoutReview"):
@@ -138,6 +141,8 @@ def markdown_ruc(response, text):
         title = "# Compiled Traffic Manager route review"
     elif response["operation"] == "launchpad_station_review":
         title = "# Compiled Traffic Manager station review"
+    elif response["operation"] == "launchpad_recovery_review":
+        title = "# Compiled Traffic Manager recovery review"
     elif smoke is not None:
         title = "# AS4 ARsim loopback smoke"
     elif binding is not None:
@@ -198,6 +203,8 @@ def markdown_ruc(response, text):
         lines.extend(markdown_route(route, text))
         if stations := report.get("stationReview"):
             lines.extend(markdown_stations(stations, text))
+        if recovery := report.get("recoveryReview"):
+            lines.extend(markdown_recovery(recovery, text))
         if geometry := report.get("geometryReview"):
             lines.extend(markdown_geometry(geometry, text))
         if layout := report.get("layoutReview"):
@@ -284,6 +291,27 @@ def markdown_stations(station_review, text):
             model_steps += " · unverified"
         lines.append(f"| {text(path)} | {wraps} | {model_steps} | {text(model['fixedDwellTime'])} |")
     return lines
+
+
+def markdown_recovery(recovery, text):
+    lines = ["", "## Station recovery declarations", "", f"- State {text(recovery['state'])}"]
+    if not recovery["stations"]:
+        return lines
+    flags = ", ".join(f"{key}={text(value)}" for key, value in recovery["launchPadStartingPositions"].items())
+    lines.append(f"- LaunchPad starting-position flags {flags}")
+    lines.extend(["", "| Station | LaunchPad mode / station flag / explicit points | "
+                  "AS4 mode / station flag / explicit points | Declarations agree | Saved to compiled |",
+                  "| --- | --- | --- | --- | --- |"])
+    for row in recovery["stations"]:
+        before = recovery_fields(row["launchPad"], text)
+        after = recovery_fields(row["automationStudio"], text)
+        lines.append(f"| {text(row['importedName'])} | {before} | {after} | "
+                     f"{text(row['declarationsMatch'])} | {text(row['savedToCompiled'])} |")
+    return lines
+
+
+def recovery_fields(row, text):
+    return " / ".join(text(row[key]) for key in ("mode", "stationIsRecoveryPoint", "explicitPointCount"))
 
 
 def markdown_geometry(geometry, text):

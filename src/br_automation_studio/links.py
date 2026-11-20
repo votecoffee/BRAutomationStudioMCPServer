@@ -37,6 +37,32 @@ def object_position(path, node, name, kind):
     return {"name": name, "type": kind, "mode": position.get("Value"), "xy": xy, "path": path.as_posix()}
 
 
+def station_recovery(path, node, name):
+    record = {"name": name, "path": path.as_posix(), "mode": None, "stationFlag": None, "points": None}
+    groups = fields(node, "RecoveryPoints", "Group")
+    if len(groups) != 1:
+        return record
+    group, = groups
+    modes = fields(group, "Mode")
+    flags = fields(group, "StationIsRecoveryPoint")
+    points = fields(group, "RecoveryPoint", "Group")
+    record["mode"] = modes[0].get("Value") if len(modes) == 1 else None
+    record["stationFlag"] = flags[0].get("Value") if len(flags) == 1 else None
+    if len(group) != len(modes) + len(flags) + len(points):
+        return record
+    coordinates = []
+    for point in points:
+        positions = fields(point, "Position", "Selector")
+        if len(point) != 1 or len(positions) != 1:
+            return record
+        position, = positions
+        if position.get("Value") != "Absolute" or len(position) != 2:
+            return record
+        coordinates.append({"id": point.get("ID"), "xyMetres": [unique_property(position, axis) for axis in ("X", "Y")]})
+    record["points"] = coordinates
+    return record
+
+
 def segment_layout(path, node):
     groups = fields(node, "Segments", "Group")
     segments = []
@@ -92,7 +118,7 @@ class MotionLinks:
                 results.append(match)
         return results
 
-    def check(self, geometry_manager=None, *, include_layout=False):
+    def check(self, geometry_manager=None, *, include_layout=False, recovery_manager=None):
         assembly_links = []
         managers = []
         for (kind, identity), entries in self.entries.items():
@@ -106,10 +132,11 @@ class MotionLinks:
                     assembly["layoutEvidence"] = [segment_layout(file, item) for file, item in layouts]
                 assembly_links.append(assembly)
             if kind == "trafficmanager":
-                managers.append(self.manager(path, node, collect_positions=identity == geometry_manager))
+                managers.append(self.manager(path, node, collect_positions=identity == geometry_manager,
+                                             collect_recovery=identity == recovery_manager))
         return assembly_links, managers
 
-    def manager(self, path, node, *, collect_positions=False):
+    def manager(self, path, node, *, collect_positions=False, collect_recovery=False):
         bases = fields(node, "Base", "Selector")
         assembly = None
         if len(bases) == 1 and bases[0].get("Value") == "AssemblyAcp6D":
@@ -123,6 +150,7 @@ class MotionLinks:
         rule_lists = self.targets(path, node, "TrafficRules", "TrafficRuleListRef", "trafficrulelist", required=False)
         objects = {}
         positions = []
+        recovery = []
         for list_path, object_list in object_lists:
             for item in fields(object_list, "TrafficObject", "Selector"):
                 identity = property_value(item, "Name")
@@ -138,6 +166,8 @@ class MotionLinks:
                     objects[identity] = object_type
                     if collect_positions:
                         positions.append(object_position(list_path, item, identity, object_type))
+                    if collect_recovery and object_type == "Station":
+                        recovery.append(station_recovery(list_path, item, identity))
 
         edges = []
         for list_path, mapping in mapping_lists:
@@ -153,6 +183,8 @@ class MotionLinks:
         }
         if collect_positions:
             result["positionEvidence"] = positions
+        if collect_recovery:
+            result["recoveryEvidence"] = recovery
         return result
 
     def rules(self, path, rule_list, objects):

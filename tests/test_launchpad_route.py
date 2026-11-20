@@ -8,6 +8,7 @@ import unittest
 from xml.etree import ElementTree as ET
 
 from br_automation_studio.cli import markdown
+from br_automation_studio.launchpad_recovery import review_recovery
 from br_automation_studio.operations import execute
 
 
@@ -381,6 +382,99 @@ class LaunchPadRouteTest(unittest.TestCase):
         self.assertEqual(result["routeReview"]["state"], "issues")
         self.assertEqual(result["stationReview"]["state"], "not_checked")
         self.assertEqual(result["stationReview"]["legs"], [])
+
+
+    def prepare_recovery(self):
+        decoded = self.data["decoded"]
+        decoded["settings"] = {"starting_positions": {
+            "first_node": False, "recovery_points": True, "all_stations_as_recovery_stations": True,
+        }}
+        for station, enabled in zip(decoded["workstations"], (False, True)):
+            station.update(recovery_mode="Sequential", is_recovery_point=enabled, recovery_points=[])
+        path = self.six_d / "DemoObjects.trafficobjectlist"
+        tree = ET.parse(path)
+        for selector, enabled in zip(tree.findall(".//Selector[@Value='Station']"), ("Disable", "Enable")):
+            group = ET.SubElement(selector, "Group", ID="RecoveryPoints")
+            ET.SubElement(group, "Property", ID="Mode", Value="Sequential")
+            ET.SubElement(group, "Property", ID="StationIsRecoveryPoint", Value=enabled)
+        return decoded, path, tree
+
+    def test_recovery_reports_model_flags_separately_and_orders_as4_points(self):
+        decoded, path, tree = self.prepare_recovery()
+        decoded["workstations"][0]["recovery_points"] = [{}, {}]
+        first = tree.find(".//Group[@ID='RecoveryPoints']")
+        for index, x in ((2, "0.05"), (1, "0.01")):
+            point = ET.SubElement(first, "Group", ID=f"RecoveryPoint[{index}]")
+            position = ET.SubElement(point, "Selector", ID="Position", Value="Absolute")
+            ET.SubElement(position, "Property", ID="X", Value=x)
+            ET.SubElement(position, "Property", ID="Y", Value="0.001")
+        tree.write(path, encoding="utf-8")
+        response = self.run_review("launchpad_recovery_review")
+        result = response["result"]
+        self.assertEqual(response["status"], "complete", result["diagnostics"])
+        self.assertEqual(result["evidence"], "launchpad_recovery_saved")
+        review = result["recoveryReview"]
+        self.assertTrue(review["launchPadStartingPositions"]["all_stations_as_recovery_stations"])
+        first, second = review["stations"]
+        self.assertFalse(first["launchPad"]["stationIsRecoveryPoint"])
+        self.assertFalse(first["automationStudio"]["stationIsRecoveryPoint"])
+        self.assertTrue(first["declarationsMatch"])
+        self.assertEqual(first["automationStudio"]["points"], [
+            {"index": 1, "xyMetres": ["0.01", "0.001"]}, {"index": 2, "xyMetres": ["0.05", "0.001"]},
+        ])
+        self.assertEqual(second["automationStudio"]["explicitPointCount"], 0)
+        self.assertIn("## Station recovery declarations", markdown(response))
+
+    def test_recovery_omitted_group_stays_unknown(self):
+        _, path, tree = self.prepare_recovery()
+        selector = tree.find(".//Selector[@Value='Station']")
+        selector.remove(selector.find("Group[@ID='RecoveryPoints']"))
+        tree.write(path, encoding="utf-8")
+        response = self.run_review("launchpad_recovery_review")
+        result = response["result"]
+        self.assertEqual(response["status"], "partial")
+        self.assertEqual(result["routeReview"]["state"], "matched")
+        self.assertEqual(result["recoveryReview"]["state"], "unverified")
+        first = result["recoveryReview"]["stations"][0]
+        self.assertIsNone(first["declarationsMatch"])
+        self.assertIsNone(first["automationStudio"]["explicitPointCount"])
+
+    def test_recovery_flag_change_fails_despite_same_route(self):
+        _, path, tree = self.prepare_recovery()
+        flag = tree.find(".//Property[@ID='StationIsRecoveryPoint']")
+        flag.set("Value", "Enable")
+        tree.write(path, encoding="utf-8")
+        response = self.run_review("launchpad_recovery_review")
+        result = response["result"]
+        self.assertEqual(response["status"], "issues")
+        self.assertEqual(result["routeReview"]["state"], "matched")
+        self.assertFalse(result["recoveryReview"]["stations"][0]["declarationsMatch"])
+        self.assertEqual([issue["code"] for issue in result["diagnostics"]], ["launchpad_recovery_mismatch"])
+
+    def test_compiled_recovery_detects_reordered_coordinates_with_same_point_count(self):
+        decoded, _, _ = self.prepare_recovery()
+        station = decoded["workstations"][0]
+        station["recovery_points"] = [{}, {}]
+        obj = {"name": "Load", "type": "Station", "geometryId": station["id"]}
+        first = {"id": "RecoveryPoint[1]", "xyMetres": ["0.01", "0.001"]}
+        second = {"id": "RecoveryPoint[2]", "xyMetres": ["0.05", "0.001"]}
+        saved = {"name": "Load", "mode": "Sequential", "stationFlag": "Disable",
+                 "path": "Objects.trafficobjectlist", "points": [first, second]}
+        compiled = dict(saved, path="Objects.br", points=[
+            dict(second, id=first["id"]), dict(first, id=second["id"]),
+        ])
+        report, issues = review_recovery(decoded, [obj], {"Load": "Load"}, [compiled], [saved], self.receipt,
+                                         self.project / "Loop.apj")
+        row, = report["stations"]
+        self.assertTrue(row["declarationsMatch"])
+        self.assertEqual(row["savedToCompiled"], "issues")
+        self.assertEqual([issue[0] for issue in issues], ["ruc_recovery_mismatch"])
+
+        compiled["points"] = [dict(second, xyMetres=["0.050", "1e-3"]), first]
+        report, issues = review_recovery(decoded, [obj], {"Load": "Load"}, [compiled], [saved], self.receipt,
+                                         self.project / "Loop.apj")
+        self.assertEqual(report["state"], "matched")
+        self.assertEqual(issues, [])
 
 
 if __name__ == "__main__":

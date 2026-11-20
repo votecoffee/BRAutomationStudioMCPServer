@@ -8,6 +8,7 @@ from .inspection import inspect_project
 from .json_io import decode_json
 from .launchpad_geometry import measure_geometry
 from .launchpad_layout import compare_layout, linked_layout
+from .launchpad_recovery import review_recovery
 from .launchpad_stations import model_process, station_legs
 from .native_build import fingerprint
 from .ruc_review import review_ruc
@@ -167,13 +168,15 @@ def compare_cycle(objects, renamed, manager):
 
 
 def launchpad_route_review(project, configuration, cpu, manager_id, lpj, readback, name_map=None, job_dir=None,
-                           *, geometry=None, include_layout=False, include_stations=False):
+                           *, geometry=None, include_layout=False, include_stations=False, include_recovery=False):
     geometry_manager = manager_id if geometry is not None else None
+    recovery_manager = manager_id if include_recovery else None
     if job_dir is not None:
-        report = review_ruc(project, job_dir, geometry_manager=geometry_manager, include_layout=include_layout)
+        report = review_ruc(project, job_dir, geometry_manager=geometry_manager, include_layout=include_layout,
+                            recovery_manager=recovery_manager)
     else:
         report = inspect_project(project, configuration, cpu, geometry_manager=geometry_manager,
-                                 include_layout=include_layout)
+                                 include_layout=include_layout, recovery_manager=recovery_manager)
     route = report["routeReview"] = {"state": "not_checked", "managerId": manager_id,
                                      "view": "compiled" if job_dir is not None else "saved"}
     if geometry is not None:
@@ -182,6 +185,8 @@ def launchpad_route_review(project, configuration, cpu, manager_id, lpj, readbac
         report["layoutReview"] = {"state": "not_checked"}
     if include_stations:
         report["stationReview"] = {"state": "not_checked", "nativeRecipe": "not_checked", "legs": []}
+    if include_recovery:
+        report["recoveryReview"] = {"state": "not_checked", "stations": []}
 
     def issue(code, path, message, severity="error", scope="launchpad_route"):
         report["diagnostics"].append({"code": code, "path": path.as_posix(), "message": message,
@@ -232,6 +237,16 @@ def launchpad_route_review(project, configuration, cpu, manager_id, lpj, readbac
     else:
         route["state"] = "matched"
         report["evidence"] = "launchpad_route_compiled" if job_dir is not None else "launchpad_route_saved"
+
+    if include_recovery and route["state"] == "matched":
+        saved_recovery = phase["savedRecoveryEvidence"] if job_dir is not None else None
+        recovery, issues = review_recovery(decoded, objects, renamed, manager["recoveryEvidence"],
+                                           saved_recovery, readback, project)
+        report["recoveryReview"] = recovery
+        for code, where, message, severity in issues:
+            issue(code, where, message, severity, "launchpad_recovery")
+        if not issues:
+            report["evidence"] = "launchpad_recovery_compiled" if job_dir is not None else "launchpad_recovery_saved"
 
     if include_stations and route["state"] == "matched":
         station_review = report["stationReview"]
