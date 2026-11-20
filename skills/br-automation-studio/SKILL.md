@@ -1,6 +1,6 @@
 ---
 name: br-automation-studio
-description: Inspect saved B&R Automation Studio projects with the standalone br-studio CLI. Use for declared package versions, ACOPOS 6D assembly and Traffic Manager references, LaunchPad route and geometry comparisons, mapp View Assembly6D links, AS4 build and complete simulation preflight, offline ARsim RUC builds, compiled RUC and mapp View binding readback, loopback mapp View HTTP and browser smoke tests, direct OPC UA counter reads, and combined HMI checks.
+description: Inspect saved B&R Automation Studio projects with the standalone br-studio CLI. Use for declared package versions, ACOPOS 6D assembly and Traffic Manager references, LaunchPad route, geometry and segment layout comparisons, mapp View Assembly6D links, AS4 build and complete simulation preflight, offline ARsim RUC builds, compiled RUC and mapp View binding readback, loopback mapp View HTTP and browser smoke tests, direct OPC UA counter reads, and combined HMI checks.
 ---
 
 # B&R Automation Studio
@@ -20,6 +20,8 @@ Use the [RUC review workflow](references/ruc-review.md) to bind the package to a
 Use the [LaunchPad route workflow](references/launchpad-route-review.md) to compare a saved unbranched route with the selected manager in source or a retained RUC.
 
 Use the [LaunchPad geometry workflow](references/launchpad-geometry-review.md) to measure manager object spacing and handedness against the same cycle.
+
+Use the [LaunchPad layout workflow](references/launchpad-layout-review.md) for the linked S3 segment grid and master-relative layout.
 
 Use the [binding review workflow](references/ruc-binding-review.md) to verify the selected one-way widget binding and PLC node exposure in the compiled RUC.
 

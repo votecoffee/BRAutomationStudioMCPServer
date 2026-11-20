@@ -32,6 +32,7 @@ $brStudio = '.\.local\venv\Scripts\br-studio.exe'
 & $brStudio operation-help ruc_review
 & $brStudio operation-help launchpad_route_review
 & $brStudio operation-help launchpad_geometry_review
+& $brStudio operation-help launchpad_layout_review
 & $brStudio operation-help ruc_binding_review
 & $brStudio operation-help arsim_smoke
 & $brStudio operation-help arsim_browser_smoke
@@ -54,6 +55,8 @@ After building, use `ruc_review` to compare the retained package's 6D modules, t
 Use `launchpad_route_review` to compare a locally decoded LaunchPad cycle with a selected saved or compiled Traffic Manager. [LaunchPad route workflow](skills/br-automation-studio/references/launchpad-route-review.md)
 
 Use `launchpad_geometry_review` to compare station and waypoint distances and handedness in the saved or compiled manager. [LaunchPad geometry workflow](skills/br-automation-studio/references/launchpad-geometry-review.md)
+
+Use `launchpad_layout_review` to compare the linked 240 mm S3 layout and grid offsets from its master. [LaunchPad segment workflow](skills/br-automation-studio/references/launchpad-layout-review.md)
 
 Use `ruc_binding_review` to trace a selected one-way mapp View status binding through the saved project, compiled widget, and OPC UA exposure map. [Binding readback workflow](skills/br-automation-studio/references/ruc-binding-review.md)
 

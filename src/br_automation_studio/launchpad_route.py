@@ -7,6 +7,7 @@ from pathlib import Path
 from .inspection import inspect_project
 from .json_io import decode_json
 from .launchpad_geometry import measure_geometry
+from .launchpad_layout import compare_layout, linked_layout
 from .native_build import fingerprint
 from .ruc_review import review_ruc
 
@@ -87,7 +88,7 @@ def json_snapshot(path, limit):
     return decode_json(raw), {"path": str(path.resolve()), "sha256": sha256(raw).hexdigest()}
 
 
-def baseline(lpj, readback, *, include_geometry=False):
+def read_launchpad_save(lpj, readback):
     if lpj.suffix.lower() != ".lpj" or readback.suffix.lower() != ".json":
         raise ValueError("Select the source .lpj and its decoded JSON readback")
     payload, readback_file = json_snapshot(readback, READBACK_LIMIT)
@@ -106,18 +107,26 @@ def baseline(lpj, readback, *, include_geometry=False):
     version = decoded.get("launchpad_version")
     if not nonempty(version):
         raise ValueError("The decoded save has no LaunchPad version")
-    layout = layout_objects(decoded)
-    ordered = simple_cycle(decoded, layout)
     proof = {"sourcePath": str(lpj.resolve()), "sourceSha256": digest,
              "readbackPath": readback_file["path"], "readbackSha256": readback_file["sha256"],
-             "decodeSourceName": origin["fileName"], "launchPadVersion": version, "codec": payload["codec"],
-             "unusedGeometry": sorted(layout[ident]["name"] for ident in set(layout) - set(ordered))}
+             "decodeSourceName": origin["fileName"], "launchPadVersion": version, "codec": payload["codec"]}
+    return proof, decoded
+
+
+def route_baseline(proof, decoded, include_geometry):
+    layout = layout_objects(decoded)
+    ordered = simple_cycle(decoded, layout)
+    proof["unusedGeometry"] = sorted(layout[ident]["name"] for ident in set(layout) - set(ordered))
     objects = [{"name": layout[ident]["name"], "type": layout[ident]["type"], "geometryId": ident}
                for ident in ordered]
     if include_geometry:
         for obj in objects:
             obj["launchPadXY"] = layout[obj["geometryId"]]["xy"]
     return proof, objects
+
+
+def baseline(lpj, readback, *, include_geometry=False):
+    return route_baseline(*read_launchpad_save(lpj, readback), include_geometry)
 
 
 def names_for(objects, name_map):
@@ -152,23 +161,27 @@ def compare_cycle(objects, renamed, manager):
 
 
 def launchpad_route_review(project, configuration, cpu, manager_id, lpj, readback, name_map=None, job_dir=None,
-                           *, geometry=None):
+                           *, geometry=None, include_layout=False):
     geometry_manager = manager_id if geometry is not None else None
     if job_dir is not None:
-        report = review_ruc(project, job_dir, geometry_manager=geometry_manager)
+        report = review_ruc(project, job_dir, geometry_manager=geometry_manager, include_layout=include_layout)
     else:
-        report = inspect_project(project, configuration, cpu, geometry_manager=geometry_manager)
+        report = inspect_project(project, configuration, cpu, geometry_manager=geometry_manager,
+                                 include_layout=include_layout)
     route = report["routeReview"] = {"state": "not_checked", "managerId": manager_id,
                                      "view": "compiled" if job_dir is not None else "saved"}
     if geometry is not None:
         report["geometryReview"] = {"state": "not_checked"}
+    if include_layout:
+        report["layoutReview"] = {"state": "not_checked"}
 
     def issue(code, path, message, severity="error", scope="launchpad_route"):
         report["diagnostics"].append({"code": code, "path": path.as_posix(), "message": message,
                                       "severity": severity, "scope": scope})
 
     try:
-        proof, objects = baseline(lpj, readback, include_geometry=geometry is not None)
+        proof, decoded = read_launchpad_save(lpj, readback)
+        proof, objects = route_baseline(proof, decoded, geometry is not None)
         route["launchPad"] = proof
     except (OSError, RuntimeError, ValueError) as error:
         issue("launchpad_baseline_invalid", readback, str(error))
@@ -224,4 +237,19 @@ def launchpad_route_review(project, configuration, cpu, manager_id, lpj, readbac
                 issue(code, project, message, scope="launchpad_geometry")
             if not issues and route["state"] == "matched":
                 report["evidence"] = "launchpad_geometry_compiled" if job_dir is not None else "launchpad_geometry_saved"
+    if include_layout:
+        layout_path = project
+        try:
+            layout = linked_layout(phase["assemblyLinks"], manager["assembly"])
+            layout_path = Path(layout["path"])
+            layout_check, issues = compare_layout(decoded, layout)
+        except (ValueError, OverflowError) as error:
+            report["layoutReview"]["state"] = "unverified"
+            issue("launchpad_layout_unverified", layout_path, str(error), scope="launchpad_layout")
+        else:
+            report["layoutReview"] = layout_check
+            for code, message in issues:
+                issue(code, layout_path, message, scope="launchpad_layout")
+            if not issues and route["state"] == "matched":
+                report["evidence"] = "launchpad_layout_compiled" if job_dir is not None else "launchpad_layout_saved"
     return report

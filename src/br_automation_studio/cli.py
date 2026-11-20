@@ -29,6 +29,7 @@ def markdown(response):
         "project_inspect": "Saved Automation Studio project inspection",
         "launchpad_route_review": "Saved Traffic Manager route review",
         "launchpad_geometry_review": "Saved Traffic Manager geometry review",
+        "launchpad_layout_review": "Saved ACOPOS 6D segment layout review",
         "build_preflight": "AS4 build preflight",
         "simulation_preflight": "AS4 ACOPOS 6D simulation preflight",
         "build_plan": "AS4 native build plan",
@@ -49,6 +50,8 @@ def markdown(response):
         lines.extend(markdown_route(route, text))
         if geometry := report.get("geometryReview"):
             lines.extend(markdown_geometry(geometry, text))
+        if layout := report.get("layoutReview"):
+            lines.extend(markdown_layout(layout, text))
     else:
         lines.extend(["", "## Traffic Manager edges", ""])
         for manager in report["trafficManagers"]:
@@ -118,6 +121,8 @@ def markdown_ruc(response, text):
     title = "# AS4 RUC review"
     if response["operation"] == "arsim_hmi_smoke":
         title = "# AS4 mapp View end-to-end smoke"
+    elif response["operation"] == "launchpad_layout_review":
+        title = "# Compiled ACOPOS 6D segment layout review"
     elif response["operation"] == "launchpad_geometry_review":
         title = "# Compiled Traffic Manager geometry review"
     elif response["operation"] == "launchpad_route_review":
@@ -182,6 +187,8 @@ def markdown_ruc(response, text):
         lines.extend(markdown_route(route, text))
         if geometry := report.get("geometryReview"):
             lines.extend(markdown_geometry(geometry, text))
+        if layout := report.get("layoutReview"):
+            lines.extend(markdown_layout(layout, text))
     else:
         for manager in review["trafficManagers"]:
             lines.extend(["", f"## {text(manager['manager'])}", ""])
@@ -243,6 +250,26 @@ def markdown_geometry(geometry, text):
     for row in geometry["pairs"]:
         lines.append(f"| {text(row['from'])} / {text(row['to'])} | {row['launchPadMm']:.3f} | "
                      f"{row['automationStudioMm']:.3f} | {row['deltaMm']:+.3f} |")
+    return lines
+
+
+def markdown_layout(layout, text):
+    lines = ["", "## Segment layout comparison", "", f"- State {text(layout['state'])}"]
+    if "layoutId" not in layout:
+        return lines
+    lines.append(f"- Layout {text(layout['layoutId'])} · {text(layout['path'])}")
+    lines.append(f"- Grid {layout['gridMm']} mm · segment {text(layout['segmentType'])}")
+    mappings = layout["compatibleAxisMappings"]
+    lines.append(f"- Compatible axis mappings from LaunchPad to Automation Studio "
+                 f"{text(' / '.join(mappings) if mappings else 'none')}")
+    if layout["userOriginRaw"] is not None:
+        lines.append(f"- Automation Studio UserOrigin values {text(layout['userOriginRaw'])}")
+    lines.extend(["", "| Input | Segment count | Master | Master-relative distances (mm) |",
+                  "| --- | ---: | --- | --- |"])
+    for label, key in (("LaunchPad", "launchPad"), ("Automation Studio", "automationStudio")):
+        values = layout[key]
+        distances = ", ".join(f"{value:g}" for value in values["distancesFromMasterMm"])
+        lines.append(f"| {label} | {values['count']} | {text(values['master'])} | {distances} |")
     return lines
 
 

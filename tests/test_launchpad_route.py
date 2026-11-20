@@ -178,6 +178,82 @@ class LaunchPadRouteTest(unittest.TestCase):
         self.assertEqual(result["geometryReview"]["state"], "unverified")
         self.assertEqual(result["diagnostics"][0]["code"], "launchpad_geometry_unverified")
 
+    def prepare_layout(self, cells, masters=(0,), grid="0"):
+        decoded = self.data["decoded"]
+        decoded["segments"] = [{"id": f"s{index}", "name": f"Source{index}", "type": "S3-AS", "w": 240, "h": 240,
+                                "x": -60.5 + 240 * index, "y": -60.5, "master": index == 0} for index in range(4)]
+        path = self.six_d / "FixtureLayout.layout6d"
+        tree = ET.parse(path)
+        layout = tree.getroot().find("Element")
+        layout.find("Property[@ID='GridSize']").set("Value", grid)
+        former = layout.find("Group[@ID='Segments']")
+        if former is not None:
+            layout.remove(former)
+        group = ET.SubElement(layout, "Group", ID="Segments")
+        for index, (x, y) in enumerate(cells):
+            row = ET.SubElement(group, "Group", ID=f"Segment[{index + 1}]")
+            properties = {"Name": f"Target{index}", "TypeGrid240": "0", "X": str(x), "Y": str(y),
+                          "IsMaster": str(index in masters).lower()}
+            for key, value in properties.items():
+                ET.SubElement(row, "Property", ID=key, Value=value)
+        tree.write(path, encoding="utf-8", xml_declaration=True)
+
+    def layout(self, **arguments):
+        return self.run_review("launchpad_layout_review", **arguments)
+
+    def test_layout_rotates_and_translates_without_hiding_ambiguous_axes(self):
+        self.prepare_layout([(3, 5), (3, 6), (3, 7), (3, 8)])
+        response = self.layout()
+        result = response["result"]
+        self.assertEqual(response["status"], "complete", result["diagnostics"])
+        layout = result["layoutReview"]
+        self.assertEqual(layout["state"], "matched")
+        self.assertEqual(layout["launchPad"]["masterPositionMm"], [-60.5, -60.5])
+        self.assertEqual(layout["automationStudio"]["distancesFromMasterMm"], [0, 240, 480, 720])
+        self.assertEqual(layout["compatibleAxisMappings"], ["-y, x", "y, x"])
+        self.assertIn("0, 240, 480, 720", markdown(response))
+
+    def test_equal_distances_from_master_do_not_hide_a_different_grid_shape(self):
+        self.prepare_layout([(0, 0), (1, 0), (0, 2), (0, 3)])
+        result = self.layout()["result"]
+        self.assertEqual(result["routeReview"]["state"], "matched")
+        layout = result["layoutReview"]
+        self.assertEqual(layout["automationStudio"]["distancesFromMasterMm"], layout["launchPad"]["distancesFromMasterMm"])
+        self.assertEqual(layout["compatibleAxisMappings"], [])
+        self.assertEqual(result["diagnostics"][0]["code"], "launchpad_master_layout_mismatch")
+
+    def test_wrong_master_changes_the_relative_layout(self):
+        self.prepare_layout([(0, 0), (1, 0), (2, 0), (3, 0)], masters=(1,))
+        result = self.layout()["result"]
+        self.assertEqual(result["layoutReview"]["automationStudio"]["master"], "Target1")
+        self.assertEqual(result["diagnostics"][0]["code"], "launchpad_master_layout_mismatch")
+
+    def test_missing_segment_has_separate_count_diagnostic(self):
+        self.prepare_layout([(0, 0), (1, 0), (2, 0)])
+        result = self.layout()["result"]
+        self.assertEqual(result["layoutReview"]["automationStudio"]["count"], 3)
+        self.assertEqual(result["diagnostics"][0]["code"], "launchpad_segment_count_mismatch")
+
+    def test_unsupported_grid_and_multiple_masters_are_unverified(self):
+        cells = [(0, 0), (1, 0), (2, 0), (3, 0)]
+        for grid, masters, reason in (("1", (0,), "240 mm grid"), ("0", (0, 1), "exactly one master")):
+            with self.subTest(grid=grid, masters=masters):
+                self.prepare_layout(cells, masters, grid)
+                result = self.layout()["result"]
+                self.assertEqual(result["layoutReview"]["state"], "unverified")
+                self.assertIn(reason, result["diagnostics"][0]["message"])
+
+    def test_layout_selection_refuses_multiple_assembly_references(self):
+        self.prepare_layout([(0, 0), (1, 0), (2, 0), (3, 0)])
+        path = self.six_d / "FixtureAssembly.assembly6d"
+        data = path.read_bytes()
+        marker = b'<Property ID="Layout6D[1]" Value="FixtureLayout" />'
+        self.assertEqual(data.count(marker), 1)
+        path.write_bytes(data.replace(marker, marker + marker.replace(b"Layout6D[1]", b"Layout6D[2]")))
+        result = self.layout()["result"]
+        self.assertEqual(result["layoutReview"]["state"], "unverified")
+        self.assertIn("exactly one layout", result["diagnostics"][0]["message"])
+
 
 if __name__ == "__main__":
     unittest.main()

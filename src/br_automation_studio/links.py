@@ -18,16 +18,33 @@ def property_value(node, name):
     return matches[0].get("Value") if matches else None
 
 
+def unique_property(node, name):
+    matches = fields(node, name)
+    return matches[0].get("Value") if len(matches) == 1 else None
+
+
 def object_position(path, node, name, kind):
     positions = fields(node, "Position", "Selector")
     if len(positions) != 1:
         return {"name": name, "type": kind, "mode": None, "xy": [None, None], "path": path.as_posix()}
     position = positions[0]
-    xy = []
-    for axis in ("X", "Y"):
-        values = fields(position, axis)
-        xy.append(values[0].get("Value") if len(values) == 1 else None)
+    xy = [unique_property(position, axis) for axis in ("X", "Y")]
     return {"name": name, "type": kind, "mode": position.get("Value"), "xy": xy, "path": path.as_posix()}
+
+
+def segment_layout(path, node):
+    groups = fields(node, "Segments", "Group")
+    segments = []
+    if len(groups) == 1:
+        for item in children(groups[0], "Group"):
+            segments.append({"id": item.get("ID"), "name": unique_property(item, "Name"),
+                             "typeCode": unique_property(item, "TypeGrid240"),
+                             "gridXY": [unique_property(item, axis) for axis in ("X", "Y")],
+                             "master": unique_property(item, "IsMaster")})
+    origins = fields(node, "UserOrigin", "Group")
+    origin = [unique_property(origins[0], axis) for axis in ("OffsetX", "OffsetY")] if len(origins) == 1 else None
+    return {"layoutId": node.get("ID"), "path": path.as_posix(), "gridCode": unique_property(node, "GridSize"),
+            "userOriginRaw": origin, "segments": segments}
 
 
 class MotionLinks:
@@ -70,7 +87,7 @@ class MotionLinks:
                 results.append(match)
         return results
 
-    def check(self, geometry_manager=None):
+    def check(self, geometry_manager=None, *, include_layout=False):
         assembly_links = []
         managers = []
         for (kind, identity), entries in self.entries.items():
@@ -79,9 +96,10 @@ class MotionLinks:
             path, node = entries[0]
             if kind == "assembly6d":
                 layouts = self.targets(path, node, "Layout", "Layout6D", "layout6d")
-                assembly_links.append({
-                    "assembly": identity, "layouts": [item.get("ID") for _, item in layouts],
-                })
+                assembly = {"assembly": identity, "layouts": [item.get("ID") for _, item in layouts]}
+                if include_layout:
+                    assembly["layoutEvidence"] = [segment_layout(file, item) for file, item in layouts]
+                assembly_links.append(assembly)
             if kind == "trafficmanager":
                 managers.append(self.manager(path, node, collect_positions=identity == geometry_manager))
         return assembly_links, managers
