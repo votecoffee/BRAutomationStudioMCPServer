@@ -1,10 +1,13 @@
+from hashlib import sha256
+import json
 import os
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
+from zipfile import ZipFile
 
 from br_automation_studio.cli import markdown
-from br_automation_studio.native_build import source_tree
+from br_automation_studio.native_build import identity, source_tree
 from br_automation_studio.operations import execute
 
 
@@ -33,9 +36,79 @@ class WidgetPackageReviewTest(unittest.TestCase):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(data, encoding="utf-8", newline="\n")
 
-    def review(self):
+    def review(self, **arguments):
         return execute({"schemaVersion": 1, "operation": "widget_package_review", "workspace": "fixture",
-                        "arguments": {"project": "Demo.apj"}}, self.root)
+                        "arguments": {"project": "Demo.apj", **arguments}}, self.root)
+
+    def retained_build(self):
+        self.put(f"{LIBRARY}/Assembly/Widget.js", "saved widget")
+        inputs = source_tree(self.root)
+        plan = {"version": 1, "mode": "as4_arsim_ruc", "project": "Demo.apj",
+                "configuration": "ARsim", "cpu": "PC", "inputs": inputs}
+        scratch = TemporaryDirectory(dir=self.root.parent, prefix="widget-build-")
+        self.addCleanup(scratch.cleanup)
+        retained = Path(scratch.name).resolve()
+        log = retained / "builder.log"
+        staged = r"W:\job\project" + "\\" + LIBRARY.replace("/", "\\")
+        output = r"W:\job\temporary\Objects\ARsim\PC\.mappView\data\wwwRoot\BRVisu\widgets\DemoWidgets"
+        log.write_text(
+            f'{staged}\\Package.pkg: (Assembly) warning 9233:Additional directory "Assembly" found, '
+            'which is not part of the project.\n'
+            f"Copy directory '{staged}\\Assembly' to '{output}\\Assembly'.\n"
+            f"Copy directory '{staged}\\Assembly' to '{output}\\Unrelated'.\n"
+            'Build: 0 error(s), 1 warning(s)\n', encoding="utf-8")
+        package = retained / "binary/ARsim/PC/RUCPackage/RUCPackage.zip"
+        package.parent.mkdir(parents=True)
+        web = "FilesToTransfer/AddonsData/IAT_Data/wwwRoot/BRVisu/widgets/DemoWidgets/Assembly"
+        with ZipFile(package, "w") as archive:
+            archive.writestr(f"{web}/Widget.js", b"saved widget")
+            archive.writestr(f"{web}/Generated.css", b"generated stylesheet")
+            archive.writestr(f"{web}-other/Unrelated.js", b"unrelated path")
+        digest = identity(plan)
+        (retained / "plan.json").write_text(json.dumps({"sha256": digest, "manifest": plan}), encoding="utf-8")
+        job = {"jobId": "widget-fixture", "planSha256": digest, "status": "succeeded",
+               "timedOut": False, "cleanup": "empty", "nativeExitCode": 1, "summary": {"errors": 0, "warnings": 1},
+               "arguments": ["BR.AS.Build.exe", r"W:\job\project\Demo.apj", "-t", r"W:\job\temporary"],
+               "log": {"path": "builder.log", "bytes": log.stat().st_size, "sha256": sha256(log.read_bytes()).hexdigest()},
+               "package": {"path": package.relative_to(retained).as_posix(), "verifiedZip": True,
+                           "sha256": sha256(package.read_bytes()).hexdigest(), "bytes": package.stat().st_size,
+                           "entries": 3}}
+        (retained / "job.json").write_text(json.dumps(job), encoding="utf-8")
+        return retained, log, package
+
+    def test_matches_log_line_and_archived_files_to_the_same_saved_entry(self):
+        retained, _, _ = self.retained_build()
+        outcome = self.review(jobDirectory=str(retained))
+        review = outcome["result"]["widgetPackageReview"]
+        self.assertEqual(outcome["status"], "partial")
+        self.assertEqual(review["nativeBuild"]["state"], "verified")
+        library, = review["libraries"]
+        row, = library["extra"]
+        proof = row["nativeEvidence"]
+        self.assertEqual(proof["warnings"], [{"line": 1, "code": 9233}])
+        self.assertEqual(proof["copies"], [{"line": 2}])
+        assets = {Path(member["path"]).name: member for member in proof["members"]}
+        self.assertEqual(set(assets), {"Widget.js", "Generated.css"})
+        self.assertTrue(assets["Widget.js"]["savedBytesMatch"])
+        self.assertIsNone(assets["Generated.css"]["savedBytesMatch"])
+        self.assertIn("Copy steps 1 · Web assets 2 · Saved bytes match 1", markdown(outcome))
+
+    def test_changed_saved_input_log_or_ruc_cannot_supply_build_evidence(self):
+        retained, log, package = self.retained_build()
+        widget = self.root / LIBRARY / "Assembly/Widget.js"
+        for changed in (widget, log, package):
+            with self.subTest(changed=changed.name):
+                old = changed.read_bytes()
+                changed.write_bytes(old + b"changed")
+                try:
+                    response = self.review(jobDirectory=str(retained))
+                finally:
+                    changed.write_bytes(old)
+                result = response["result"]
+                self.assertEqual(response["status"], "issues")
+                self.assertEqual(result["widgetPackageReview"]["nativeBuild"]["state"], "unverified")
+                self.assertEqual(result["diagnostics"][-1]["code"], "widget_build_evidence_unverified")
+                self.assertNotIn("nativeEvidence", result["widgetPackageReview"]["libraries"][0]["extra"][0])
 
     def test_widget_inventory_finds_warning_candidates_at_the_immediate_level(self):
         self.put(f"{LIBRARY}/WidgetLibrary.mapping", "sample mapping")

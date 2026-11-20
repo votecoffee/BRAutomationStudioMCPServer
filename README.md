@@ -67,7 +67,7 @@ The example reads a synthetic project. The result lists declared package version
 
 For an installed AS4 toolchain, `build_preflight` compares the project with the selected Studio, Runtime, CPU and technology-package catalogs. [Build preflight workflow](skills/br-automation-studio/references/build-preflight.md)
 
-Use `widget_package_review` to inventory saved mapp View widget library entries against their package manifests before a build. [Widget package review](skills/br-automation-studio/references/widget-package-review.md)
+Use `widget_package_review` to inventory saved mapp View widget library entries before a build or join them to a retained build log and RUC. [Widget package review](skills/br-automation-studio/references/widget-package-review.md)
 
 Use `simulation_environment` to check the AS4 package catalog, simulator registration and saved simulator media during workstation setup. Run `simulation_preflight` once the saved project and native LaunchPad export are available. [Simulation prerequisites and MpTraffic definition check](skills/br-automation-studio/references/simulation-preflight.md)
 

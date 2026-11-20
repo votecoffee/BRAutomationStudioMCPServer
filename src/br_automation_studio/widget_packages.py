@@ -4,6 +4,7 @@ from pathlib import Path
 import stat
 
 from .project import SavedFiles, children, choices
+from .widget_build_review import add_build_evidence
 
 
 MEMBER_TYPES = {"File": "file", "Package": "directory"}
@@ -109,7 +110,7 @@ def inspect_library(source, manifest):
     return result
 
 
-def widget_package_review(project):
+def widget_package_review(project, job_directory=None):
     source = SavedFiles(project.parent)
     node, _ = source.xml(Path(project.name), "Project")
     review = {"state": "unverified", "widgetsManifest": None, "libraries": []}
@@ -132,5 +133,8 @@ def widget_package_review(project):
                     review["state"] = "unverified"
                 else:
                     review["state"] = "differences" if "differences" in states else "matched"
-    return {"evidence": "saved_widget_package_inventory", "project": project.name, "widgetPackageReview": review,
-            "snapshot": source.snapshot(), "diagnostics": source.diagnostics}
+    report = {"evidence": "saved_widget_package_inventory", "project": project.name, "widgetPackageReview": review,
+              "snapshot": source.snapshot(), "diagnostics": source.diagnostics}
+    if job_directory is not None:
+        add_build_evidence(project, job_directory, report)
+    return report

@@ -126,6 +126,10 @@ def markdown_widget_package_review(response, text):
              f"- Project **{text(report['project'])}** · Status **{text(response['status'])}**",
              f"- Review {text(review['state'])} · Widgets manifest {text(review['widgetsManifest'])}",
              f"- Read-set SHA-256 {report['snapshot']['sha256']}"]
+    if build := review.get("nativeBuild"):
+        lines.append(f"- Native build evidence {text(build['state'])}")
+        if build["state"] == "verified":
+            lines.append(f"- Build log SHA-256 {build['log']['sha256']} · RUC SHA-256 {build['ruc']['sha256']}")
     for library in review["libraries"]:
         lines.extend(["", f"## {text(library['manifest'])}", "",
                       f"- State {text(library['state'])} · Declared entries {len(library['declared'])} "
@@ -133,6 +137,10 @@ def markdown_widget_package_review(response, text):
         for entry in library["extra"]:
             note = f" · AS warning {entry['builderWarning']}" if entry["builderWarning"] is not None else ""
             lines.append(f"- Undeclared {text(entry['kind'])} {text(entry['name'])}{note}")
+            if evidence := entry.get("nativeEvidence"):
+                matching = sum(member["savedBytesMatch"] is True for member in evidence["members"])
+                lines.append(f"  - Builder warnings {len(evidence['warnings'])} · Copy steps {len(evidence['copies'])}"
+                             f" · Web assets {len(evidence['members'])} · Saved bytes match {matching}")
     lines.extend(markdown_diagnostics(report["diagnostics"], text))
     return "\n".join(lines)
 

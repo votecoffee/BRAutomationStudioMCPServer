@@ -81,6 +81,12 @@ def build_inputs(arguments, request_directory):
     )
 
 
+def run_widget_package_review(arguments, request_directory):
+    job = arguments.get("jobDirectory")
+    return widget_package_review(project_path(arguments, request_directory),
+                                 request_directory / job if job is not None else None)
+
+
 def preflight(arguments, request_directory):
     return build_preflight(*build_inputs(arguments, request_directory))
 
@@ -280,9 +286,12 @@ PROJECT_INSPECT = Operation(
 WIDGET_PACKAGE_REVIEW = Operation(
     name="widget_package_review",
     summary="Compare saved mapp View widget library registrations with immediate directory entries.",
-    arguments={"project": PROJECT_INSPECT.arguments["project"]},
+    arguments={
+        "project": PROJECT_INSPECT.arguments["project"],
+        "jobDirectory": {"type": "string", "minLength": 1, "description": "Optional retained native build, log and RUC."},
+    },
     required=("project",),
-    handler=lambda arguments, request_directory: widget_package_review(project_path(arguments, request_directory)),
+    handler=run_widget_package_review,
 )
 BUILD_PREFLIGHT = Operation(
     name="build_preflight",
