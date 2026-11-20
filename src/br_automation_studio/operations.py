@@ -8,6 +8,7 @@ from typing import Callable
 from .inspection import inspect_project
 from .native_build import execute_build, plan_build
 from .preflight import build_preflight
+from .ruc_review import review_ruc
 
 SCHEMA_VERSION = 1
 
@@ -80,6 +81,11 @@ def build_execute(arguments, request_directory):
     )
 
 
+def ruc_review(arguments, request_directory):
+    return review_ruc(project_path(arguments, request_directory),
+                      request_directory / arguments["jobDirectory"])
+
+
 PROJECT_INSPECT = Operation(
     name="project_inspect",
     summary="Inspect saved project versions and ACOPOS 6D references.",
@@ -121,7 +127,17 @@ BUILD_EXECUTE = Operation(
     required=(*BUILD_PLAN.required, "planSha256", "jobDirectory"),
     handler=build_execute,
 )
-OPERATIONS = {item.name: item for item in (PROJECT_INSPECT, BUILD_PREFLIGHT, BUILD_PLAN, BUILD_EXECUTE)}
+RUC_REVIEW = Operation(
+    name="ruc_review",
+    summary="Verify a retained AS4 RUC job and compare its 6D modules, routes and widget links with saved sources.",
+    arguments={
+        "project": PROJECT_INSPECT.arguments["project"],
+        "jobDirectory": {"type": "string", "minLength": 1, "description": "Directory holding the retained build receipts and RUC archive."},
+    },
+    required=("project", "jobDirectory"),
+    handler=ruc_review,
+)
+OPERATIONS = {item.name: item for item in (PROJECT_INSPECT, BUILD_PREFLIGHT, BUILD_PLAN, BUILD_EXECUTE, RUC_REVIEW)}
 
 
 def valid_text(value):

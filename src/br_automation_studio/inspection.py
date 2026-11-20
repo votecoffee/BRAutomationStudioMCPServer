@@ -49,7 +49,11 @@ def inspect_saved(source, project, configuration=None, cpu=None):
                     cpu_details["moduleId"] = detail.get("ModuleId")
                     for runtime in children(detail, "AutomationRuntime"):
                         cpu_details["runtimeVersion"] = runtime.get("Version")
-                motion = MotionLinks(source, package_files(source, cpu_path, "Cpu", MOTION_TYPES))
+                motion = MotionLinks(source)
+                for path in package_files(source, cpu_path, "Cpu", MOTION_TYPES):
+                    module, _ = source.xml(path, "Configuration")
+                    if module is not None:
+                        motion.add(path, path.suffix.lower()[1:], module)
                 assembly_links, managers = motion.check()
                 content = package_files(source, Path("Logical/Package.pkg"), "Package", {"content"})
                 widgets = list(motion.widgets(content, managers))

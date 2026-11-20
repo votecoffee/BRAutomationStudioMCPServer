@@ -19,26 +19,23 @@ def property_value(node, name):
 
 
 class MotionLinks:
-    def __init__(self, source, paths):
+    def __init__(self, source):
         self.source = source
         self.entries = defaultdict(list)
         self.module_inventory = []
-        for path in paths:
-            node, _ = source.xml(path, "Configuration")
-            if node is None:
-                continue
-            kind = path.suffix.lower()[1:]
-            elements = children(node, "Element")
-            supported = [item for item in elements if item.get("Type") == kind and item.get("ID")]
-            if len(supported) != len(elements) or not supported:
-                source.issue("warning", "unsupported_module", path,
-                             f"Expected named {kind} elements in this file")
-            for element in supported:
-                identity = element.get("ID")
-                self.module_inventory.append({"id": identity, "type": kind, "path": path.as_posix()})
-                self.entries[kind, identity].append((path, element))
-                if len(self.entries[kind, identity]) == 2:
-                    source.issue("error", "duplicate_module", path, f"Duplicate {kind} {identity!r}")
+
+    def add(self, path, kind, node):
+        elements = children(node, "Element")
+        supported = [item for item in elements if item.get("Type") == kind and item.get("ID")]
+        if len(supported) != len(elements) or not supported:
+            self.source.issue("warning", "unsupported_module", path,
+                              f"Expected named {kind} elements in this file")
+        for element in supported:
+            name = element.get("ID")
+            self.module_inventory.append({"id": name, "type": kind, "path": path.as_posix()})
+            self.entries[kind, name].append((path, element))
+            if len(self.entries[kind, name]) == 2:
+                self.source.issue("error", "duplicate_module", path, f"Duplicate {kind} {name!r}")
 
     def resolve(self, path, kind, identity, severity="error"):
         matches = self.entries.get((kind, identity), ())
@@ -88,7 +85,7 @@ class MotionLinks:
 
         object_lists = self.targets(path, node, "TrafficObjects", "TrafficObjectListRef", "trafficobjectlist")
         mapping_lists = self.targets(path, node, "TrafficMapping", "TrafficMappingListRef", "trafficmappinglist")
-        self.targets(path, node, "TrafficRules", "TrafficRuleListRef", "trafficrulelist", required=False)
+        rule_lists = self.targets(path, node, "TrafficRules", "TrafficRuleListRef", "trafficrulelist", required=False)
         objects = {}
         for list_path, object_list in object_lists:
             for item in fields(object_list, "TrafficObject", "Selector"):
@@ -109,6 +106,9 @@ class MotionLinks:
             edges.extend(self.edges(list_path, mapping, objects))
         return {
             "manager": node.get("ID"), "assembly": assembly,
+            "objectLists": [item.get("ID") for _, item in object_lists],
+            "mappingLists": [item.get("ID") for _, item in mapping_lists],
+            "ruleLists": [item.get("ID") for _, item in rule_lists],
             "objects": [{"name": name, "type": kind} for name, kind in objects.items()],
             "edges": edges,
         }
@@ -167,4 +167,5 @@ class MotionLinks:
                     if matched and assembly and bases[manager_id] and bases[manager_id] != assembly:
                         self.source.issue("error", "widget_link_mismatch", path,
                                           f"Widget {identity!r} and manager {manager_id!r} refer to different assemblies")
-                yield {"id": identity, "path": path.as_posix(), "assembly": assembly, "manager": manager}
+                yield {"id": identity, "path": path.as_posix(), "contentId": node.get("id"),
+                       "assembly": assembly, "manager": manager}

@@ -28,6 +28,7 @@ $brStudio = '.\.local\venv\Scripts\br-studio.exe'
 & $brStudio operation-help build_preflight
 & $brStudio operation-help build_plan
 & $brStudio operation-help build_execute
+& $brStudio operation-help ruc_review
 & $brStudio run --request examples/inspect-loop.json
 & $brStudio run --request examples/inspect-loop.json --format markdown
 ```
@@ -37,6 +38,8 @@ The example reads a synthetic project. The result lists declared package version
 For an installed AS4 toolchain, `build_preflight` compares the project with the selected Studio, Runtime, CPU and technology-package catalogs. [Build preflight workflow](skills/br-automation-studio/references/build-preflight.md)
 
 Use `build_plan` and `build_execute` to compile a pinned AS4 PC simulation project and collect the RUC archive and builder log. [Native build workflow](skills/br-automation-studio/references/native-build.md)
+
+After building, use `ruc_review` to compare the retained package's 6D modules, typed routes, and rendered widget links with the saved inputs. [RUC review workflow](skills/br-automation-studio/references/ruc-review.md)
 
 ## Chat workflow
 

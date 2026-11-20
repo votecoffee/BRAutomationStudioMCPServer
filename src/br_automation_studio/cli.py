@@ -7,33 +7,11 @@ import json
 from pathlib import Path
 import sys
 
-from .operations import InvalidRequest, OPERATIONS, SCHEMA_VERSION, execute
+from .json_io import read_json
+from .operations import OPERATIONS, SCHEMA_VERSION, execute
 
 REQUEST_LIMIT = 1024 * 1024
 EXIT_CODES = {"complete": 0, "issues": 1, "invalid_request": 2, "partial": 3}
-
-
-def unique_object(pairs):
-    data = {}
-    for key, value in pairs:
-        if key in data:
-            raise InvalidRequest(f"Duplicate JSON key {key!r}")
-        data[key] = value
-    return data
-
-
-def invalid_constant(value):
-    raise InvalidRequest(f"Invalid JSON constant {value!r}")
-
-
-def load_request(path):
-    with path.open("rb") as stream:
-        data = stream.read(REQUEST_LIMIT + 1)
-    if len(data) > REQUEST_LIMIT:
-        raise InvalidRequest(f"Request exceeds {REQUEST_LIMIT} bytes")
-    if data.startswith(b"\xef\xbb\xbf"):
-        raise InvalidRequest("Write the request as UTF-8 without a BOM")
-    return json.loads(data.decode("utf-8"), object_pairs_hook=unique_object, parse_constant=invalid_constant)
 
 
 def markdown(response):
@@ -43,6 +21,9 @@ def markdown(response):
         if value is None:
             return "—"
         return escape(str(value), quote=False).replace("\r", " ").replace("\n", " ").replace("|", "&#124;")
+
+    if "rucReview" in report:
+        return markdown_ruc(response, text)
 
     titles = {
         "project_inspect": "Saved Automation Studio project inspection",
@@ -101,6 +82,41 @@ def markdown(response):
     return "\n".join(lines)
 
 
+def markdown_ruc(response, text):
+    report = response["result"]
+    review = report["rucReview"]
+    lines = [
+        "# AS4 RUC review", "",
+        f"- Project **{text(report['project'])}**",
+        f"- Readback status **{response['status']}**",
+        f"- Configuration **{text(report['selectedConfiguration'])}** · CPU **{text(report['selectedCpu'])}**",
+        f"- Build job {text(review['jobId'])}",
+        f"- Build plan SHA-256 {text(review['planSha256'])}",
+        f"- Saved source matched **{'yes' if review['sourceMatched'] else 'unverified'}**",
+    ]
+    if archive := review["archive"]:
+        lines.extend([
+            f"- RUC SHA-256 **{archive['sha256']}** · {archive['entries']} archive entries",
+            f"- 6D module elements read {len(review['modules'])} · Rendered widgets read {len(review['widgets'])}",
+        ])
+    if summary := review["buildSummary"]:
+        lines.append(f"- Builder errors {text(summary['errors'])} · Builder warnings {text(summary['warnings'])}")
+    for manager in review["trafficManagers"]:
+        lines.extend(["", f"## {text(manager['manager'])}", ""])
+        for edge in manager["edges"]:
+            lines.append(f"- {text(edge['source'])} ({text(edge['sourceType'])}) → {text(edge['destination'])} ({text(edge['destinationType'])})")
+    if review["widgets"]:
+        lines.extend(["", "## Rendered widgets", ""])
+        for item in review["widgets"]:
+            lines.append(f"- {text(item['contentId'])} / {text(item['id'])} · assembly {text(item['assembly'])} · manager {text(item['manager'])}")
+    lines.extend(["", "## Diagnostics", ""])
+    for item in report["diagnostics"]:
+        lines.append(f"- {text(item['severity'])} · {text(item['path'])} · {text(item['message'])}")
+    if not report["diagnostics"]:
+        lines.append("The selected package checks matched the saved inputs.")
+    return "\n".join(lines)
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="br-studio")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -122,7 +138,7 @@ def main(argv=None):
         return 0
 
     try:
-        response = execute(load_request(args.request), args.request.parent)
+        response = execute(read_json(args.request, REQUEST_LIMIT), args.request.parent)
     except (ValueError, OSError, RecursionError) as error:
         print(json.dumps({"schemaVersion": SCHEMA_VERSION, "status": "invalid_request", "message": str(error)}, indent=2))
         return EXIT_CODES["invalid_request"]

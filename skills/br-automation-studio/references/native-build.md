@@ -40,7 +40,7 @@ Run `br-studio run --request <build-request.json>`. The command regenerates the 
 | `builder.log` | Raw output from the builder and its process tree. |
 | `binary/<configuration>/<cpu>/RUCPackage/RUCPackage.zip` | The generated archive. A successful job includes its SHA-256, member count, and ZIP integrity result. |
 
-Read `result.nativeBuild.status` and the reported build error and warning counts. For example, B&R exit code **1** with a warnings-only summary and valid RUC yields a successful native job with partial CLI status. The CLI preserves the [shared exit codes](project-inspection.md#read-the-result). The RUC integrity check verifies the archive. Review the compiled 6D configuration and HMI links separately when they matter.
+Read `result.nativeBuild.status` and the reported build error and warning counts. For example, B&R exit code **1** with a warnings-only summary and valid RUC yields a successful native job with partial CLI status. The CLI preserves the [shared exit codes](project-inspection.md#read-the-result). The RUC integrity check verifies the archive. Use [RUC review](ruc-review.md) to compare the compiled 6D configuration and HMI links with the saved inputs.
 
 The worker joins a Windows Job Object before starting the vendor process. It checks for remaining processes when the build finishes. Timeouts and interrupted dispatches can leave an unknown build outcome. Inspect the retained `job.json` and `builder.log` before retrying. A new submission has its own directory and identity.
 
