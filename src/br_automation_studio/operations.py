@@ -24,6 +24,7 @@ from .ruc_review import review_ruc
 from .runtime_capture import RuntimeScanCapture
 from .simulation_preflight import PAIRS, simulation_environment, simulation_preflight
 from .station_trace import station_trace_review
+from .widget_packages import widget_package_review
 
 SCHEMA_VERSION = 1
 
@@ -275,6 +276,13 @@ PROJECT_INSPECT = Operation(
     },
     required=("project",),
     handler=inspect,
+)
+WIDGET_PACKAGE_REVIEW = Operation(
+    name="widget_package_review",
+    summary="Compare saved mapp View widget library registrations with immediate directory entries.",
+    arguments={"project": PROJECT_INSPECT.arguments["project"]},
+    required=("project",),
+    handler=lambda arguments, request_directory: widget_package_review(project_path(arguments, request_directory)),
 )
 BUILD_PREFLIGHT = Operation(
     name="build_preflight",
@@ -549,7 +557,7 @@ ARSIM_STATUS_SMOKE = Operation(
     handler=run_arsim_status_smoke,
 )
 OPERATIONS = {item.name: item for item in (
-    PROJECT_INSPECT, BUILD_PREFLIGHT, SIMULATION_ENVIRONMENT, SIMULATION_PREFLIGHT, BUILD_PLAN, BUILD_EXECUTE, RUC_REVIEW,
+    PROJECT_INSPECT, WIDGET_PACKAGE_REVIEW, BUILD_PREFLIGHT, SIMULATION_ENVIRONMENT, SIMULATION_PREFLIGHT, BUILD_PLAN, BUILD_EXECUTE, RUC_REVIEW,
     ASSEMBLY_IO_REVIEW, LAYOUT_DEVICE_REVIEW, LAYOUT_SVG_REVIEW,
     LAUNCHPAD_ROUTE_REVIEW, LAUNCHPAD_STATION_REVIEW, STATION_TRACE_REVIEW, CYCLE_TRACE_REVIEW,
     LAUNCHPAD_RECOVERY_REVIEW, LAUNCHPAD_MOTION_REVIEW,

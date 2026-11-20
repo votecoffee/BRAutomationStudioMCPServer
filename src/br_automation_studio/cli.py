@@ -26,6 +26,8 @@ def markdown(response):
         return markdown_ruc(response, text)
     if "simulationEnvironment" in report:
         return markdown_simulation_environment(response, text)
+    if "widgetPackageReview" in report:
+        return markdown_widget_package_review(response, text)
 
     titles = {
         "project_inspect": "Saved Automation Studio project inspection",
@@ -113,6 +115,24 @@ def markdown(response):
             lines.append(f"- RUC {text(package['path'])} · {package['entries']} ZIP entries · {package['sha256']}")
             if payload := package.get("mpTrafficPayload"):
                 lines.append(f"- Packaged MpTraffic {text(payload['path'])} · SHA-256 {payload['sha256']}")
+    lines.extend(markdown_diagnostics(report["diagnostics"], text))
+    return "\n".join(lines)
+
+
+def markdown_widget_package_review(response, text):
+    report = response["result"]
+    review = report["widgetPackageReview"]
+    lines = ["# Saved mapp View widget package inventory", "",
+             f"- Project **{text(report['project'])}** · Status **{text(response['status'])}**",
+             f"- Review {text(review['state'])} · Widgets manifest {text(review['widgetsManifest'])}",
+             f"- Read-set SHA-256 {report['snapshot']['sha256']}"]
+    for library in review["libraries"]:
+        lines.extend(["", f"## {text(library['manifest'])}", "",
+                      f"- State {text(library['state'])} · Declared entries {len(library['declared'])} "
+                      f"· Extra {len(library['extra'])} · Missing or wrong type {len(library['missing'])}"])
+        for entry in library["extra"]:
+            note = f" · AS warning {entry['builderWarning']}" if entry["builderWarning"] is not None else ""
+            lines.append(f"- Undeclared {text(entry['kind'])} {text(entry['name'])}{note}")
     lines.extend(markdown_diagnostics(report["diagnostics"], text))
     return "\n".join(lines)
 

@@ -52,4 +52,6 @@ Read `result.nativeBuild.status` and the reported build error and warning counts
 
 The worker joins a Windows Job Object before starting the vendor process. It checks for remaining processes when the build finishes. Timeouts and interrupted dispatches can leave an unknown build outcome. Inspect the retained `job.json` and `builder.log` before retrying. A new submission has its own directory and identity.
 
+For mapp View warnings 9232 and 9233, compare the saved library registration and immediate directory entries using [widget package review](widget-package-review.md). Read the native copy steps and the widget files in the RUC when assessing those entries.
+
 The workflow produces saved native build evidence. ARsim execution, traffic behavior, browser readback, hardware transfer, and commissioning need their own acceptance.
