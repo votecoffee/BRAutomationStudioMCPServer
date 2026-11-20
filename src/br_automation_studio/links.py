@@ -18,6 +18,18 @@ def property_value(node, name):
     return matches[0].get("Value") if matches else None
 
 
+def object_position(path, node, name, kind):
+    positions = fields(node, "Position", "Selector")
+    if len(positions) != 1:
+        return {"name": name, "type": kind, "mode": None, "xy": [None, None], "path": path.as_posix()}
+    position = positions[0]
+    xy = []
+    for axis in ("X", "Y"):
+        values = fields(position, axis)
+        xy.append(values[0].get("Value") if len(values) == 1 else None)
+    return {"name": name, "type": kind, "mode": position.get("Value"), "xy": xy, "path": path.as_posix()}
+
+
 class MotionLinks:
     def __init__(self, source):
         self.source = source
@@ -58,7 +70,7 @@ class MotionLinks:
                 results.append(match)
         return results
 
-    def check(self):
+    def check(self, geometry_manager=None):
         assembly_links = []
         managers = []
         for (kind, identity), entries in self.entries.items():
@@ -71,10 +83,10 @@ class MotionLinks:
                     "assembly": identity, "layouts": [item.get("ID") for _, item in layouts],
                 })
             if kind == "trafficmanager":
-                managers.append(self.manager(path, node))
+                managers.append(self.manager(path, node, collect_positions=identity == geometry_manager))
         return assembly_links, managers
 
-    def manager(self, path, node):
+    def manager(self, path, node, *, collect_positions=False):
         bases = fields(node, "Base", "Selector")
         assembly = None
         if len(bases) == 1 and bases[0].get("Value") == "AssemblyAcp6D":
@@ -87,6 +99,7 @@ class MotionLinks:
         mapping_lists = self.targets(path, node, "TrafficMapping", "TrafficMappingListRef", "trafficmappinglist")
         rule_lists = self.targets(path, node, "TrafficRules", "TrafficRuleListRef", "trafficrulelist", required=False)
         objects = {}
+        positions = []
         for list_path, object_list in object_lists:
             for item in fields(object_list, "TrafficObject", "Selector"):
                 identity = property_value(item, "Name")
@@ -100,11 +113,13 @@ class MotionLinks:
                     objects[identity] = None
                 else:
                     objects[identity] = object_type
+                    if collect_positions:
+                        positions.append(object_position(list_path, item, identity, object_type))
 
         edges = []
         for list_path, mapping in mapping_lists:
             edges.extend(self.edges(list_path, mapping, objects))
-        return {
+        result = {
             "manager": node.get("ID"), "assembly": assembly,
             "objectLists": [item.get("ID") for _, item in object_lists],
             "mappingLists": [item.get("ID") for _, item in mapping_lists],
@@ -112,6 +127,9 @@ class MotionLinks:
             "objects": [{"name": name, "type": kind} for name, kind in objects.items()],
             "edges": edges,
         }
+        if collect_positions:
+            result["positionEvidence"] = positions
+        return result
 
     def selector_type(self, path, selector):
         value = selector.get("Value")

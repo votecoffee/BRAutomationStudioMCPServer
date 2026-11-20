@@ -5,6 +5,7 @@ from pathlib import Path
 import shutil
 from tempfile import TemporaryDirectory
 import unittest
+from xml.etree import ElementTree as ET
 
 from br_automation_studio.cli import markdown
 from br_automation_studio.operations import execute
@@ -42,11 +43,11 @@ class LaunchPadRouteTest(unittest.TestCase):
         }
         self.six_d = self.project / "Physical/ARsim/PC/mapp6D"
 
-    def run_review(self, **arguments):
+    def run_review(self, operation="launchpad_route_review", **arguments):
         self.receipt.write_text(json.dumps(self.data), encoding="utf-8")
         args = {"project": "Loop/Loop.apj", "managerId": "DemoTraffic",
                 "launchPadProject": "Route.lpj", "launchPadReadback": "Route.json", **arguments}
-        return execute({"schemaVersion": 1, "workspace": "route", "operation": "launchpad_route_review",
+        return execute({"schemaVersion": 1, "workspace": "route", "operation": operation,
                         "arguments": args}, self.root)
 
     def test_comparison_reads_geometry_ids_and_preserves_return_edge(self):
@@ -111,6 +112,71 @@ class LaunchPadRouteTest(unittest.TestCase):
         self.assertEqual(response["status"], "partial", response)
         self.assertEqual(response["result"]["routeReview"]["state"], "review_required")
         self.assertEqual(response["result"]["routeReview"]["additionalObjects"], [{"name": "Spare", "type": "Waypoint"}])
+
+    def prepare_geometry(self, transform, points=None):
+        if points is None:
+            points = {"Load": (0, 0), "Transit": (100, 0), "Inspect": (100, 200), "Recovery": (0, 0)}
+        decoded = self.data["decoded"]
+        for entry in decoded["workstations"] + decoded["gates"]:
+            entry["x"], entry["y"] = points[entry["name"]]
+        path = self.six_d / "DemoObjects.trafficobjectlist"
+        tree = ET.parse(path)
+        for selector in tree.findall("Element/Selector"):
+            name = selector.find("Property[@ID='Name']").get("Value")
+            xy = transform(*points[name])
+            pos = ET.SubElement(selector, "Selector", ID="Position", Value="Absolute")
+            for axis, value in zip(("X", "Y"), xy):
+                ET.SubElement(pos, "Property", ID=axis, Value=str(value / 1000))
+        tree.write(path, encoding="utf-8", xml_declaration=True)
+
+    def geometry(self, **arguments):
+        return self.run_review("launchpad_geometry_review", **arguments)
+
+    def test_geometry_passes_a_rotation_and_translation(self):
+        self.prepare_geometry(lambda x, y: (40-y, 30+x))
+        response = self.geometry(distanceToleranceMicrometres=1, expectedHandedness="preserved")
+        result = response["result"]
+        self.assertEqual(response["status"], "complete", result["diagnostics"])
+        self.assertEqual(result["geometryReview"]["state"], "criteria_met")
+        self.assertLess(result["geometryReview"]["maxAbsDeltaMm"], 1e-8)
+        self.assertEqual(result["evidence"], "launchpad_geometry_saved")
+        self.assertIn("Handedness **preserved**", markdown(response))
+
+    def test_geometry_detects_reflection_when_all_distances_match(self):
+        self.prepare_geometry(lambda x, y: (40+x, 30-y))
+        response = self.geometry(distanceToleranceMicrometres=1, expectedHandedness="preserved")
+        result = response["result"]
+        self.assertEqual(response["status"], "issues")
+        self.assertEqual(result["routeReview"]["state"], "matched")
+        self.assertLess(result["geometryReview"]["maxAbsDeltaMm"], 1e-8)
+        self.assertEqual(result["geometryReview"]["handedness"]["state"], "reversed")
+        self.assertEqual([d["code"] for d in result["diagnostics"]], ["launchpad_handedness_mismatch"])
+
+    def test_geometry_reports_displacement_and_applies_only_a_supplied_tolerance(self):
+        self.prepare_geometry(lambda x, y: (x, y + 15 if y else y))
+        measured = self.geometry()
+        result = measured["result"]
+        self.assertEqual(measured["status"], "complete")
+        self.assertEqual(result["geometryReview"]["state"], "measured")
+        self.assertAlmostEqual(result["geometryReview"]["maxAbsDeltaMm"], 15)
+        limited = self.geometry(distanceToleranceMicrometres=1000)
+        self.assertEqual(limited["result"]["diagnostics"][0]["code"], "launchpad_distance_tolerance")
+
+    def test_collinear_points_do_not_establish_handedness(self):
+        points = {"Load": (0, 0), "Transit": (100, 0), "Inspect": (200, 0), "Recovery": (300, 0)}
+        self.prepare_geometry(lambda x, y: (x, y), points)
+        result = self.geometry(expectedHandedness="preserved")["result"]
+        self.assertEqual(result["geometryReview"]["handedness"]["state"], "indeterminate")
+        self.assertEqual(result["diagnostics"][0]["code"], "launchpad_handedness_mismatch")
+
+    def test_missing_geometry_does_not_change_topology_evidence(self):
+        self.prepare_geometry(lambda x, y: (x, y))
+        del self.data["decoded"]["workstations"][0]["x"]
+        self.assertEqual(self.run_review()["status"], "complete")
+        result = self.geometry()["result"]
+        self.assertEqual(result["routeReview"]["state"], "matched")
+        self.assertEqual(result["geometryReview"]["state"], "unverified")
+        self.assertEqual(result["diagnostics"][0]["code"], "launchpad_geometry_unverified")
 
 
 if __name__ == "__main__":

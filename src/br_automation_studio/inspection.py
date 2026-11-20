@@ -6,12 +6,12 @@ from .links import MotionLinks
 from .project import MOTION_TYPES, SavedFiles, children, choices, package_files, select, tag
 
 
-def inspect_project(path, configuration=None, cpu=None):
+def inspect_project(path, configuration=None, cpu=None, *, geometry_manager=None):
     path = Path(path)
-    return inspect_saved(SavedFiles(path.parent), Path(path.name), configuration, cpu)
+    return inspect_saved(SavedFiles(path.parent), Path(path.name), configuration, cpu, geometry_manager=geometry_manager)
 
 
-def inspect_saved(source, project, configuration=None, cpu=None):
+def inspect_saved(source, project, configuration=None, cpu=None, *, geometry_manager=None):
     node, studio = source.xml(project, "Project")
     packages = []
     if node is not None:
@@ -54,7 +54,7 @@ def inspect_saved(source, project, configuration=None, cpu=None):
                     module, _ = source.xml(path, "Configuration")
                     if module is not None:
                         motion.add(path, path.suffix.lower()[1:], module)
-                assembly_links, managers = motion.check()
+                assembly_links, managers = motion.check(geometry_manager)
                 content = package_files(source, Path("Logical/Package.pkg"), "Package", {"content"})
                 widgets = list(motion.widgets(content, managers))
                 modules = motion.module_inventory

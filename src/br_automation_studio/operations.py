@@ -10,6 +10,7 @@ from .binding_review import BindingTarget
 from .browser_smoke import ChromeProbe
 from .hmi_smoke import arsim_hmi_smoke
 from .inspection import inspect_project
+from .launchpad_geometry import GeometryCriteria
 from .launchpad_route import launchpad_route_review
 from .native_build import execute_build, plan_build
 from .opcua_smoke import OpcUaProbe
@@ -106,7 +107,7 @@ def ruc_review(arguments, request_directory):
                       request_directory / arguments["jobDirectory"])
 
 
-def run_launchpad_route_review(arguments, request_directory):
+def run_launchpad_route_review(arguments, request_directory, geometry=None):
     name_map = arguments.get("nameMap")
     job = arguments.get("jobDirectory")
     return launchpad_route_review(
@@ -115,7 +116,16 @@ def run_launchpad_route_review(arguments, request_directory):
         request_directory / arguments["launchPadReadback"],
         request_directory / name_map if name_map is not None else None,
         request_directory / job if job is not None else None,
+        geometry=geometry,
     )
+
+
+def run_launchpad_geometry_review(arguments, request_directory):
+    orientation = arguments.get("expectedHandedness")
+    if orientation is not None and orientation not in {"preserved", "reversed"}:
+        raise InvalidRequest("expectedHandedness must be preserved or reversed")
+    criteria = GeometryCriteria(arguments.get("distanceToleranceMicrometres"), orientation)
+    return run_launchpad_route_review(arguments, request_directory, criteria)
 
 
 def binding_target(arguments):
@@ -240,6 +250,19 @@ LAUNCHPAD_ROUTE_REVIEW = Operation(
     required=("project", "managerId", "launchPadProject", "launchPadReadback"),
     handler=run_launchpad_route_review,
 )
+LAUNCHPAD_GEOMETRY_REVIEW = Operation(
+    name="launchpad_geometry_review",
+    summary="Measure the saved or packaged station and waypoint geometry of a selected LaunchPad cycle.",
+    arguments={
+        **LAUNCHPAD_ROUTE_REVIEW.arguments,
+        "distanceToleranceMicrometres": {"type": "integer", "minimum": 0, "maximum": 9007199254740991,
+                                        "description": "Optional maximum absolute pairwise distance delta in micrometres."},
+        "expectedHandedness": {"type": "string", "minLength": 1, "enum": ["preserved", "reversed"],
+                               "description": "Optional expected handedness in the two recorded coordinate systems."},
+    },
+    required=LAUNCHPAD_ROUTE_REVIEW.required,
+    handler=run_launchpad_geometry_review,
+)
 RUC_BINDING_REVIEW = Operation(
     name="ruc_binding_review",
     summary="Trace a one-way mapp View value binding from saved sources through a reviewed AS4 RUC.",
@@ -305,7 +328,8 @@ ARSIM_HMI_SMOKE = Operation(
     handler=run_arsim_hmi_smoke,
 )
 OPERATIONS = {item.name: item for item in (
-    PROJECT_INSPECT, BUILD_PREFLIGHT, SIMULATION_PREFLIGHT, BUILD_PLAN, BUILD_EXECUTE, RUC_REVIEW, LAUNCHPAD_ROUTE_REVIEW, RUC_BINDING_REVIEW,
+    PROJECT_INSPECT, BUILD_PREFLIGHT, SIMULATION_PREFLIGHT, BUILD_PLAN, BUILD_EXECUTE, RUC_REVIEW,
+    LAUNCHPAD_ROUTE_REVIEW, LAUNCHPAD_GEOMETRY_REVIEW, RUC_BINDING_REVIEW,
     ARSIM_SMOKE, ARSIM_BROWSER_SMOKE, ARSIM_OPCUA_SMOKE, ARSIM_HMI_SMOKE,
 )}
 

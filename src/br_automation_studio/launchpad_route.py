@@ -6,6 +6,7 @@ from pathlib import Path
 
 from .inspection import inspect_project
 from .json_io import decode_json
+from .launchpad_geometry import measure_geometry
 from .native_build import fingerprint
 from .ruc_review import review_ruc
 
@@ -37,7 +38,7 @@ def layout_objects(decoded):
             if ident in layout or name in names:
                 raise ValueError(f"Duplicate saved geometry ID or name at {name!r}")
             names.add(name)
-            layout[ident] = {"name": name, "type": kind, "recipeType": recipe_type}
+            layout[ident] = {"name": name, "type": kind, "recipeType": recipe_type, "xy": [row.get("x"), row.get("y")]}
     return layout
 
 
@@ -86,7 +87,7 @@ def json_snapshot(path, limit):
     return decode_json(raw), {"path": str(path.resolve()), "sha256": sha256(raw).hexdigest()}
 
 
-def baseline(lpj, readback):
+def baseline(lpj, readback, *, include_geometry=False):
     if lpj.suffix.lower() != ".lpj" or readback.suffix.lower() != ".json":
         raise ValueError("Select the source .lpj and its decoded JSON readback")
     payload, readback_file = json_snapshot(readback, READBACK_LIMIT)
@@ -111,8 +112,12 @@ def baseline(lpj, readback):
              "readbackPath": readback_file["path"], "readbackSha256": readback_file["sha256"],
              "decodeSourceName": origin["fileName"], "launchPadVersion": version, "codec": payload["codec"],
              "unusedGeometry": sorted(layout[ident]["name"] for ident in set(layout) - set(ordered))}
-    return proof, [{"name": layout[ident]["name"], "type": layout[ident]["type"], "geometryId": ident}
-                   for ident in ordered]
+    objects = [{"name": layout[ident]["name"], "type": layout[ident]["type"], "geometryId": ident}
+               for ident in ordered]
+    if include_geometry:
+        for obj in objects:
+            obj["launchPadXY"] = layout[obj["geometryId"]]["xy"]
+    return proof, objects
 
 
 def names_for(objects, name_map):
@@ -139,23 +144,31 @@ def compare_cycle(objects, renamed, manager):
     cycle = expected[1:] + expected[:1]
     want = Counter((*start, *end) for start, end in zip(expected, cycle))
     got = Counter(tuple(row[field] for field in EDGE_KEYS) for row in manager["edges"])
-    return {"expectedObjects": [row | {"importedName": renamed[row["name"]]} for row in objects],
+    return {"expectedObjects": [{"name": row["name"], "type": row["type"], "geometryId": row["geometryId"],
+                                 "importedName": renamed[row["name"]]} for row in objects],
             "missingObjects": missing, "additionalObjects": unexpected,
             "expectedEdges": edge_rows(want), "missingEdges": edge_rows(want - got),
             "unexpectedEdges": edge_rows(got - want)}
 
 
-def launchpad_route_review(project, configuration, cpu, manager_id, lpj, readback, name_map=None, job_dir=None):
-    report = review_ruc(project, job_dir) if job_dir is not None else inspect_project(project, configuration, cpu)
+def launchpad_route_review(project, configuration, cpu, manager_id, lpj, readback, name_map=None, job_dir=None,
+                           *, geometry=None):
+    geometry_manager = manager_id if geometry is not None else None
+    if job_dir is not None:
+        report = review_ruc(project, job_dir, geometry_manager=geometry_manager)
+    else:
+        report = inspect_project(project, configuration, cpu, geometry_manager=geometry_manager)
     route = report["routeReview"] = {"state": "not_checked", "managerId": manager_id,
                                      "view": "compiled" if job_dir is not None else "saved"}
+    if geometry is not None:
+        report["geometryReview"] = {"state": "not_checked"}
 
-    def issue(code, path, message, severity="error"):
+    def issue(code, path, message, severity="error", scope="launchpad_route"):
         report["diagnostics"].append({"code": code, "path": path.as_posix(), "message": message,
-                                      "severity": severity, "scope": "launchpad_route"})
+                                      "severity": severity, "scope": scope})
 
     try:
-        proof, objects = baseline(lpj, readback)
+        proof, objects = baseline(lpj, readback, include_geometry=geometry is not None)
         route["launchPad"] = proof
     except (OSError, RuntimeError, ValueError) as error:
         issue("launchpad_baseline_invalid", readback, str(error))
@@ -198,4 +211,17 @@ def launchpad_route_review(project, configuration, cpu, manager_id, lpj, readbac
     else:
         route["state"] = "matched"
         report["evidence"] = "launchpad_route_compiled" if job_dir is not None else "launchpad_route_saved"
+
+    if geometry is not None:
+        try:
+            measures, issues = measure_geometry(objects, renamed, manager["positionEvidence"], geometry)
+        except (TypeError, ValueError, OverflowError) as error:
+            report["geometryReview"]["state"] = "unverified"
+            issue("launchpad_geometry_unverified", project, str(error), scope="launchpad_geometry")
+        else:
+            report["geometryReview"] = measures
+            for code, message in issues:
+                issue(code, project, message, scope="launchpad_geometry")
+            if not issues and route["state"] == "matched":
+                report["evidence"] = "launchpad_geometry_compiled" if job_dir is not None else "launchpad_geometry_saved"
     return report

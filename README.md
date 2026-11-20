@@ -31,6 +31,7 @@ $brStudio = '.\.local\venv\Scripts\br-studio.exe'
 & $brStudio operation-help build_execute
 & $brStudio operation-help ruc_review
 & $brStudio operation-help launchpad_route_review
+& $brStudio operation-help launchpad_geometry_review
 & $brStudio operation-help ruc_binding_review
 & $brStudio operation-help arsim_smoke
 & $brStudio operation-help arsim_browser_smoke
@@ -51,6 +52,8 @@ Use `build_plan` and `build_execute` to compile a pinned AS4 PC simulation proje
 After building, use `ruc_review` to compare the retained package's 6D modules, typed routes, and rendered widget links with the saved inputs. [RUC review workflow](skills/br-automation-studio/references/ruc-review.md)
 
 Use `launchpad_route_review` to compare a locally decoded LaunchPad cycle with a selected saved or compiled Traffic Manager. [LaunchPad route workflow](skills/br-automation-studio/references/launchpad-route-review.md)
+
+Use `launchpad_geometry_review` to compare station and waypoint distances and handedness in the saved or compiled manager. [LaunchPad geometry workflow](skills/br-automation-studio/references/launchpad-geometry-review.md)
 
 Use `ruc_binding_review` to trace a selected one-way mapp View status binding through the saved project, compiled widget, and OPC UA exposure map. [Binding readback workflow](skills/br-automation-studio/references/ruc-binding-review.md)
 
