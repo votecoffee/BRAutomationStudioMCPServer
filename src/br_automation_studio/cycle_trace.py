@@ -1,5 +1,8 @@
 """Correlate an inspection leg, return and next hold for one shuttle in a saved trace."""
 
+from csv import Error as CsvError
+
+from .cycle_capture import materialize_cycle
 from .cycle_hmi import review_cycle_hmi
 from .launchpad_route import json_snapshot, launchpad_route_review
 from .station_trace import (
@@ -110,7 +113,7 @@ def check_cycle(trace, identity, outbound_path, inbound_path, result):
 
 
 def cycle_trace_review(project, configuration, cpu, manager_id, lpj, readback, name_map, job_directory,
-                       source_station, trace_path, *, hmi_status_path=None):
+                       source_station, trace_path, *, hmi_status_path=None, scan_csv_path=None):
     report = launchpad_route_review(project, configuration, cpu, manager_id, lpj, readback, name_map, job_directory,
                                     include_stations=True)
     result = report["cycleTraceReview"] = {"state": "not_checked", "sourceStation": source_station}
@@ -118,19 +121,26 @@ def cycle_trace_review(project, configuration, cpu, manager_id, lpj, readback, n
         report["cycleHmiReview"] = {"state": "not_checked"}
     if report["diagnostics"] or report["stationReview"]["state"] != "read":
         return report
+    evidence_path = trace_path
     try:
         outbound = selected_leg(report, source_station)
         inbound = selected_leg(report, outbound[-1])
         if len(report["stationReview"]["legs"]) != 2 or inbound[-1] != source_station:
             raise TraceIssue("cycle_trace_route", "The compiled route needs two station legs that close the cycle")
         trace, result["trace"] = json_snapshot(trace_path, TRACE_LIMIT)
+        if scan_csv_path is not None:
+            evidence_path = scan_csv_path
+            trace = materialize_cycle(trace, scan_csv_path, result.setdefault("scanCapture", {}))
+            evidence_path = trace_path
+        elif isinstance(trace, dict) and "scanCapture" in trace:
+            raise ValueError("Supply scanCsv for a cycle trace with scanCapture")
         check_cycle(trace, leg_identity(report, manager_id, outbound), outbound, inbound, result)
-    except (OSError, RuntimeError, ValueError) as error:
+    except (CsvError, OSError, RuntimeError, ValueError) as error:
         severity = error.severity if isinstance(error, TraceIssue) else "error"
         code = error.code if isinstance(error, TraceIssue) else "cycle_trace_invalid"
         result["state"] = "incomplete" if severity == "warning" else "issues"
         report["diagnostics"].append({"scope": "cycle_trace", "severity": severity, "code": code,
-                                      "path": trace_path.as_posix(), "message": str(error)})
+                                      "path": evidence_path.as_posix(), "message": str(error)})
     else:
         result["state"] = "matched"
         report["evidence"] = "cycle_trace_readback"

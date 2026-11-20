@@ -1,6 +1,13 @@
 from copy import deepcopy
+import csv
+from hashlib import sha256
+from io import StringIO
+import os
+from pathlib import Path
+from tempfile import TemporaryDirectory
 import unittest
 
+from br_automation_studio.cycle_capture import FIELDS, HOLD_HMI, materialize_cycle
 from br_automation_studio.cycle_trace import check_cycle
 from br_automation_studio.station_trace import ARRIVAL, FLAGS, TraceIssue
 
@@ -113,3 +120,119 @@ class CycleTraceTest(unittest.TestCase):
         self.assertEqual(caught.exception.code, "cycle_trace_return_fault")
         self.assertEqual(result["returnLeg"]["firstFault"], {"scan": 17, "statusId": -30007})
         self.assertIsNone(result["returnLeg"]["arrival"])
+
+
+    def scan_csv(self):
+        trace = deepcopy(self.trace)
+        columns = sorted(FIELDS | set(HOLD_HMI))
+        scans = {scan: dict.fromkeys(columns, "") | {"scan": scan} for scan in range(10, 19)}
+        for leg, name in (("inspectionLeg", "inspection"), ("returnLeg", "return")):
+            for row in trace[leg].pop("scans"):
+                cells = scans[row["scan"]]
+                detection, = row.get("detections") or [{"sequence": 0}]
+                cells.update({f"{name}.detection.{key}": value for key, value in detection.items()})
+                cells.update({f"{name}.{key}": 0 if value is None else value for key, value in row.items()
+                              if key not in ("scan", "detections", "inspectionResult")})
+                if name == "inspection":
+                    reply = row.get("inspectionResult")
+                    cells["inspection.resultPresent"] = bool(reply)
+                    cells.update({f"inspection.result.{key}": value for key, value in (reply or {}).items()})
+                else:
+                    cells["return.error"] = row.get("error", False)
+        hold = trace.pop("nextHold")
+        scans[18].update({f"hold.{key}": value for key, value in hold.items() if key != "scan"},
+                         **{"hold.phase": 10, "hold.releaseTotal": 1, "hold.heartbeat": 23})
+        trace["scanCapture"] = {"inspectionScans": [10, 15], "returnScans": [15, 17], "nextHoldScan": 18}
+        return trace, columns, list(scans.values())
+
+    def materialize(self, trace, contents, update_digest=True):
+        with TemporaryDirectory(dir=os.environ.get("BR_STUDIO_TEST_SCRATCH")) as directory:
+            path = Path(directory) / "capture.csv"
+            path.write_bytes(contents)
+            if update_digest:
+                trace["scanCapture"]["sha256"] = sha256(contents).hexdigest()
+            capture = {}
+            result = materialize_cycle(trace, path, capture)
+            self.assertEqual(capture["sha256"], sha256(contents).hexdigest())
+            return result, capture
+
+    def test_column_mapped_csv_matches_json_cycle_and_keeps_the_hold_samples(self):
+        trace, columns, rows = self.scan_csv()
+        csv_text = StringIO(newline="")
+        headers = ["Task Scan" if column == "scan" else column for column in columns]
+        writer = csv.writer(csv_text, delimiter=";", lineterminator="\r\n")
+        writer.writerow(headers)
+        writer.writerows([row[key] for key in columns] for row in rows)
+        trace["scanCapture"].update(delimiter=";", columns={"scan": "Task Scan"})
+        csv_bytes = csv_text.getvalue().encode("utf-8-sig")
+        normalized, capture = self.materialize(trace, csv_bytes)
+        self.assertEqual(capture["records"], 9)
+        self.assertEqual(self.run_cycle(normalized), self.run_cycle(self.trace))
+        self.assertEqual(normalized["nextHold"]["heartbeat"], 23)
+        with self.assertRaises(TraceIssue) as error:
+            self.materialize(trace, csv_bytes + b"\r\n", update_digest=False)
+        self.assertEqual(error.exception.code, "cycle_capture_hash_mismatch")
+
+    def test_capture_scan_order_boundaries_and_intervening_gaps(self):
+        for replaced, removed, expected, severity in (
+            (11, 12, "cycle_capture_scan_order", "error"),
+            (None, 18, "cycle_capture_boundary_missing", "warning"),
+            (None, 14, "station_trace_scan_gap", "warning"),
+        ):
+            with self.subTest(removed=removed, replaced=replaced):
+                trace, columns, rows = self.scan_csv()
+                if replaced is not None:
+                    rows[removed - 10]["scan"] = replaced
+                else:
+                    del rows[removed - 10]
+                output = StringIO(newline="")
+                writer = csv.DictWriter(output, fieldnames=columns)
+                writer.writeheader()
+                writer.writerows(rows)
+                with self.assertRaises(TraceIssue) as error:
+                    normalized, _ = self.materialize(trace, output.getvalue().encode())
+                    self.run_cycle(normalized)
+                self.assertEqual((error.exception.code, error.exception.severity), (expected, severity))
+
+    def test_as_chart_needs_aligned_signals_and_preserves_the_sample_count(self):
+        trace, columns, rows = self.scan_csv()
+        for key in ("sequence", "station", "shuttleId", "event"):
+            columns.append(f"inspection.detection2.{key}")
+        for row in rows:
+            row.update({f"inspection.detection2.{key}": "" for key in ("station", "shuttleId", "event")},
+                       **{"inspection.detection2.sequence": 0})
+        prior = self.arrival(20, "Outfeed")
+        self.trace["inspectionLeg"]["scans"][3]["detections"].insert(0, prior)
+        for key, value in prior.items():
+            rows[3][f"inspection.detection2.{key}"] = rows[3][f"inspection.detection.{key}"]
+            rows[3][f"inspection.detection.{key}"] = value
+        trace["scanCapture"]["detectionSlots"] = {"inspection": 2}
+        station_ids = {"Inspect": "1.0000", "Outfeed": "2.0000"}
+        event_ids = {ARRIVAL: "3.0000"}
+        trace["scanCapture"].update(format="as-chart", stationNames={v: k for k, v in station_ids.items()},
+                                    eventNames={v: k for k, v in event_ids.items()})
+        meta = ('% TYPE=CHART-DATA-ASCII V=2.0 TITLE="{}" XUNIT="UnitX" YUNIT="UnitY" '
+                'FORMULA="DO_NOT_CHANGE_ORIGINAL_DATA" ROWS=9 COLS=2 COLSEP="COMMA" ,\r\n')
+        text = "".join(meta.format(name) for name in columns)
+        end_of_header = len(text)
+        for index, row in enumerate(rows, 1):
+            for name in columns:
+                raw = row[name]
+                if isinstance(raw, int):
+                    raw = f"{int(raw)}.0000"
+                raw = station_ids.get(raw, event_ids.get(raw, raw))
+                text += f"{index}.0100,{raw},"
+            text += "\r\n"
+        text += "\x00"
+        normalized, capture = self.materialize(trace, text.encode())
+        self.assertEqual(capture["format"], "as-chart")
+        self.assertEqual(self.run_cycle(normalized), self.run_cycle(self.trace))
+        self.assertEqual(normalized["nextHold"]["releaseTotal"], 1)
+        for malformed, code in (
+            (text[:end_of_header] + text[end_of_header:].replace("1.0100", "1.0101", 1),
+             "cycle_capture_time_alignment"),
+            (text.replace("ROWS=9", "ROWS=10"), "cycle_capture_count_mismatch"),
+        ):
+            with self.subTest(code=code), self.assertRaises(TraceIssue) as error:
+                self.materialize(trace, malformed.encode())
+            self.assertEqual(error.exception.code, code)

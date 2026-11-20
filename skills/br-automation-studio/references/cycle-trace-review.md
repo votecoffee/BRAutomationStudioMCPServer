@@ -6,7 +6,7 @@ Use `cycle_trace_review` for a saved scan capture of one shuttle through an insp
 
 Use `br-studio operation-help cycle_trace_review` for the request contract. Set the operation and replace the trace path in a copy of the [inspection leg request](station-trace-review.md#bind-the-trace-to-the-route). Run `br-studio run --request <request.json>` or add `--format markdown` for a readable report.
 
-The cycle JSON has `schemaVersion` set to 1 and three objects.
+The cycle JSON has `schemaVersion` set to 1 and three objects. To supply the scans and hold from a saved CSV or Automation Studio chart export, use the [scan file workflow](cycle-scan-capture.md).
 
 | Object | Contents |
 | --- | --- |

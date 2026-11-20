@@ -166,9 +166,11 @@ def run_station_trace_review(arguments, request_directory):
 
 def run_cycle_trace_review(arguments, request_directory):
     status_report = arguments.get("hmiStatusReport")
+    scan_csv = arguments.get("scanCsv")
     return cycle_trace_review(*launchpad_inputs(arguments, request_directory), arguments["sourceStation"],
                               request_directory / arguments["trace"],
-                              hmi_status_path=request_directory / status_report if status_report else None)
+                              hmi_status_path=request_directory / status_report if status_report else None,
+                              scan_csv_path=request_directory / scan_csv if scan_csv else None)
 
 
 def run_launchpad_motion_review(arguments, request_directory):
@@ -392,7 +394,10 @@ CYCLE_TRACE_REVIEW = Operation(
     summary="Check a recorded two-station inspection cycle including return and the next held request.",
     arguments={
         **STATION_TRACE_REVIEW.arguments,
-        "trace": {"type": "string", "minLength": 1, "description": "File containing the normalized cycle trace."},
+        "trace": {"type": "string", "minLength": 1,
+                  "description": "Normalized cycle trace or cycle trace descriptor for CSV samples."},
+        "scanCsv": {"type": "string", "minLength": 1,
+                    "description": "Recorded PLC scan samples bound by the trace descriptor's SHA-256."},
         "hmiStatusReport": {"type": "string", "minLength": 1,
                             "description": "Completed arsim_status_smoke JSON for the same cycle RUC and session."},
     },

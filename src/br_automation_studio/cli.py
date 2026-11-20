@@ -440,6 +440,11 @@ def markdown_cycle_trace(cycle, text):
              f"- State **{text(cycle['state'])}** · Phase {text(cycle.get('phase'))}"]
     if trace := cycle.get("trace"):
         lines.append(f"- Trace {text(trace['path'])} · SHA-256 {trace['sha256']}")
+    if capture := cycle.get("scanCapture"):
+        lines.append(f"- Scan CSV SHA-256 {capture['sha256']}")
+        if "records" in capture:
+            lines.append(f"- CSV records {capture['records']} · Inspection scans {capture['inspectionScans']} "
+                         f"· Return scans {capture['returnScans']} · Hold scan {capture['nextHoldScan']}")
     if outbound := cycle.get("outbound"):
         lines.extend(markdown_station_trace(outbound, text))
     if returned := cycle.get("returnLeg"):
