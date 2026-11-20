@@ -9,6 +9,7 @@ from .browser_smoke import ChromeProbe
 from .json_io import read_json
 from .opcua_smoke import INTEGER_NODE_TYPES, OpcUaProbe, StatusNode
 from .ruc_review import review_ruc
+from .start_page import StartPageWidget
 from .runtime_capture import RuntimeScanCapture
 
 
@@ -135,7 +136,7 @@ class HmiProbe:
 
 def arsim_hmi_smoke(project, job_dir, pvi, session_dir, timeout, target, chrome,
                     assembly_widget, browser_timeout, opcua_timeout, *, require_layout=False, capture_layout=False,
-                    require_widget_bundle=False, status_bindings=(), scan_capture=None):
+                    require_widget_bundle=False, require_start_page=False, status_bindings=(), scan_capture=None):
     binding_report = review_ruc(project, job_dir, replace(target, require_default=True))
     if binding_report["evidence"] != "ruc_binding_readback":
         binding_report["arsimSmoke"] = {"state": "not_started", "packageSha256": None, "assets": [], "cleanup": None}
@@ -152,16 +153,17 @@ def arsim_hmi_smoke(project, job_dir, pvi, session_dir, timeout, target, chrome,
                          "archive": status["rucReview"]["archive"], "expectedValue": binding.expected})
     expected_status = tuple((item["bindingReview"]["domId"], item["expectedValue"]) for item in statuses)
     check_assembly = (not statuses or assembly_widget is not None or require_layout
-                      or capture_layout or require_widget_bundle)
+                      or capture_layout or require_widget_bundle or require_start_page)
     browser = ChromeProbe(chrome, target.dom_id, assembly_widget, browser_timeout,
                           require_layout=require_layout, capture_layout=capture_layout,
                           expected_status=expected_status, check_assembly=check_assembly,
                           require_widget_bundle=require_widget_bundle)
     probe = HmiProbe(binding_report, browser, opcua_timeout, tuple(statuses), scan_capture)
     before_start = scan_capture.require_absent if scan_capture is not None else None
+    start_widget = StartPageWidget(assembly_widget) if require_start_page else None
     report = arsim_smoke(project, job_dir, pvi, session_dir, timeout, probe, extra_content=(target.content,),
                          require_6d=check_assembly, before_start=before_start,
-                         require_widget_bundle=require_widget_bundle)
+                         require_widget_bundle=require_widget_bundle, start_widget=start_widget)
     report["bindingReview"] = binding_report["bindingReview"]
     report["bindingSnapshot"] = binding_report["snapshot"]
     return report

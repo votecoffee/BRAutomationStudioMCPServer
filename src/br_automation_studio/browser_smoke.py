@@ -27,6 +27,7 @@ PAGE_SOCKET = re.compile(r"/devtools/page/[a-zA-Z0-9_-]+")
 LINK_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 SVG_ROOT = "{http://www.w3.org/2000/svg}svg"
 TRANSIENT_CONTEXT_ERRORS = {"Cannot find default execution context", "Execution context was destroyed."}
+RESOURCE_LABELS = {"widgetBundle": "bundle", "startPageMap": "start page map"}
 
 
 def assembly_dom_id(widgets, selected, counter):
@@ -57,7 +58,7 @@ def http_status(value):
     return value if type(value) is int and 100 <= value <= 599 else None
 
 
-def widget_bundle_observation(value):
+def resource_observation(value, path):
     value = value if isinstance(value, dict) else {}
     status = http_status(value.get("httpStatus"))
     if status in (200, 304):
@@ -66,7 +67,7 @@ def widget_bundle_observation(value):
         state = "request_failed"
     else:
         state = "unverified"
-    return {"state": state, "path": WIDGET_BUNDLE_PATH, "httpStatus": status}
+    return {"state": state, "path": path, "httpStatus": status}
 
 
 def layout_observation(value, paths):
@@ -191,7 +192,7 @@ class Page:
         return value
 
 
-def widget_expression(assembly, counter, layout_paths=None, status_widgets=(), *, require_widget_bundle=False):
+def widget_expression(assembly, counter, layout_paths=None, status_widgets=(), *, resource_paths=None):
     return f"""(() => {{
         const assembly = document.getElementById({json.dumps(assembly)});
         const read = (id) => {{
@@ -209,15 +210,18 @@ def widget_expression(assembly, counter, layout_paths=None, status_widgets=(), *
                 return [role, entries.at(-1)?.responseStatus ?? null];
             }}))
         }};
-        const bundlePath = {json.dumps(WIDGET_BUNDLE_PATH if require_widget_bundle else None)};
-        const bundle = bundlePath && performance.getEntriesByType('resource').findLast(entry => {{
-            if (entry.initiatorType !== 'script') return false;
-            const requested = new URL(entry.name);
-            return requested.origin === location.origin && requested.pathname === bundlePath;
-        }});
+        const resources = Object.fromEntries(Object.entries({json.dumps(resource_paths or {})}).map(([key, path]) => {{
+            const initiators = key === 'widgetBundle' ? ['script'] : ['xmlhttprequest', 'fetch'];
+            const matching = performance.getEntriesByType('resource').findLast(entry => {{
+                if (!initiators.includes(entry.initiatorType)) return false;
+                const requested = new URL(entry.name);
+                return requested.origin === location.origin && requested.pathname === path;
+            }});
+            return [key, matching ? {{httpStatus: matching.responseStatus}} : null];
+        }}));
         return {{
+            ...resources,
             url: location.href,
-            widgetBundle: bundle ? {{httpStatus: bundle.responseStatus}} : null,
             timeOrigin: performance.timeOrigin,
             widgetType: assembly?.getClientRects().length
                 ? assembly.getAttribute('data-brease-widget') : null,
@@ -254,8 +258,9 @@ def check_document_status(state, receipt, expected):
 
 def collect_samples(page, expression, url, receipt, count, prior_origins=(), after=Decimal(0),
                     *, layout_paths=None, require_layout=False, check_assembly=True, expected_status=None,
-                    require_widget_bundle=False):
+                    resource_paths=None):
     latest = after
+    resource_paths = resource_paths or {}
     while time.monotonic() < page.deadline:
         result = page.read(expression)
         origin = document_origin(result, url)
@@ -268,10 +273,8 @@ def collect_samples(page, expression, url, receipt, count, prior_origins=(), aft
                 receipt["widgetType"] = ASSEMBLY_WIDGET
             if layout_paths:
                 receipt["layout"] = layout_observation(result.get("layout"), layout_paths)
-            bundle_matches = True
-            if require_widget_bundle:
-                receipt["widgetBundle"] = widget_bundle_observation(result.get("widgetBundle"))
-                bundle_matches = receipt["widgetBundle"]["state"] == "observed"
+            for key, path in resource_paths.items():
+                receipt[key] = resource_observation(result.get(key), path)
             value = result.get("value")
             status_matches = not expected_status or check_document_status(result, receipt, expected_status)
             if status_matches and len(receipt["counterSamples"]) < count:
@@ -279,15 +282,17 @@ def collect_samples(page, expression, url, receipt, count, prior_origins=(), aft
                 if numeric is not None and numeric > latest:
                     latest = numeric
                     receipt["counterSamples"].append(value)
-            if (status_matches and bundle_matches and len(receipt["counterSamples"]) == count
+            if (status_matches and len(receipt["counterSamples"]) == count
+                    and all(receipt[key]["state"] == "observed" for key in resource_paths)
                     and (not require_layout or receipt.get("layout", {}).get("state") == "observed")):
                 return
         time.sleep(0.2)
-    if (require_widget_bundle and len(receipt["counterSamples"]) == count
-            and receipt["widgetBundle"]["state"] != "observed"):
-        raise TimeoutError("A successful same-origin mapp View bundle request was not verified")
-    if require_layout and len(receipt["counterSamples"]) == count:
-        raise TimeoutError("Successful 6DData SVG requests and an inline SVG with layout bounds were not verified")
+    if len(receipt["counterSamples"]) == count:
+        for key in resource_paths:
+            if receipt[key]["state"] != "observed":
+                raise TimeoutError(f"A successful same-origin mapp View {RESOURCE_LABELS[key]} request was not verified")
+        if require_layout:
+            raise TimeoutError("Successful 6DData SVG requests and an inline SVG with layout bounds were not verified")
     if expected_status:
         raise TimeoutError("The expected displayed status values and changing numeric counter were not verified")
     raise TimeoutError("The displayed Assembly6D and changing numeric counter were not verified")
@@ -296,13 +301,16 @@ def collect_samples(page, expression, url, receipt, count, prior_origins=(), aft
 def verify_navigation(page, url, receipt):
     paths = receipt.get("layoutPaths")
     required = receipt.get("requireLayoutAssets", False)
-    require_widget_bundle = receipt.get("requireWidgetBundle", False)
+    resources = {}
+    if receipt.get("requireWidgetBundle"):
+        resources["widgetBundle"] = WIDGET_BUNDLE_PATH
+    if client_map := receipt.get("startPageMapPath"):
+        resources["startPageMap"] = client_map
     expected = receipt.get("expectedStatus", {})
     assembly = receipt["assemblyWidgetId"]
     options = {"layout_paths": paths, "require_layout": required, "check_assembly": assembly is not None,
-               "expected_status": expected, "require_widget_bundle": require_widget_bundle}
-    expression = widget_expression(assembly, receipt["counterWidgetId"], paths, expected,
-                                   require_widget_bundle=require_widget_bundle)
+               "expected_status": expected, "resource_paths": resources}
+    expression = widget_expression(assembly, receipt["counterWidgetId"], paths, expected, resource_paths=resources)
     page.navigate(url)
     receipt["state"] = "first_document"
     first = receipt["initial"] = {"counterSamples": []}
@@ -396,6 +404,10 @@ class ChromeProbe:
         receipt.update(state="ready", assemblyWidgetId=widget, layoutPaths=paths, requireLayoutAssets=require_layout,
                        counterWidgetId=self.counter_widget,
                        chrome={"path": str(chrome), "version": version, "sha256": fingerprint(chrome)})
+        if start := reviewed.get("startPageWidget"):
+            if start["state"] != "matched" or start["domId"] != widget:
+                raise ValueError("The start page review must match the browser's Assembly6D widget")
+            receipt["startPageMapPath"] = start["compiled"]["clientMapUrl"]
         if self.require_widget_bundle:
             if widget is None:
                 raise ValueError("The bundle check requires a reviewed Assembly6D widget")

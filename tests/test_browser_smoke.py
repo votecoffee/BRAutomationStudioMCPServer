@@ -220,6 +220,28 @@ class TestBrowserSmoke(unittest.TestCase):
         self.assertEqual(receipt["reopened"]["counterSamples"], ["4", "5"])
         self.assertEqual(receipt["reopened"]["widgetBundle"]["state"], "request_failed")
 
+    @patch("br_automation_studio.browser_smoke.time.sleep")
+    @patch("br_automation_studio.browser_smoke.time.monotonic", side_effect=range(8))
+    def test_start_page_map_must_be_seen_in_the_reopened_document(self, now, pause):
+        page = Mock(deadline=7)
+        loaded = {"httpStatus": 200}
+        page.read.side_effect = [
+            *(dict(hmi(str(value), 10), startPageMap=loaded, widgetBundle=loaded) for value in (1, 2, 3)),
+            {"url": "about:blank", "timeOrigin": 11},
+            dict(hmi("100", 10), startPageMap=loaded, widgetBundle=loaded),
+            dict(hmi("4", 12), widgetBundle=loaded),
+            dict(hmi("5", 12), widgetBundle=loaded),
+        ]
+        receipt = dict(self.receipt(), requireWidgetBundle=True, startPageMapPath="/demopanel.json")
+        with self.assertRaisesRegex(TimeoutError, "same-origin mapp View start page map"):
+            verify_navigation(page, URL, receipt)
+        self.assertEqual(receipt["initial"]["startPageMap"], {
+            "state": "observed", "path": "/demopanel.json", "httpStatus": 200,
+        })
+        self.assertEqual(receipt["reopened"]["counterSamples"], ["4", "5"])
+        self.assertEqual(receipt["reopened"]["startPageMap"]["state"], "unverified")
+        self.assertEqual(receipt["reopened"]["widgetBundle"]["state"], "observed")
+
     def test_select_reviewed_assembly_id(self):
         widgets = [{"contentId": "Proof", "id": "Asmb"}, {"contentId": "Other", "id": "Asmb"}]
         self.assertEqual(assembly_dom_id(widgets[:1], None, "Proof_Count"), "Proof_Asmb")

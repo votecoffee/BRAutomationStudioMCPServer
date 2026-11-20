@@ -123,13 +123,13 @@ def compiled_start(archive, saved, rendered, widget_id):
     parser.close()
     require(parser.matches == [WIDGET_TYPE], html_path, "Expected one DOM element with the reviewed Assembly6D class")
     return {"serverConfig": server, "visualization": vis_path, "clientMap": map_path,
-            "content": html_path, "contentUrl": url, "widgetType": WIDGET_TYPE,
+            "clientMapUrl": map_path.removeprefix(VIEW).lower(), "content": html_path, "contentUrl": url, "widgetType": WIDGET_TYPE,
             "assembly": rendered["assembly"], "manager": rendered["manager"]}
 
 
 @dataclass(frozen=True)
 class StartPageWidget:
-    dom_id: str
+    dom_id: str | None
 
     def receipt(self):
         return {"state": "not_checked", "domId": self.dom_id}
@@ -138,8 +138,10 @@ class StartPageWidget:
         source = SavedFiles(project_root)
         report["state"] = "unverified"
         try:
-            widget = one((row for row in saved if f"{row['contentId']}_{row['id']}" == self.dom_id),
-                         ".", f"saved Assembly6D widget {self.dom_id!r}")
+            candidates = [(f"{row['contentId']}_{row['id']}", row) for row in saved]
+            dom_id, widget = one((item for item in candidates if self.dom_id is None or item[0] == self.dom_id),
+                                 ".", "selected saved Assembly6D widget")
+            report["domId"] = dom_id
             report["saved"] = saved_start(source, manifest, widget)
             pinned = {row["path"]: row["sha256"] for row in manifest["inputs"]["files"]}
             snapshot = report["savedReadSet"] = source.snapshot()
@@ -147,11 +149,11 @@ class StartPageWidget:
                     ".", "Saved start page metadata could not be verified against the build manifest")
 
             compiled = one((row for row in rendered if (row["contentId"], row["id"]) == (widget["contentId"], widget["id"])),
-                           widget["path"], f"rendered Assembly6D options for {self.dom_id!r}")
+                           widget["path"], f"rendered Assembly6D options for {dom_id!r}")
             require(compiled["className"] == WIDGET_TYPE and
                     all(compiled[key] in blank_equivalent(widget[key]) for key in ("assembly", "manager")),
                     compiled["path"], "Rendered Assembly6D class or links differ from the saved widget")
-            report["compiled"] = compiled_start(archive, report["saved"], compiled, self.dom_id)
+            report["compiled"] = compiled_start(archive, report["saved"], compiled, dom_id)
             report["state"] = "matched"
         except BindingProblem as error:
             archive.diagnostics.issue("error", "start_page_widget_mismatch", error.path, str(error))

@@ -106,6 +106,39 @@ class ArsimSmokeTests(unittest.TestCase):
                     probe_http(session, profile, [expected], receipt, 1)
         self.assertEqual(receipt["assets"], [response])
 
+    def test_verified_client_map_is_pinned_at_its_browser_url(self):
+        package = self.project.parent / "startup.zip"
+        member, url = f"{VIEW}/DemoPanel.json", "/demopanel.json"
+        data = b'{"startPage":"Overview"}'
+        with ZipFile(package, "w") as archive:
+            archive.writestr("ProjectInformation.xml",
+                             "<ProjectInformation><CPUType>AR000</CPUType>"
+                             "<RuntimeType>AR Simulation</RuntimeType></ProjectInformation>")
+            archive.writestr(f"{VIEW}/index.html", b"index")
+            archive.writestr(f"{CONTENT}/Assembly.html", b"content")
+            archive.writestr(WIDGET_SCRIPT, b"assembly widget script")
+            archive.writestr(member, data)
+        review = {"widgets": [{"contentId": "Assembly"}],
+                  "startPageWidget": {"state": "matched", "compiled": {"clientMap": member, "clientMapUrl": url}}}
+        _, assets = expected_assets(package, review, {"opcUaPort": None})
+        want, = (asset for asset in assets if asset["path"] == url)
+        self.assertEqual(want, {"path": url, "bytes": len(data), "sha256": sha256(data).hexdigest(),
+                                "archiveMember": member})
+
+        worker = SimpleNamespace(poll=lambda: None)
+        session = SimpleNamespace(worker=worker, job=SimpleNamespace(pids=lambda: {99}))
+        endpoint = {"protocol": "tcp", "address": "127.0.0.1", "port": 18081, "pid": 99}
+        profile = {"httpPort": 18081, "guardedPorts": [18081]}
+        receipt = {"assets": []}
+        with patch("br_automation_studio.arsim_smoke.endpoints", return_value=[endpoint]):
+            index = next(asset for asset in assets if asset["path"] == "/index.html")
+            matched = {"path": url, "status": 200, "bytes": len(data), "sha256": sha256(data).hexdigest()}
+            with patch("br_automation_studio.arsim_smoke.http_asset", side_effect=[dict(index, status=200),
+                       dict(index, status=200), matched]):
+                probe_http(session, profile, [index, want], receipt, 1)
+        self.assertEqual(receipt["assets"][-1]["archiveMember"], member)
+        self.assertNotIn("namedModule", receipt["assets"][-1])
+
     def test_required_bundle_contains_one_named_assembly_module(self):
         package = self.project.parent / "bundle.zip"
         declaration = f'define("{WIDGET_MODULE}",[],function(){{}})'.encode("ascii")

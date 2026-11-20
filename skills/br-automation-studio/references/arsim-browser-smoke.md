@@ -37,6 +37,12 @@ Use `br-studio operation-help arsim_browser_smoke` to discover the contract. Sel
 
 Run `br-studio run --request <browser-request.json>`. Set `timeoutSeconds` for the ARsim HTTP startup window and `browserTimeoutSeconds` for the complete Chrome probe. Select `--format markdown` on the same invocation if you need the readable format. Use a different session directory for each invocation.
 
+## Verify the default start page in ARsim
+
+Set `requireStartPage` to `true` in br-studio 0.40.0 or later to check that the selected Assembly6D widget is assigned to the default visualization's start page. The operation uses the [saved and compiled placement review](ruc-review.md#verify-the-default-page-placement-of-assembly6d) on the selected build before starting ARsim. Supply `assemblyWidgetId` when several Assembly6D widgets exist.
+
+The owned ARsim listener must return the exact packaged visualization client map at the lowercase URL used by the AS4 browser. For example, the RUC member `ExampleVisu.json` corresponds to `/examplevisu.json`. The HTTP record identifies the archive member and the response SHA-256. Both browser documents must record a same-origin XHR or fetch for that map with HTTP 200 or 304. See `startPageMap` under `initial` and `reopened` in the browser receipt.
+
 ## Verify the Assembly6D bundle in both documents
 
 Set `requireWidgetBundle` to `true` in br-studio 0.38.0 or later to require the AS4 release bundle. The CLI finds `BRVisu/release/brease.js` in the reviewed RUC, checks for one named `widgets/mapp6D/Assembly6D/Assembly6D` AMD declaration, and compares the bytes served by the owned HTTP listener with that RUC member. The HTTP receipt records the archive path, module name and SHA-256.

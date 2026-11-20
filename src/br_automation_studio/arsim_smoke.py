@@ -132,6 +132,10 @@ def expected_assets(archive_path, review, profile, extra_content=(), *, require_
         names.add(f"{CONTENT}/{widget['contentId']}.html")
     if review["widgets"]:
         names.add(WIDGET_SCRIPT)
+    start = review.get("startPageWidget")
+    client_map = start["compiled"]["clientMap"] if start and start["state"] == "matched" else None
+    if client_map:
+        names.add(client_map)
     if require_widget_bundle:
         if not review["widgets"]:
             raise ValueError("The bundle check requires a reviewed Assembly6D widget")
@@ -161,6 +165,8 @@ def expected_assets(archive_path, review, profile, extra_content=(), *, require_
                 if sum(1 for _ in WIDGET_MODULE_DECLARATION.finditer(data)) != 1:
                     raise ValueError("The mapp View bundle must contain one named Assembly6D module declaration")
                 asset.update(archiveMember=name, namedModule=WIDGET_MODULE)
+            if name == client_map:
+                asset.update(path=start["compiled"]["clientMapUrl"], archiveMember=name)
             assets.append(asset)
         return xml.findtext("ARVersion"), assets
 
@@ -222,8 +228,9 @@ def probe_http(session, profile, assets, receipt, timeout):
         receipt["assets"].append(response)
         if response["status"] != 200 or any(response[key] != want[key] for key in ("bytes", "sha256")):
             raise ValueError(f"ARsim response did not match the packaged asset: {want['path']}")
-        if "archiveMember" in want:
-            response.update(archiveMember=want["archiveMember"], namedModule=want["namedModule"])
+        for key in ("archiveMember", "namedModule"):
+            if key in want:
+                response[key] = want[key]
     receipt["ownedEndpoints"] = check_owned(profile["guardedPorts"], session.job.pids())
 
 
@@ -235,8 +242,8 @@ def ascii_pil_path(path):
 
 
 def arsim_smoke(project, job_dir, pvi, session_dir, timeout=30, runtime_probe=None, *,
-                extra_content=(), require_6d=True, before_start=None, require_widget_bundle=False):
-    report = review_ruc(project, job_dir, require_6d=require_6d)
+                extra_content=(), require_6d=True, before_start=None, require_widget_bundle=False, start_widget=None):
+    report = review_ruc(project, job_dir, require_6d=require_6d, start_widget=start_widget)
     smoke = {"state": "not_started", "packageSha256": None, "assets": [], "cleanup": None}
     report["arsimSmoke"] = smoke
     if any(item["severity"] == "error" for item in report["diagnostics"]):

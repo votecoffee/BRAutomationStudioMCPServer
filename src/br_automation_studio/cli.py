@@ -272,7 +272,8 @@ def markdown_ruc(response, text):
         for asset in smoke["assets"]:
             lines.append(f"- {text(asset['path'])} · HTTP {asset['status']} · {asset['bytes']} bytes · {asset['sha256']}")
             if member := asset.get("archiveMember"):
-                lines.append(f"  - RUC member {text(member)} · Named module {text(asset['namedModule'])}")
+                module = f" · Named module {text(asset['namedModule'])}" if "namedModule" in asset else ""
+                lines.append(f"  - RUC member {text(member)}{module}")
         if browser := smoke.get("browser"):
             lines.extend(markdown_browser(browser, text))
         if opcua := smoke.get("opcUa"):
@@ -671,6 +672,9 @@ def markdown_browser(browser, text):
             if bundle := document.get("widgetBundle"):
                 lines.append(f"  - Widget bundle {text(bundle['state'])} · {text(bundle['path'])}"
                              f" · HTTP {text(bundle['httpStatus'])}")
+            if client_map := document.get("startPageMap"):
+                lines.append(f"  - Start page map {text(client_map['state'])} · {text(client_map['path'])}"
+                             f" · HTTP {text(client_map['httpStatus'])}")
             if layout := document.get("layout"):
                 lines.append(f"  - Layout {text(layout['state'])} · Inline SVGs with layout bounds {text(layout['boundedSvgCount'])}")
                 for role, asset in layout["assets"].items():

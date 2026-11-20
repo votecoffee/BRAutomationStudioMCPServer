@@ -238,8 +238,9 @@ def arsim_inputs(arguments, request_directory):
 
 
 def run_arsim_smoke(arguments, request_directory, runtime_probe=None):
+    start_widget = StartPageWidget(arguments.get("assemblyWidgetId")) if arguments.get("requireStartPage") else None
     return arsim_smoke(*arsim_inputs(arguments, request_directory), runtime_probe,
-                       require_widget_bundle=arguments.get("requireWidgetBundle", False))
+                       require_widget_bundle=arguments.get("requireWidgetBundle", False), start_widget=start_widget)
 
 
 def run_arsim_browser_smoke(arguments, request_directory):
@@ -265,6 +266,7 @@ def run_arsim_hmi_smoke(arguments, request_directory, status_bindings=(), scan_c
         arguments.get("opcUaTimeoutSeconds", 20), require_layout=arguments.get("requireLayoutAssets", False),
         capture_layout=arguments.get("captureLayoutAssets", False),
         require_widget_bundle=arguments.get("requireWidgetBundle", False),
+        require_start_page=arguments.get("requireStartPage", False),
         status_bindings=status_bindings, scan_capture=scan_capture,
     )
 
@@ -528,6 +530,8 @@ ARSIM_BROWSER_SMOKE = Operation(
         "counterWidgetId": {"type": "string", "minLength": 1, "description": "DOM ID of a read-only PLC-bound increasing counter widget."},
         "assemblyWidgetId": {"type": "string", "minLength": 1, "description": "DOM ID of a reviewed Assembly6D widget. Required when multiple are reviewed."},
         "browserTimeoutSeconds": {"type": "integer", "minimum": 1, "maximum": 120, "default": 30},
+        "requireStartPage": {"type": "boolean", "default": False,
+                             "description": "Verify the Assembly6D startup route and require the generated client map in both browser documents."},
         "requireWidgetBundle": {"type": "boolean", "default": False,
                                 "description": "Check the packaged Assembly6D bundle and require its script load in both HMI documents."},
         "requireLayoutAssets": {"type": "boolean", "default": False,
@@ -559,6 +563,7 @@ ARSIM_HMI_SMOKE = Operation(
         "browserExecutable": ARSIM_BROWSER_SMOKE.arguments["browserExecutable"],
         "assemblyWidgetId": ARSIM_BROWSER_SMOKE.arguments["assemblyWidgetId"],
         "browserTimeoutSeconds": ARSIM_BROWSER_SMOKE.arguments["browserTimeoutSeconds"],
+        "requireStartPage": ARSIM_BROWSER_SMOKE.arguments["requireStartPage"],
         "requireWidgetBundle": ARSIM_BROWSER_SMOKE.arguments["requireWidgetBundle"],
         "requireLayoutAssets": ARSIM_BROWSER_SMOKE.arguments["requireLayoutAssets"],
         "captureLayoutAssets": ARSIM_BROWSER_SMOKE.arguments["captureLayoutAssets"],
