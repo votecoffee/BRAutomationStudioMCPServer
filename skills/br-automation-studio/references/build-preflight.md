@@ -53,7 +53,13 @@ Run `br-studio run --request <request.json> --format markdown` for the pin table
 
 With br-studio 0.44.0 or later, add `fieldPaths` to the `motion_interface_review` request to resolve selected nested members. Each path starts with a block included in `blocks` and follows the public pin and named fields. For example, `["MpTrafficStationMonitor.DetectedShuttle.Shuttle.ShuttleID"]` reads the declaration chain for the detected shuttle ID.
 
-The result includes the type and source line of each hop through the verified `.fun` and `.typ` files. A `missing` path identifies a field omitted from an inspected declaration. An `unverified` path identifies a chain the tool could not resolve, including ambiguous types and indirect references. The check follows directly declared `STRUCT` members. Use [the event-code review](cycle-scan-capture.md) for numeric values of the selected detection enum.
+The result includes the type and source line of each hop through the verified `.fun` and `.typ` files. A `missing` path identifies a field omitted from an inspected declaration. An `unverified` path identifies a chain the tool could not resolve, including ambiguous types and indirect references. The check follows directly declared `STRUCT` members.
+
+### Read explicit enumeration values
+
+With br-studio 0.45.0 or later, add `enumTypes` to `motion_interface_review` to read exact names and decimal values from the verified `.typ` files. For example, `["MpTrafficShDetectionEnum"]` selects the detection enum. Omit `blocks` for an enum-only request. For a pin or nested field, the typed pin or field report identifies the enum type to request.
+
+The report retains each declaration file hash and member's source line. An ambiguous declaration, duplicate value, implicit value or unsupported expression leaves the enum unverified. Keep the selected package identity with the reported map. Use [the compiled scan review](cycle-scan-capture.md#decode-events-from-the-saved-project-and-ruc) to verify a numeric event capture against its saved project and retained RUC.
 
 ## Interpret the evidence
 

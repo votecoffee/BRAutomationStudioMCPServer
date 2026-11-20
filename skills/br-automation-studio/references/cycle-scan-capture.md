@@ -57,6 +57,8 @@ Read only the window-specific columns for each selected phase. A fault needs its
 
 ## Decode events from the saved project and RUC
 
+Use the [enum declaration lookup](build-preflight.md#read-explicit-enumeration-values) to inspect the selected library's event map during preflight. The scan review below verifies the definition against the retained build and RUC.
+
 With br-studio 0.33.0 or later, set `scanCapture.eventEncoding` to `"project-mptraffic"` to verify event codes against the selected build. Leave out `eventNames` in this mode. The decoder reads the explicit `MpTrafficShDetectionEnum` values from the project's registered `Logical/Libraries/MpTraffic/MpTraffic.typ`. It checks that the library descriptor's version agrees with the .apj selection, that the source read set matches the retained build manifest and that the saved IA32 `MpTraffic.br` matches the RUC member byte for byte. The scan review reports the library version, type declaration hash, binary hash and event map.
 
 CSV cells may hold an exact integer or its whole-valued decimal form, such as `2.0000`, or the member name. Unknown values and `NONE` fail when a slot records a consumed detection. A recognized assignment or pass-through keeps its own identity and cannot satisfy an arrival. If the project has no verified saved library definition or the RUC differs, the requested check reports an issue. [B&R detection enum](https://help.br-automation.com/#/en/4/motion/mapp_6d/bibliotheken/mptraffic/datatype_constants/mptrafficshdetectionenum.html)

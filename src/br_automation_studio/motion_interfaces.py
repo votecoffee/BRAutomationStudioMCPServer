@@ -1,4 +1,4 @@
-"""Read public IEC function-block pins and STRUCT fields from the selected mapp 6D library files."""
+"""Read public IEC function-block pins, STRUCT fields and enums from the selected mapp 6D libraries."""
 
 from collections import defaultdict
 from hashlib import sha256
@@ -18,9 +18,12 @@ STRING = re.compile(r"""'(?:\$[^\r\n]|[^'$\r\n])*'|"(?:\$[^\r\n]|[^"$\r\n])*" ""
 BLOCK = re.compile(rf"^[ \t]*(FUNCTION_BLOCK|END_FUNCTION_BLOCK)\b(?:[ \t]+({IDENTIFIER}))?([^\r\n]*)", re.I | re.M)
 PUBLIC_START = re.compile(r"^[ \t]*(VAR_INPUT|VAR_OUTPUT|VAR_IN_OUT)\b([^\r\n]*)\r?$", re.I | re.M)
 TYPE_MARKER = re.compile(
-    rf"^[ \t]*(?:(TYPE|END_TYPE|END_STRUCT)\b(?:[ \t]*;)?|({IDENTIFIER})[ \t]*:\s*STRUCT\b)[ \t]*\r?$",
+    rf"^[ \t]*(?:(TYPE|END_TYPE|END_STRUCT)\b(?:[ \t]*;)?[ \t]*\r?$"
+    rf"|({IDENTIFIER})[ \t]*:\s*STRUCT\b[ \t]*\r?$|({IDENTIFIER})[ \t]*:\s*\()",
     re.I | re.M,
 )
+ENUM_BODY = re.compile(r"([^()]*)\)\s*;")
+ENUM_MEMBER = re.compile(rf"\s*({IDENTIFIER})\s*:=\s*([+-]?[0-9]{{1,10}})\s*")
 END_VAR = re.compile(r"^[ \t]*END_VAR\b[ \t]*\r?$", re.I | re.M)
 DECLARATION = re.compile(rf"\s*({IDENTIFIER}(?:\s*,\s*{IDENTIFIER})*)\s*:\s*(\S.*?)\s*$", re.S)
 STATEMENT = re.compile(r"[^;]*;")
@@ -134,13 +137,22 @@ def public_pins(body, block_line):
     return pins
 
 
-def read_structures(text):
-    structures = defaultdict(list)
+def read_types(text):
+    declarations = defaultdict(list)
     in_types = False
     active = None
     for marker in TYPE_MARKER.finditer(text):
-        token, name = marker.groups()
+        token, name, enum = marker.groups()
         word = token.upper() if token else None
+        if enum:
+            if in_types and active is None:
+                if match := ENUM_BODY.match(text, marker.end()):
+                    members = match[1]
+                else:
+                    members = None
+                line = text.count("\n", 0, marker.end()) + 1
+                declarations["enum", enum.casefold()].append((enum, line, members))
+            continue
         if word == "TYPE" and not in_types:
             in_types = True
         elif word == "END_TYPE" and in_types and active is None:
@@ -150,13 +162,40 @@ def read_structures(text):
         elif word == "END_STRUCT" and active is not None:
             owner = active[2]
             line = text.count("\n", 0, active.end()) + 1
-            structures[owner.casefold()].append((owner, line, text[active.end():marker.start()]))
+            declarations["struct", owner.casefold()].append((owner, line, text[active.end():marker.start()]))
             active = None
         else:
             raise ValueError("Unbalanced IEC TYPE or STRUCT declaration")
     if in_types or active is not None:
         raise ValueError("Unclosed IEC TYPE or STRUCT declaration")
-    return structures
+    return declarations
+
+
+def read_structures(text):
+    return {name: rows for (kind, name), rows in read_types(text).items() if kind == "struct"}
+
+
+def enum_members(body, first_line, name):
+    if body is None:
+        raise ValueError(f"Could not read the enumeration body for {name}")
+    members = []
+    names, values = set(), set()
+    cursor = 0
+    for entry in body.rstrip().removesuffix(",").split(","):
+        offset = cursor + len(entry) - len(entry.lstrip())
+        line = first_line + body.count("\n", 0, offset)
+        candidate = ENUM_MEMBER.fullmatch(entry)
+        if candidate is None:
+            raise ValueError(f"{name} needs explicit decimal values at line {line}")
+        label, literal = candidate.groups()
+        key, value = label.casefold(), int(literal)
+        if key in names or value in values:
+            raise ValueError(f"Duplicate enum name or value in {name} at line {line}")
+        names.add(key)
+        values.add(value)
+        members.append({"name": label, "value": value, "line": line})
+        cursor += len(entry) + 1
+    return members
 
 
 def indexed_libraries(project, report, result, suffix, parse):
@@ -218,11 +257,9 @@ def trace_field(path, blocks, structures, row):
     row.update(state="verified", type=current["type"], line=current["line"])
 
 
-def review_fields(project, report, result, requested):
-    result["fields"] = [{"path": path, "state": "unverified", "trace": []} for path in requested]
-    structures = indexed_libraries(project, report, result, ".typ", read_structures)
-    if result["state"] == "unverified":
-        return
+def review_fields(project, report, result, types):
+    structures = {name: rows for (kind, name), rows in types.items()
+                  if kind == "struct" and ("enum", name) not in types}
     blocks = {block["name"].casefold(): block for block in result["blocks"] if block["state"] == "verified"}
     for row in result["fields"]:
         try:
@@ -235,7 +272,26 @@ def review_fields(project, report, result, requested):
             result["state"] = "issues"
 
 
-def review_motion_interfaces(project, studio, runtime, configuration, cpu, requested, field_paths=()):
+def review_enums(project, report, result, types):
+    for row in result["enums"]:
+        name = row["name"]
+        path = project.name
+        try:
+            key = name.casefold()
+            matches = types.get(("enum", key), [])
+            if len(matches) != 1 or ("struct", key) in types:
+                raise ValueError(f"Expected one selected enum declaration for {name}")
+            source, (declared, line, body) = matches[0]
+            path = source["path"]
+            row.update(name=declared, source=source)
+            row.update(members=enum_members(body, line, declared), state="verified")
+        except ValueError as error:
+            report["diagnostics"].append({"severity": "error", "scope": "motion_interface", "path": path,
+                                          "code": "motion_enum_unverified", "message": str(error)})
+            result["state"] = "issues"
+
+
+def review_motion_interfaces(project, studio, runtime, configuration, cpu, requested, field_paths=(), enum_types=()):
     report = build_preflight(project, studio, runtime, configuration, cpu, verify_motion_declarations=True)
     declarations = report["motionDeclarations"]
     result = report["motionInterfaceReview"] = {
@@ -246,7 +302,7 @@ def review_motion_interfaces(project, studio, runtime, configuration, cpu, reque
         return report
 
     result["state"] = "verified"
-    index = indexed_libraries(project, report, result, ".fun", read_blocks)
+    index = indexed_libraries(project, report, result, ".fun", read_blocks) if requested else {}
     if result["state"] == "unverified":
         return report
     for symbol in requested:
@@ -265,5 +321,15 @@ def review_motion_interfaces(project, studio, runtime, configuration, cpu, reque
             result["state"] = "issues"
         result["blocks"].append(row)
     if field_paths:
-        review_fields(project, report, result, field_paths)
+        result["fields"] = [{"path": path, "state": "unverified", "trace": []} for path in field_paths]
+    if enum_types:
+        result["enums"] = [{"name": name, "state": "unverified"} for name in enum_types]
+    if field_paths or enum_types:
+        types = indexed_libraries(project, report, result, ".typ", read_types)
+        if result["state"] == "unverified":
+            return report
+        if field_paths:
+            review_fields(project, report, result, types)
+        if enum_types:
+            review_enums(project, report, result, types)
     return report

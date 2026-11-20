@@ -153,6 +153,16 @@ def markdown_motion_interfaces(response, text):
                       "| Pin | Direction | IEC type | Line |", "| --- | --- | --- | ---: |"])
         for pin in block["pins"]:
             lines.append(f"| {text(pin['name'])} | {text(pin['direction'])} | {text(pin['type'])} | {pin['line']} |")
+    for enum in review.get("enums", []):
+        lines.extend(["", f"## Enum {text(enum['name'])}", ""])
+        if source := enum.get("source"):
+            lines.append(f"- {text(source['path'])} · SHA-256 {source['sha256']}")
+        if enum["state"] != "verified":
+            lines.append(f"- {text(enum['state'])}")
+            continue
+        lines.extend(["", "| Member | Value | Source line |", "| --- | ---: | ---: |"])
+        for member in enum["members"]:
+            lines.append(f"| {text(member['name'])} | {member['value']} | {member['line']} |")
     if fields := review.get("fields"):
         lines.extend(["", "## Requested STRUCT fields", "", "| Field | State | IEC type | Owner | Source line |",
                       "| --- | --- | --- | --- | --- |"])

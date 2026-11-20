@@ -437,6 +437,45 @@ class BuildPreflightTests(unittest.TestCase):
             self.native_request("motion_interface_review", blocks=["ExampleStatus"],
                                 fieldPaths=["Other.Info.Bus.Count"])
 
+    def test_motion_enum_lookup_preserves_explicit_values_and_rejects_unresolved_codes(self):
+        _, catalog = self.declaration_fixture()
+        self.put(catalog["MpTraffic"] / "MpTraffic.typ",
+                 "(* HiddenEnum : (Phantom := 99); *)\n"
+                 "TYPE\n"
+                 "ExampleState : (Disabled := -2,\n"
+                 "                Running := 5, (* gap preserved *)\n"
+                 "                Stopped := +10);\n"
+                 "ImplicitState : (Idle, Ready := 2);\n"
+                 "RepeatedCode : (First := 1, Second := 1);\n"
+                 "END_TYPE\n")
+        names = ["examplestate", "ImplicitState", "RepeatedCode", "HiddenEnum"]
+        response = self.native_request("motion_interface_review", enumTypes=names)
+        report = response["result"]
+        review = report["motionInterfaceReview"]
+        self.assertEqual(review["blocks"], [])
+        self.assertEqual(review["state"], "issues")
+        chosen, *unresolved = review["enums"]
+        self.assertEqual(chosen["name"], "ExampleState")
+        self.assertEqual(chosen["state"], "verified")
+        self.assertEqual(chosen["source"]["origin"], "catalog")
+        self.assertEqual(chosen["members"], [
+            {"name": "Disabled", "value": -2, "line": 3},
+            {"name": "Running", "value": 5, "line": 4},
+            {"name": "Stopped", "value": 10, "line": 5},
+        ])
+        self.assertEqual([row["state"] for row in unresolved], ["unverified"] * 3)
+        self.assertIn("explicit decimal", report["diagnostics"][-3]["message"])
+        self.assertIn("Duplicate enum", report["diagnostics"][-2]["message"])
+        self.assertIn("| Running | 5 | 4 |", markdown(response))
+        with self.assertRaisesRegex(InvalidRequest, "distinct IEC names"):
+            self.native_request("motion_interface_review", enumTypes=["ExampleState", "examplestate"])
+
+        self.put(catalog["MpTraffic"] / "MpTraffic.typ", "TYPE\nExampleState : (Ready := 2);\n")
+        response = self.native_request("motion_interface_review", enumTypes=["ExampleState"])
+        review = response["result"]["motionInterfaceReview"]
+        self.assertEqual(review["state"], "unverified")
+        self.assertEqual(review["enums"], [{"name": "ExampleState", "state": "unverified"}])
+
     def test_function_block_review_rejects_ambiguous_and_invalid_inputs(self):
         _, catalog = self.declaration_fixture()
         self.put(catalog["MpTraffic"] / "MpTraffic.fun",

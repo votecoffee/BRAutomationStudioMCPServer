@@ -95,18 +95,19 @@ def preflight(arguments, request_directory):
 
 
 def run_motion_interface_review(arguments, request_directory):
-    blocks = arguments["blocks"]
-    if any(SYMBOL.fullmatch(name) is None for name in blocks):
-        raise InvalidRequest("blocks must contain IEC function-block names")
-    if len({name.casefold() for name in blocks}) != len(blocks):
-        raise InvalidRequest("blocks must contain distinct function-block names")
+    blocks, enums = arguments.get("blocks", ()), arguments.get("enumTypes", ())
+    if not blocks and not enums:
+        raise InvalidRequest("Supply blocks or enumTypes")
+    for key, names in (("blocks", blocks), ("enumTypes", enums)):
+        if any(SYMBOL.fullmatch(name) is None for name in names) or len({name.casefold() for name in names}) != len(names):
+            raise InvalidRequest(f"{key} must contain distinct IEC names")
     paths = arguments.get("fieldPaths", ())
     labels = {name.casefold() for name in blocks}
     if any(FIELD_PATH.fullmatch(path) is None or path.partition(".")[0].casefold() not in labels for path in paths):
         raise InvalidRequest("fieldPaths must name a selected block and its pin and STRUCT fields")
     if len({path.casefold() for path in paths}) != len(paths):
         raise InvalidRequest("fieldPaths must contain distinct field paths")
-    return review_motion_interfaces(*build_inputs(arguments, request_directory), blocks, paths)
+    return review_motion_interfaces(*build_inputs(arguments, request_directory), blocks, paths, enums)
 
 
 def run_simulation_environment(arguments, request_directory):
@@ -338,17 +339,20 @@ BUILD_PREFLIGHT = Operation(
 )
 MOTION_INTERFACE_REVIEW = Operation(
     name="motion_interface_review",
-    summary="Read selected public function-block pins from verified AS4 McAcp6D and MpTraffic declarations.",
+    summary="Read public pins, STRUCT fields and enum values from verified AS4 McAcp6D and MpTraffic declarations.",
     arguments={
         **{key: value for key, value in BUILD_PREFLIGHT.arguments.items() if key != "verifyMotionDeclarations"},
         "blocks": {"type": "array", "minItems": 1, "maxItems": 32,
                    "items": {"type": "string", "minLength": 1, "maxLength": 128},
                    "description": "Distinct IEC function-block names in McAcp6D or MpTraffic."},
+        "enumTypes": {"type": "array", "minItems": 1, "maxItems": 32,
+                       "items": {"type": "string", "minLength": 1, "maxLength": 128},
+                       "description": "Selected IEC enumeration types with explicit decimal members."},
         "fieldPaths": {"type": "array", "minItems": 1, "maxItems": 64,
                        "items": {"type": "string", "minLength": 1, "maxLength": 512},
                        "description": "Optional Block.Pin.Field paths through directly declared STRUCT members."},
     },
-    required=(*BUILD_PREFLIGHT.required, "blocks"),
+    required=BUILD_PREFLIGHT.required,
     handler=run_motion_interface_review,
 )
 SIMULATION_ENVIRONMENT = Operation(
