@@ -327,5 +327,61 @@ class LaunchPadRouteTest(unittest.TestCase):
         self.assertEqual(result["diagnostics"][0]["code"], "launchpad_master_layout_mismatch")
 
 
+    def prepare_station_processes(self):
+        nodes = self.data["decoded"]["recipe_nodes"]
+        for node, dwell in zip((nodes[0], nodes[2], nodes[3]), ([1, 1], [3], [99])):
+            node.update(fixed_dwell_time=False, process_steps=[{"type": "Wait", "dwell_time": value} for value in dwell])
+        return nodes
+
+    def test_station_review_splits_waypoints_from_stations_and_preserves_return(self):
+        self.prepare_station_processes()
+        path = self.root / "names.json"
+        path.write_text('{"Transfer":"Transit"}', encoding="utf-8")
+        self.data["decoded"]["gates"][0]["name"] = "Transfer"
+        response = self.run_review("launchpad_station_review", nameMap=path.name)
+        result = response["result"]
+        self.assertEqual(response["status"], "complete", result["diagnostics"])
+        self.assertEqual(result["routeReview"]["state"], "matched")
+        self.assertEqual(result["evidence"], "launchpad_station_saved")
+        review = result["stationReview"]
+        self.assertEqual(review["state"], "read")
+        self.assertEqual(review["nativeRecipe"], "not_checked")
+        first, last = review["legs"]
+        self.assertEqual([obj["name"] for obj in first["path"]], ["Load", "Transfer", "Inspect"])
+        self.assertEqual(first["path"][1], {"name": "Transfer", "importedName": "Transit", "type": "Waypoint"})
+        self.assertEqual([obj["name"] for obj in last["path"]], ["Inspect", "Load"])
+        self.assertFalse(first["wrapsReturnMarker"])
+        self.assertTrue(last["wrapsReturnMarker"])
+        self.assertEqual([step["dwellTimeRaw"] for step in first["modelProcess"]["steps"]], [1, 1])
+        self.assertEqual([step["dwellTimeRaw"] for step in last["modelProcess"]["steps"]], [3])
+        self.assertEqual(first["modelProcess"]["recipeNodeId"], "rs")
+        self.assertIn("Load → Transit → Inspect", markdown(response))
+
+    def test_station_review_warns_about_unverified_model_while_route_matches(self):
+        nodes = self.prepare_station_processes()
+        for invalid in (None, [{"type": "Wait", "dwell_time": True}], [{"type": "Vision", "dwell_time": 2}]):
+            with self.subTest(steps=invalid):
+                nodes[0]["process_steps"] = invalid
+                response = self.run_review("launchpad_station_review")
+                result = response["result"]
+                self.assertEqual(response["status"], "partial", result["diagnostics"])
+                self.assertEqual(result["routeReview"]["state"], "matched")
+                review = result["stationReview"]
+                self.assertEqual(review["state"], "unverified")
+                self.assertEqual(review["legs"][0]["modelProcess"]["state"], "unverified")
+                self.assertEqual(review["legs"][1]["modelProcess"]["state"], "read")
+                self.assertEqual(result["diagnostics"][0]["code"], "launchpad_station_unverified")
+
+    def test_station_review_refuses_unmatched_manager_paths(self):
+        self.prepare_station_processes()
+        path = self.six_d / "DemoMappings.trafficmappinglist"
+        mapping = path.read_bytes()
+        path.write_bytes(mapping.replace(b'ID="DestinationRef" Value="Load"', b'ID="DestinationRef" Value="Inspect"'))
+        result = self.run_review("launchpad_station_review")["result"]
+        self.assertEqual(result["routeReview"]["state"], "issues")
+        self.assertEqual(result["stationReview"]["state"], "not_checked")
+        self.assertEqual(result["stationReview"]["legs"], [])
+
+
 if __name__ == "__main__":
     unittest.main()

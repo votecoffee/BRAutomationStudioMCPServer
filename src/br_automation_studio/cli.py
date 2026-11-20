@@ -28,6 +28,7 @@ def markdown(response):
     titles = {
         "project_inspect": "Saved Automation Studio project inspection",
         "launchpad_route_review": "Saved Traffic Manager route review",
+        "launchpad_station_review": "Saved Traffic Manager station review",
         "launchpad_geometry_review": "Saved Traffic Manager geometry review",
         "launchpad_layout_review": "Saved ACOPOS 6D segment layout review",
         "launchpad_frame_review": "Saved LaunchPad coordinate frame review",
@@ -49,6 +50,8 @@ def markdown(response):
     lines.extend(f"- {text(item['name'])} {text(item['version'])}" for item in report["technologyPackages"])
     if route := report.get("routeReview"):
         lines.extend(markdown_route(route, text))
+        if stations := report.get("stationReview"):
+            lines.extend(markdown_stations(stations, text))
         if geometry := report.get("geometryReview"):
             lines.extend(markdown_geometry(geometry, text))
         if layout := report.get("layoutReview"):
@@ -133,6 +136,8 @@ def markdown_ruc(response, text):
         title = "# Compiled Traffic Manager geometry review"
     elif response["operation"] == "launchpad_route_review":
         title = "# Compiled Traffic Manager route review"
+    elif response["operation"] == "launchpad_station_review":
+        title = "# Compiled Traffic Manager station review"
     elif smoke is not None:
         title = "# AS4 ARsim loopback smoke"
     elif binding is not None:
@@ -191,6 +196,8 @@ def markdown_ruc(response, text):
                     lines.append(f"- Data type {text(values['dataType'])} · AccessLevel {text(values['accessLevel'])}")
     if route := report.get("routeReview"):
         lines.extend(markdown_route(route, text))
+        if stations := report.get("stationReview"):
+            lines.extend(markdown_stations(stations, text))
         if geometry := report.get("geometryReview"):
             lines.extend(markdown_geometry(geometry, text))
         if layout := report.get("layoutReview"):
@@ -257,6 +264,25 @@ def markdown_route(route, text):
     for label, key in (("Missing object", "missingObjects"), ("Additional object", "additionalObjects")):
         for obj in route.get(key, []):
             lines.append(f"- {label} · {text(obj['name'])} ({text(obj['type'])})")
+    return lines
+
+
+def markdown_stations(station_review, text):
+    lines = ["", "## Station-to-station paths", "", f"- State {text(station_review['state'])}",
+             "- Native Automation Studio recipe process and transition were not checked."]
+    if not station_review["legs"]:
+        return lines
+    lines.extend(["", "| Traffic Manager path | Crosses return marker | Saved model steps (raw) | Fixed dwell |",
+                  "| --- | --- | --- | --- |"])
+    for leg in station_review["legs"]:
+        path = " → ".join(obj["importedName"] for obj in leg["path"])
+        wraps = "yes" if leg["wrapsReturnMarker"] else "no"
+        model = leg["modelProcess"]
+        steps = ", ".join(f"{step['type']} ({text(step['dwellTimeRaw'])})" for step in model["steps"])
+        model_steps = text(steps or None)
+        if model["state"] != "read":
+            model_steps += " · unverified"
+        lines.append(f"| {text(path)} | {wraps} | {model_steps} | {text(model['fixedDwellTime'])} |")
     return lines
 
 

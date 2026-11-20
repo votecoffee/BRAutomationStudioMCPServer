@@ -8,6 +8,7 @@ from .inspection import inspect_project
 from .json_io import decode_json
 from .launchpad_geometry import measure_geometry
 from .launchpad_layout import compare_layout, linked_layout
+from .launchpad_stations import model_process, station_legs
 from .native_build import fingerprint
 from .ruc_review import review_ruc
 
@@ -69,7 +70,7 @@ def simple_cycle(decoded, layout):
         if geom in seen:
             raise ValueError("The recipe revisits a geometry object before the return marker")
         seen.add(geom)
-        ordered.append(geom)
+        ordered.append(current)
         targets = current.get("targets")
         if (not isinstance(targets, list) or len(targets) != 1
                 or not nonempty(targets[0]) or targets[0] not in recipe):
@@ -113,15 +114,20 @@ def read_launchpad_save(lpj, readback):
     return proof, decoded
 
 
-def route_baseline(proof, decoded, include_geometry):
+def route_baseline(proof, decoded, include_geometry, *, include_stations=False):
     layout = layout_objects(decoded)
     ordered = simple_cycle(decoded, layout)
-    proof["unusedGeometry"] = sorted(layout[ident]["name"] for ident in set(layout) - set(ordered))
-    objects = [{"name": layout[ident]["name"], "type": layout[ident]["type"], "geometryId": ident}
-               for ident in ordered]
-    if include_geometry:
-        for obj in objects:
-            obj["launchPadXY"] = layout[obj["geometryId"]]["xy"]
+    proof["unusedGeometry"] = sorted(layout[ident]["name"] for ident in layout.keys() - {row["id"] for row in ordered})
+    objects = []
+    for node in ordered:
+        ident = node["id"]
+        row = layout[ident]
+        obj = {"name": row["name"], "type": row["type"], "geometryId": ident}
+        if include_geometry:
+            obj["launchPadXY"] = row["xy"]
+        if include_stations and row["type"] == "Station":
+            obj["modelProcess"] = model_process(node)
+        objects.append(obj)
     return proof, objects
 
 
@@ -161,7 +167,7 @@ def compare_cycle(objects, renamed, manager):
 
 
 def launchpad_route_review(project, configuration, cpu, manager_id, lpj, readback, name_map=None, job_dir=None,
-                           *, geometry=None, include_layout=False):
+                           *, geometry=None, include_layout=False, include_stations=False):
     geometry_manager = manager_id if geometry is not None else None
     if job_dir is not None:
         report = review_ruc(project, job_dir, geometry_manager=geometry_manager, include_layout=include_layout)
@@ -174,6 +180,8 @@ def launchpad_route_review(project, configuration, cpu, manager_id, lpj, readbac
         report["geometryReview"] = {"state": "not_checked"}
     if include_layout:
         report["layoutReview"] = {"state": "not_checked"}
+    if include_stations:
+        report["stationReview"] = {"state": "not_checked", "nativeRecipe": "not_checked", "legs": []}
 
     def issue(code, path, message, severity="error", scope="launchpad_route"):
         report["diagnostics"].append({"code": code, "path": path.as_posix(), "message": message,
@@ -181,7 +189,7 @@ def launchpad_route_review(project, configuration, cpu, manager_id, lpj, readbac
 
     try:
         proof, decoded = read_launchpad_save(lpj, readback)
-        proof, objects = route_baseline(proof, decoded, geometry is not None)
+        proof, objects = route_baseline(proof, decoded, geometry is not None, include_stations=include_stations)
         route["launchPad"] = proof
     except (OSError, RuntimeError, ValueError) as error:
         issue("launchpad_baseline_invalid", readback, str(error))
@@ -224,6 +232,20 @@ def launchpad_route_review(project, configuration, cpu, manager_id, lpj, readbac
     else:
         route["state"] = "matched"
         report["evidence"] = "launchpad_route_compiled" if job_dir is not None else "launchpad_route_saved"
+
+    if include_stations and route["state"] == "matched":
+        station_review = report["stationReview"]
+        legs = station_legs(objects, renamed)
+        station_review["legs"] = legs
+        unverified = [row["path"][0]["name"] for row in legs if row["modelProcess"]["state"] != "read"]
+        if not legs or unverified:
+            station_review["state"] = "unverified"
+            message = (f"LaunchPad model process is missing or unsupported at {', '.join(unverified)}" if unverified
+                       else "The matched cycle has no station to use as a leg boundary")
+            issue("launchpad_station_unverified", readback, message, "warning", "launchpad_station")
+        else:
+            station_review["state"] = "read"
+            report["evidence"] = "launchpad_station_compiled" if job_dir is not None else "launchpad_station_saved"
 
     if geometry is not None:
         try:

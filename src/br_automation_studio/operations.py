@@ -125,6 +125,10 @@ def run_launchpad_route_review(arguments, request_directory, geometry=None, *, i
                                   include_layout=include_layout)
 
 
+def run_launchpad_station_review(arguments, request_directory):
+    return launchpad_route_review(*launchpad_inputs(arguments, request_directory), include_stations=True)
+
+
 def run_launchpad_geometry_review(arguments, request_directory):
     orientation = arguments.get("expectedHandedness")
     if orientation is not None and orientation not in {"preserved", "reversed"}:
@@ -266,6 +270,13 @@ LAUNCHPAD_ROUTE_REVIEW = Operation(
     required=("project", "managerId", "launchPadProject", "launchPadReadback"),
     handler=run_launchpad_route_review,
 )
+LAUNCHPAD_STATION_REVIEW = Operation(
+    name="launchpad_station_review",
+    summary="Read station-to-station paths and LaunchPad model waits for a matched saved or compiled Traffic Manager route.",
+    arguments=LAUNCHPAD_ROUTE_REVIEW.arguments,
+    required=LAUNCHPAD_ROUTE_REVIEW.required,
+    handler=run_launchpad_station_review,
+)
 LAUNCHPAD_GEOMETRY_REVIEW = Operation(
     name="launchpad_geometry_review",
     summary="Measure the saved or packaged station and waypoint geometry of a selected LaunchPad cycle.",
@@ -364,7 +375,8 @@ ARSIM_HMI_SMOKE = Operation(
 )
 OPERATIONS = {item.name: item for item in (
     PROJECT_INSPECT, BUILD_PREFLIGHT, SIMULATION_PREFLIGHT, BUILD_PLAN, BUILD_EXECUTE, RUC_REVIEW,
-    LAUNCHPAD_ROUTE_REVIEW, LAUNCHPAD_GEOMETRY_REVIEW, LAUNCHPAD_LAYOUT_REVIEW, LAUNCHPAD_FRAME_REVIEW, RUC_BINDING_REVIEW,
+    LAUNCHPAD_ROUTE_REVIEW, LAUNCHPAD_STATION_REVIEW, LAUNCHPAD_GEOMETRY_REVIEW, LAUNCHPAD_LAYOUT_REVIEW,
+    LAUNCHPAD_FRAME_REVIEW, RUC_BINDING_REVIEW,
     ARSIM_SMOKE, ARSIM_BROWSER_SMOKE, ARSIM_OPCUA_SMOKE, ARSIM_HMI_SMOKE,
 )}
 

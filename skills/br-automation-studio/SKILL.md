@@ -1,6 +1,6 @@
 ---
 name: br-automation-studio
-description: Inspect saved B&R Automation Studio projects with the standalone br-studio CLI. Use for declared package versions, ACOPOS 6D assembly and Traffic Manager references and linked exclusivity rules, LaunchPad route, geometry, segment layout, and coordinate frame comparisons, mapp View Assembly6D links, AS4 build and complete simulation preflight, offline ARsim RUC builds, compiled RUC and mapp View binding readback, loopback mapp View HTTP and browser smoke tests, direct OPC UA counter reads, and combined HMI checks.
+description: Inspect saved B&R Automation Studio projects with the standalone br-studio CLI. Use for declared package versions, ACOPOS 6D assembly and Traffic Manager references and linked exclusivity rules, LaunchPad route, station path and model wait readback, geometry, segment layout, and coordinate frame comparisons, mapp View Assembly6D links, AS4 build and complete simulation preflight, offline ARsim RUC builds, compiled RUC and mapp View binding readback, loopback mapp View HTTP and browser smoke tests, direct OPC UA counter reads, and combined HMI checks.
 ---
 
 # B&R Automation Studio
@@ -18,6 +18,8 @@ For a native build on a trusted saved copy, follow the [native AS4 build workflo
 Use the [RUC review workflow](references/ruc-review.md) to bind the package to a successful job and compare its compiled 6D routes and widget links with the matching saved project.
 
 Use the [LaunchPad route workflow](references/launchpad-route-review.md) to compare a saved unbranched route with the selected manager in source or a retained RUC.
+
+Use the [LaunchPad station workflow](references/launchpad-station-review.md) to follow each leg between stations and read its source station model waits before checking the native recipe.
 
 Use the [Traffic Manager rule workflow](references/traffic-rule-review.md) to compare linked exclusivity groups and their typed member, entry, and exit references.
 
