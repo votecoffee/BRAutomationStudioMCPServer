@@ -223,9 +223,10 @@ def simulation_environment(studio, family, simulator_zip=None):
 
 
 def simulation_preflight(project, studio, runtime_root, configuration, cpu, family, simulator_zip=None, export=None,
-                         *, verify_mptraffic_enum=False):
+                         *, verify_mptraffic_enum=False, verify_motion_declarations=False):
     pair = simulator_pair(family)
-    report = build_preflight(project, studio, runtime_root, configuration, cpu)
+    report = build_preflight(project, studio, runtime_root, configuration, cpu,
+                             verify_motion_declarations=verify_motion_declarations)
     reader = SavedFiles(studio)
     candidates = check_target_catalog(reader, family, pair, catalog_selectors(reader, "mapp6D"))
     check_project(reader, report, family, pair, candidates)

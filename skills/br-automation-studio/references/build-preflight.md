@@ -22,6 +22,12 @@ Discover the installed request contract with `br-studio operation-help build_pre
 
 On the observed AS4 layout, the shared Runtime catalog is the sibling `AS/System` tree under the parent of `studioRoot`. Set `runtimeRoot` to the exact `AS/System` catalog path if the installation uses another location. A selected version such as `J4.93` maps to `J0493/SG4/Config.xml`. This confirms a catalog record. CPU-specific Runtime image selection remains a native check.
 
+## Verify mapp 6D IEC declarations
+
+With br-studio 0.42.0 or later, set `verifyMotionDeclarations` to `true` in a `build_preflight` or `simulation_preflight` request. The check resolves the selected mapp 6D package's `McAcp6D` and `MpTraffic` descriptors and their listed `.fun`, `.typ` and `.var` files. When a library is registered in the saved project's Libraries package, its local descriptor must select the same version and list the same IEC files with matching bytes. When a library is selected from catalog alone, the result records its declared file hashes.
+
+Check `result.motionDeclarations` for the mapp 6D selector, internal build, library states, paths and hashes. Differences in membership, whitespace or encoding can change the exact-byte comparison. The check covers IEC declarations for the selected package. Use the [motion payload pins](native-build.md#verify-the-motion-payloads-in-the-ruc) for the packaged binaries.
+
 ## Interpret the evidence
 
 | Check | What the report establishes |

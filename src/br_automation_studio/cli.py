@@ -102,6 +102,11 @@ def markdown(response):
             lines.append(f"- LaunchPad export {text(export['path'])} · SHA-256 {text(export['sha256'])}")
     if definition := report.get("mpTrafficDefinition"):
         lines.extend(["", "## MpTraffic build verification", "", *markdown_mptraffic_definition(definition, text)])
+    if declarations := report.get("motionDeclarations"):
+        lines.extend(["", "## Motion IEC declarations", "", f"- State {text(declarations['state'])}"])
+        for library in declarations["libraries"]:
+            lines.append(f"- {text(library['name'])} {text(library.get('version'))} · {text(library['state'])} "
+                         f"· Declared files {len(library['files'])}")
     if motion := report.get("motionPayloads"):
         lines.extend(["", "## Motion payload pins", "", f"- Target {text(motion['target'])}"])
         for pin in motion["pins"]:

@@ -22,6 +22,10 @@ The plan records each payload's origin, path, and SHA-256. The supported inputs 
 
 The build needs one exact copy of each pinned payload under `FilesToTransfer/Data0` in its RUC. The successful job records all six package paths, sizes, and hashes. Use [RUC review](ruc-review.md) to recheck that evidence from a retained build. `verifyMpTrafficEnum` can be used with the motion pins to check the selected MpTraffic event declarations.
 
+### Carry the IEC declaration hashes into the build
+
+Set `verifyMotionDeclarations` to `true` on both `build_plan` and `build_execute` to include the [McAcp6D and MpTraffic declaration review](build-preflight.md#verify-mapp-6d-iec-declarations) in the plan. The build records the selected catalog and project evidence in `manifest.motionDeclarations`. The existing staged source and catalog checks rehash the declaration files before dispatch. This option can be used with both `verifyMotionPayloads` and `verifyMpTrafficEnum`.
+
 ## Run the pinned copy
 
 Create a request using the same arguments as the plan. Below, replace the example hash with `result.buildPlan.sha256` and choose an unused `jobDirectory` under an existing parent outside the input roots.

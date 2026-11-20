@@ -89,7 +89,8 @@ def run_widget_package_review(arguments, request_directory):
 
 
 def preflight(arguments, request_directory):
-    return build_preflight(*build_inputs(arguments, request_directory))
+    return build_preflight(*build_inputs(arguments, request_directory),
+                           verify_motion_declarations=arguments.get("verifyMotionDeclarations", False))
 
 
 def run_simulation_environment(arguments, request_directory):
@@ -109,13 +110,15 @@ def run_simulation_preflight(arguments, request_directory):
         request_directory / media if media is not None else None,
         request_directory / export if export is not None else None,
         verify_mptraffic_enum=arguments.get("verifyMpTrafficEnum", False),
+        verify_motion_declarations=arguments.get("verifyMotionDeclarations", False),
     )
 
 
 def build_plan(arguments, request_directory):
     return plan_build(*build_inputs(arguments, request_directory),
                       verify_mptraffic_enum=arguments.get("verifyMpTrafficEnum", False),
-                      verify_motion_payloads=arguments.get("verifyMotionPayloads", False))
+                      verify_motion_payloads=arguments.get("verifyMotionPayloads", False),
+                      verify_motion_declarations=arguments.get("verifyMotionDeclarations", False))
 
 
 def build_execute(arguments, request_directory):
@@ -124,6 +127,7 @@ def build_execute(arguments, request_directory):
         arguments["planSha256"], request_directory / arguments["jobDirectory"],
         arguments.get("timeoutSeconds", 180), verify_mptraffic_enum=arguments.get("verifyMpTrafficEnum", False),
         verify_motion_payloads=arguments.get("verifyMotionPayloads", False),
+        verify_motion_declarations=arguments.get("verifyMotionDeclarations", False),
     )
 
 
@@ -309,6 +313,8 @@ BUILD_PREFLIGHT = Operation(
     arguments={
         **PROJECT_INSPECT.arguments,
         "studioRoot": {"type": "string", "minLength": 1, "description": "Automation Studio installation root."},
+        "verifyMotionDeclarations": {"type": "boolean", "default": False,
+                                     "description": "Verify descriptor-listed IEC declarations for selected McAcp6D and MpTraffic."},
         "runtimeRoot": {"type": "string", "minLength": 1, "description": "Override the AS4 Runtime catalog under AS/System."},
     },
     required=("project", "studioRoot"),

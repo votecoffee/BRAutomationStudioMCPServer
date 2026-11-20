@@ -6,6 +6,7 @@ from pathlib import Path
 import re
 
 from .inspection import inspect_saved
+from .motion_declarations import review_motion_declarations
 from .project import SavedFiles, children
 from .windows_version import product_version
 
@@ -264,7 +265,7 @@ def check_library_dependencies(providers):
     return results
 
 
-def build_preflight(path, studio_root, runtime_root=None, configuration=None, cpu=None):
+def build_preflight(path, studio_root, runtime_root=None, configuration=None, cpu=None, *, verify_motion_declarations=False):
     saved = SavedFiles(path.parent)
     report = inspect_saved(saved, Path(path.name), configuration, cpu)
     studio = SavedFiles(studio_root)
@@ -299,6 +300,8 @@ def build_preflight(path, studio_root, runtime_root=None, configuration=None, cp
                             limits.get("ToVersion"), lockout=identifier.startswith("Lockout"))
     configured_libraries(saved, report, providers)
     dependencies = check_library_dependencies(providers)
+    if verify_motion_declarations:
+        report["motionDeclarations"] = review_motion_declarations(saved, studio, report, packages)
     report["snapshot"] = saved.snapshot()
     report["evidence"] = "saved_files_and_installation_metadata"
     report["preflight"] = {

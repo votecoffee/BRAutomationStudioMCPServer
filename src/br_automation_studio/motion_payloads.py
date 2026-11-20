@@ -3,44 +3,14 @@
 from hashlib import sha256
 from pathlib import Path
 
+from .motion_sources import cpu_sources, library_folders, required_xml, selected_components, verify_library_reference
 from .preflight import numeric_version
-from .project import SavedFiles, XML_LIMIT, children, choices
+from .project import SavedFiles, XML_LIMIT, choices
 
 
 TARGET = Path("SG4/IA32")
 LIBRARIES = ("McAcp6D", "MpTraffic", "McBase", "MpBase")
 MOTION_MODULES = (*LIBRARIES, "McAcp6DSys", "McDriveLog")
-
-
-def required_xml(source, path, root):
-    node, _ = source.xml(path, root)
-    if node is None:
-        raise ValueError(f"Could not read {path.as_posix()} for the motion payload pins")
-    return node
-
-
-def library_folders(source, logical, root):
-    libraries = choices(source, logical, root, "Package").get("libraries")
-    if libraries is None:
-        return {}
-    index = libraries / "Package.pkg"
-    return choices(source, index, required_xml(source, index, "Package"), "Library")
-
-
-def selected_components(preflight, name):
-    matches = [row for package in preflight["technologyPackages"] if package["internalVersion"]
-               for row in package["components"] if row["name"] == name and row["source"]]
-    if len(matches) > 1:
-        raise ValueError(f"Several selected catalog providers declare {name}")
-    return matches[0] if matches else {}
-
-
-def cpu_sources(software, group, object_type, name):
-    matches = [item.get("Source") or "" for parent in children(software, group) for item in children(parent, object_type)
-               if (item.get("Name") or "").casefold() == name.casefold()]
-    if len(matches) > 1:
-        raise ValueError(f"The selected CPU declares several sources for {name}")
-    return matches
 
 
 def payload_pin(source, name, path, version, origin, descriptor=None):
@@ -54,19 +24,17 @@ def payload_pin(source, name, path, version, origin, descriptor=None):
 
 
 def library_pin(saved, installed, software, folders, name, component):
-    references = cpu_sources(software, "Libraries", "LibraryObject", name)
+    folder = folders.get(name.casefold())
+    referenced = verify_library_reference(software, name, folder)
     catalog_descriptor = Path(entry) if (entry := component.get("source")) else None
     if catalog_descriptor is not None and catalog_descriptor.suffix.casefold() != ".lby":
         raise ValueError(f"The selected catalog component {name} has no library descriptor")
-    if folder := folders.get(name.casefold()):
-        reference = ".".join((*folder.relative_to("Logical").parts, "lby")).casefold()
-        if references and references[0].casefold() != reference:
-            raise ValueError(f"The selected CPU reference for {name} differs from its registered library")
-        if not references and not component.get("version"):
+    if folder is not None:
+        if not referenced and not component.get("version"):
             raise ValueError(f"{name} needs an explicit CPU library reference or a catalog selection")
         descriptor = folder / "binary.lby"
         reader, origin = saved, "project"
-    elif catalog_descriptor is not None and not references:
+    elif catalog_descriptor is not None:
         descriptor = catalog_descriptor
         reader, origin = installed, "catalog"
     else:
@@ -109,7 +77,7 @@ def plan_motion_payloads(project, preflight, configuration, cpu):
     root = required_xml(saved, logical, "Package")
     folders = library_folders(saved, logical, root)
     software = required_xml(saved, Path("Physical", configuration, cpu, "Cpu.sw"), "SwConfiguration")
-    selections = {name: selected_components(preflight, name) for name in MOTION_MODULES}
+    selections = {name: selected_components(preflight["technologyPackages"], name) for name in MOTION_MODULES}
     pins = [library_pin(saved, installed, software, folders, name, selections[name]) for name in LIBRARIES]
     pins.append(catalog_module_pin(installed, "McAcp6DSys", selections["McAcp6DSys"]))
     pins.append(drive_log_pin(saved, installed, software, logical, root, selections["McDriveLog"]))

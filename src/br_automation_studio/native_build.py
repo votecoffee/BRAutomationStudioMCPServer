@@ -79,8 +79,9 @@ def source_tree(root):
 
 
 def plan_build(path, studio_root, runtime_root=None, configuration=None, cpu=None, *,
-               verify_mptraffic_enum=False, verify_motion_payloads=False):
-    report = build_preflight(path, studio_root, runtime_root, configuration, cpu)
+               verify_mptraffic_enum=False, verify_motion_payloads=False, verify_motion_declarations=False):
+    report = build_preflight(path, studio_root, runtime_root, configuration, cpu,
+                             verify_motion_declarations=verify_motion_declarations)
     report["buildPlan"] = None
     if blocked(report):
         return report
@@ -149,6 +150,8 @@ def plan_build(path, studio_root, runtime_root=None, configuration=None, cpu=Non
         plan["mpTrafficDefinition"] = definition
     if motion is not None:
         plan["motionPayloads"] = motion
+    if verify_motion_declarations:
+        plan["motionDeclarations"] = report["motionDeclarations"]
     report["buildPlan"] = {"sha256": identity(plan), "manifest": plan}
     return report
 
@@ -202,9 +205,11 @@ def package_evidence(path, job_dir, *, mptraffic=None, motion=None):
 
 
 def execute_build(path, studio_root, runtime_root, configuration, cpu, plan_sha256, job_directory,
-                  timeout_seconds=180, *, verify_mptraffic_enum=False, verify_motion_payloads=False):
+                  timeout_seconds=180, *, verify_mptraffic_enum=False, verify_motion_payloads=False,
+                  verify_motion_declarations=False):
     report = plan_build(path, studio_root, runtime_root, configuration, cpu,
-                        verify_mptraffic_enum=verify_mptraffic_enum, verify_motion_payloads=verify_motion_payloads)
+                        verify_mptraffic_enum=verify_mptraffic_enum, verify_motion_payloads=verify_motion_payloads,
+                        verify_motion_declarations=verify_motion_declarations)
     plan = report["buildPlan"]
     if plan is None:
         return report

@@ -327,6 +327,63 @@ class BuildPreflightTests(unittest.TestCase):
         self.assertEqual(rejected["diagnostics"][-1]["code"], "motion_payloads_unverified")
         self.assertIn("differ for McAcp6D", rejected["diagnostics"][-1]["message"])
 
+    def declaration_fixture(self):
+        paths = self.motion_payload_fixture()
+        catalog = {name: paths[name].parents[2] for name in ("McAcp6D", "MpTraffic")}
+        for name, folder in catalog.items():
+            files = f'<Files><File>{name}.fun</File><File>{name}.typ</File><File>{name}.var</File><File/></Files>'
+            self.put(folder / "binary.lby", self.library("2.02.0", "McBase").replace("<Dependencies>", files + "<Dependencies>"))
+            for suffix in ("fun", "typ", "var"):
+                self.put(folder / f"{name}.{suffix}", f"synthetic declaration {name}.{suffix}")
+        registry = self.project / "Logical/Libraries/Package.pkg"
+        registry.write_bytes(registry.read_bytes().replace(
+            b"</Objects>", b'<Object Type="Library">McAcp6D</Object></Objects>'))
+        saved = registry.parent / "McAcp6D"
+        objects = ("<Objects>" + "".join(f'<Object Type="File">McAcp6D.{suffix}</Object>'
+                                         for suffix in ("fun", "typ", "var")) + "</Objects>")
+        self.put(saved / "binary.lby", self.library("2.02.0").replace("</Library>", objects + "</Library>"))
+        for suffix in ("fun", "typ", "var"):
+            shutil.copyfile(catalog["McAcp6D"] / f"McAcp6D.{suffix}", saved / f"McAcp6D.{suffix}")
+        return saved, catalog
+
+    def test_motion_declarations_verify_both_descriptor_forms_and_detect_drift(self):
+        saved, _ = self.declaration_fixture()
+        result = self.inspect(verifyMotionDeclarations=True)["result"]
+        declarations = result["motionDeclarations"]
+        self.assertEqual(declarations["state"], "verified")
+        core, traffic = declarations["libraries"]
+        self.assertEqual((core["state"], traffic["state"]), ("matched", "catalog_only"))
+        self.assertEqual([item["state"] for item in core["files"]], ["matched"] * 3)
+
+        self.put(saved / "McAcp6D.fun", "same library version, other function declaration")
+        descriptor = saved / "binary.lby"
+        descriptor.write_bytes(descriptor.read_bytes().replace(b'<Object Type="File">McAcp6D.var</Object>', b""))
+        changed = self.native_request("build_plan", verifyMotionDeclarations=True)["result"]
+        self.assertIsNone(changed["buildPlan"])
+        core = changed["motionDeclarations"]["libraries"][0]
+        self.assertEqual(core["state"], "issues")
+        self.assertEqual({row["name"]: row["state"] for row in core["files"]},
+                         {"mcacp6d.fun": "different_bytes", "mcacp6d.typ": "matched",
+                          "mcacp6d.var": "different_membership"})
+
+    def test_motion_catalog_declaration_drift_after_staging_prevents_dispatch(self):
+        _, catalog = self.declaration_fixture()
+        plan = self.native_request("build_plan", verifyMotionDeclarations=True)["result"]["buildPlan"]
+
+        def stage_and_change(manifest, destination):
+            stage_inputs(manifest, destination)
+            self.put(catalog["MpTraffic"] / "MpTraffic.typ", "changed catalog declaration after staging")
+
+        with (patch("br_automation_studio.native_build.stage_inputs", side_effect=stage_and_change),
+              patch("br_automation_studio.native_build.run_build") as worker):
+            outcome = self.native_request("build_execute", verifyMotionDeclarations=True, planSha256=plan["sha256"],
+                                          jobDirectory="changed-declaration")
+            worker.assert_not_called()
+        result = outcome["result"]
+        self.assertEqual(result["nativeBuild"]["status"], "not_dispatched")
+        self.assertIn("Installation evidence changed before dispatch", result["diagnostics"][-1]["message"])
+        self.assertTrue(result["diagnostics"][-1]["message"].endswith("MpTraffic.typ"))
+
     def test_motion_catalog_binary_is_checked_again_after_staging(self):
         sources = self.motion_payload_fixture()
         plan = self.native_request("build_plan", verifyMotionPayloads=True)["result"]["buildPlan"]
