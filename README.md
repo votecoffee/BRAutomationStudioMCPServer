@@ -64,7 +64,7 @@ For an installed AS4 toolchain, `build_preflight` compares the project with the 
 
 Use `simulation_preflight` to compare the saved mapp 6D version, AS4 catalog, simulator release and native LaunchPad export before a complete motion simulation. [Simulation prerequisite workflow](skills/br-automation-studio/references/simulation-preflight.md)
 
-Use `build_plan` and `build_execute` to compile a pinned AS4 PC simulation project and collect the RUC archive and builder log. [Native build workflow](skills/br-automation-studio/references/native-build.md)
+Use `build_plan` and `build_execute` to compile a pinned AS4 PC simulation project and collect the RUC archive and builder log. Build dispatch supports short Windows drive aliases for deeply nested jobs. [Native build workflow](skills/br-automation-studio/references/native-build.md)
 
 After building, use `ruc_review` to compare the retained package's 6D modules, typed routes, linked exclusivity groups, and rendered widget links with the saved inputs. [RUC review workflow](skills/br-automation-studio/references/ruc-review.md) · [Traffic rule review](skills/br-automation-studio/references/traffic-rule-review.md)
 

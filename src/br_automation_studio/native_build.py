@@ -180,7 +180,9 @@ def execute_build(path, studio_root, runtime_root, configuration, cpu, plan_sha2
         return report
 
     manifest = plan["manifest"]
-    job_dir = job_directory.resolve()
+    requested = job_directory.absolute()
+    job_dir = requested.resolve()
+    launch_dir = requested if requested.drive.casefold() != job_dir.drive.casefold() else job_dir
     protected = [Path(manifest[name]) for name in ("sourceRoot", "studioRoot", "runtimeRoot")]
     if any(job_dir.is_relative_to(root) for root in protected):
         issue(report, "error", "invalid_job_directory", "Select an unused job directory outside all input roots")
@@ -197,8 +199,8 @@ def execute_build(path, studio_root, runtime_root, configuration, cpu, plan_sha2
     log = job_dir / "builder.log"
     receipt = job_dir / "job.json"
     arguments = [str(Path(manifest["studioRoot"]) / manifest["builder"]),
-                 str(staged / manifest["project"]), "-c", manifest["configuration"],
-                 "-simulation", "-all", "-o", str(output), "-t", str(temporary), "-buildRUCPackage"]
+                 str(launch_dir / "project" / manifest["project"]), "-c", manifest["configuration"],
+                 "-simulation", "-all", "-o", str(launch_dir / "binary"), "-t", str(launch_dir / "temporary"), "-buildRUCPackage"]
     job = {
         "jobId": str(uuid4()), "directory": str(job_dir), "status": "staging",
         "planSha256": plan_sha256, "createdAt": utc_now(), "arguments": arguments,
@@ -222,8 +224,10 @@ def execute_build(path, studio_root, runtime_root, configuration, cpu, plan_sha2
                     raise ValueError(f"Installation evidence changed before dispatch: {pinned['path']}")
         output.mkdir()
         temporary.mkdir()
+        if launch_dir != job_dir and not launch_dir.samefile(job_dir):
+            raise ValueError("The Windows drive alias no longer identifies the staged job directory")
         with log.open("xb") as stream:
-            native_exit, timed_out, cleanup = run_build(arguments, staged, begin_dispatch, stream, timeout_seconds)
+            native_exit, timed_out, cleanup = run_build(arguments, launch_dir / "project", begin_dispatch, stream, timeout_seconds)
         job.update(nativeExitCode=native_exit, timedOut=timed_out, cleanup=cleanup)
         job["summary"] = summary = log_summary(log)
         if timed_out or cleanup != "empty":

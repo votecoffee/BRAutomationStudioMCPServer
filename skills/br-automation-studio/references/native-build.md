@@ -31,6 +31,8 @@ Create a request using the same arguments as the plan. Below, replace the exampl
 
 Run `br-studio run --request <build-request.json>`. The command regenerates the plan, checks the supplied hash, copies and rehashes the planned source files, then rechecks the installation read sets. The vendor command is `BR.AS.Build.exe` with `-c`, `-simulation`, `-all`, `-o`, `-t` and `-buildRUCPackage`. It runs from the staged project and writes to the job's separate binary and temporary directories. A changed plan or existing job directory blocks dispatch.
 
+For a deep Windows workspace, you can map its existing directory to an unused drive letter with `subst` and supply the short drive path in `jobDirectory`. The tool checks the resolved path against the protected input roots and confirms the alias still identifies the staged job directory before launching the builder. The receipt records the resolved job directory and the actual native arguments. Keep the drive mapping in place until the build exits.
+
 ## Read the receipt
 
 | File or field | Meaning |

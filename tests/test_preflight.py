@@ -1,15 +1,16 @@
 
 from hashlib import sha256
 import json
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 import os
 import shutil
 from tempfile import TemporaryDirectory
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 from zipfile import ZipFile
 
 from br_automation_studio.cli import markdown
+from br_automation_studio.native_build import execute_build
 from br_automation_studio.operations import execute
 
 FIXTURE = Path(__file__).resolve().parent / "fixtures/Loop"
@@ -205,6 +206,47 @@ class BuildPreflightTests(unittest.TestCase):
         self.assertTrue(result["package"]["verifiedZip"])
         self.assertEqual(json.loads((self.root / "job1/job.json").read_bytes()), result)
         self.assertEqual((self.project / "BuildOnly/old.txt").read_text(encoding="utf-8"), "previous output")
+
+    def test_native_build_uses_checked_drive_alias_at_launch(self):
+        self.local_core("5.29.1")
+        plan = self.native_request("build_plan")["result"]["buildPlan"]
+        for valid in (True, False):
+            with self.subTest(valid=valid):
+                physical = self.root / ("alias-ok" if valid else "alias-moved")
+                drive = "W:" if physical.drive.casefold() != "w:" else "Z:"
+                spelling = PureWindowsPath(drive + "/job")
+                requested = MagicMock()
+                requested.drive = spelling.drive
+                requested.absolute.return_value = requested
+                requested.resolve.return_value = physical
+                requested.samefile.return_value = valid
+                requested.__truediv__.side_effect = lambda segment: spelling / segment
+
+                def worker(args, cwd, dispatch, log, timeout):
+                    self.assertEqual(cwd, spelling / "project")
+                    self.assertEqual(args[1], str(spelling / "project/Loop.apj"))
+                    self.assertEqual(args[args.index("-o") + 1], str(spelling / "binary"))
+                    self.assertEqual(args[args.index("-t") + 1], str(spelling / "temporary"))
+                    dispatch(42)
+                    archive = physical / "binary/ARsim/PC/RUCPackage/RUCPackage.zip"
+                    archive.parent.mkdir(parents=True)
+                    with ZipFile(archive, "w") as package:
+                        package.writestr("FilesToTransfer/Data0/Test.br", "native package placeholder")
+                    log.write(b"Build: 0 error(s), 0 warning(s)\r\n")
+                    return 0, False, "empty"
+
+                with patch("br_automation_studio.native_build.run_build", side_effect=worker) as launch:
+                    result = execute_build(self.project / "Loop.apj", self.studio, None, None, None,
+                                           plan["sha256"], requested)
+                job = result["nativeBuild"]
+                requested.samefile.assert_called_once_with(physical)
+                self.assertEqual(job["directory"], str(physical))
+                if valid:
+                    launch.assert_called_once()
+                    self.assertEqual(job["status"], "succeeded")
+                else:
+                    launch.assert_not_called()
+                    self.assertEqual(job["status"], "not_dispatched")
 
     def test_timeout_is_unknown_with_receipt(self):
         self.local_core("5.29.1")
