@@ -14,7 +14,7 @@ from typing import ClassVar
 from urllib.parse import urlsplit
 from xml.etree import ElementTree as ET
 
-from .arsim_smoke import HOST, loopback_get
+from .arsim_smoke import HOST, WIDGET_BUNDLE_PATH, loopback_get
 from .native_build import fingerprint
 from .project import ProjectXml, XML_LIMIT
 from .windows_job import observed_process
@@ -53,14 +53,29 @@ def layout_asset_paths(widgets, selected):
     return paths
 
 
+def http_status(value):
+    return value if type(value) is int and 100 <= value <= 599 else None
+
+
+def widget_bundle_observation(value):
+    value = value if isinstance(value, dict) else {}
+    status = http_status(value.get("httpStatus"))
+    if status in (200, 304):
+        state = "observed"
+    elif status is not None and status >= 400:
+        state = "request_failed"
+    else:
+        state = "unverified"
+    return {"state": state, "path": WIDGET_BUNDLE_PATH, "httpStatus": status}
+
+
 def layout_observation(value, paths):
     value = value if isinstance(value, dict) else {}
     count = value.get("boundedSvgCount")
     count = count if type(count) is int and count >= 0 else None
     raw_statuses = value.get("statuses")
     observed = raw_statuses if isinstance(raw_statuses, dict) else {}
-    statuses = {role: status if type(status := observed.get(role)) is int and 100 <= status <= 599 else None
-                for role in paths}
+    statuses = {role: http_status(observed.get(role)) for role in paths}
     if any(status is not None and status >= 400 for status in statuses.values()):
         state = "request_failed"
     elif paths and count and all(status in (200, 304) for status in statuses.values()):
@@ -176,7 +191,7 @@ class Page:
         return value
 
 
-def widget_expression(assembly, counter, layout_paths=None, status_widgets=()):
+def widget_expression(assembly, counter, layout_paths=None, status_widgets=(), *, require_widget_bundle=False):
     return f"""(() => {{
         const assembly = document.getElementById({json.dumps(assembly)});
         const read = (id) => {{
@@ -194,8 +209,15 @@ def widget_expression(assembly, counter, layout_paths=None, status_widgets=()):
                 return [role, entries.at(-1)?.responseStatus ?? null];
             }}))
         }};
+        const bundlePath = {json.dumps(WIDGET_BUNDLE_PATH if require_widget_bundle else None)};
+        const bundle = bundlePath && performance.getEntriesByType('resource').findLast(entry => {{
+            if (entry.initiatorType !== 'script') return false;
+            const requested = new URL(entry.name);
+            return requested.origin === location.origin && requested.pathname === bundlePath;
+        }});
         return {{
             url: location.href,
+            widgetBundle: bundle ? {{httpStatus: bundle.responseStatus}} : null,
             timeOrigin: performance.timeOrigin,
             widgetType: assembly?.getClientRects().length
                 ? assembly.getAttribute('data-brease-widget') : null,
@@ -231,7 +253,8 @@ def check_document_status(state, receipt, expected):
 
 
 def collect_samples(page, expression, url, receipt, count, prior_origins=(), after=Decimal(0),
-                    *, layout_paths=None, require_layout=False, check_assembly=True, expected_status=None):
+                    *, layout_paths=None, require_layout=False, check_assembly=True, expected_status=None,
+                    require_widget_bundle=False):
     latest = after
     while time.monotonic() < page.deadline:
         result = page.read(expression)
@@ -245,6 +268,10 @@ def collect_samples(page, expression, url, receipt, count, prior_origins=(), aft
                 receipt["widgetType"] = ASSEMBLY_WIDGET
             if layout_paths:
                 receipt["layout"] = layout_observation(result.get("layout"), layout_paths)
+            bundle_matches = True
+            if require_widget_bundle:
+                receipt["widgetBundle"] = widget_bundle_observation(result.get("widgetBundle"))
+                bundle_matches = receipt["widgetBundle"]["state"] == "observed"
             value = result.get("value")
             status_matches = not expected_status or check_document_status(result, receipt, expected_status)
             if status_matches and len(receipt["counterSamples"]) < count:
@@ -252,10 +279,13 @@ def collect_samples(page, expression, url, receipt, count, prior_origins=(), aft
                 if numeric is not None and numeric > latest:
                     latest = numeric
                     receipt["counterSamples"].append(value)
-            if (status_matches and len(receipt["counterSamples"]) == count
+            if (status_matches and bundle_matches and len(receipt["counterSamples"]) == count
                     and (not require_layout or receipt.get("layout", {}).get("state") == "observed")):
                 return
         time.sleep(0.2)
+    if (require_widget_bundle and len(receipt["counterSamples"]) == count
+            and receipt["widgetBundle"]["state"] != "observed"):
+        raise TimeoutError("A successful same-origin mapp View bundle request was not verified")
     if require_layout and len(receipt["counterSamples"]) == count:
         raise TimeoutError("Successful 6DData SVG requests and an inline SVG with layout bounds were not verified")
     if expected_status:
@@ -266,11 +296,13 @@ def collect_samples(page, expression, url, receipt, count, prior_origins=(), aft
 def verify_navigation(page, url, receipt):
     paths = receipt.get("layoutPaths")
     required = receipt.get("requireLayoutAssets", False)
+    require_widget_bundle = receipt.get("requireWidgetBundle", False)
     expected = receipt.get("expectedStatus", {})
     assembly = receipt["assemblyWidgetId"]
     options = {"layout_paths": paths, "require_layout": required, "check_assembly": assembly is not None,
-               "expected_status": expected}
-    expression = widget_expression(assembly, receipt["counterWidgetId"], paths, expected)
+               "expected_status": expected, "require_widget_bundle": require_widget_bundle}
+    expression = widget_expression(assembly, receipt["counterWidgetId"], paths, expected,
+                                   require_widget_bundle=require_widget_bundle)
     page.navigate(url)
     receipt["state"] = "first_document"
     first = receipt["initial"] = {"counterSamples": []}
@@ -343,6 +375,7 @@ class ChromeProbe:
     capture_layout: bool = False
     expected_status: tuple[tuple[str, int], ...] = ()
     check_assembly: bool = True
+    require_widget_bundle: bool = False
     key: ClassVar[str] = "browser"
     evidence: ClassVar[str] = "arsim_loopback_browser"
 
@@ -363,6 +396,10 @@ class ChromeProbe:
         receipt.update(state="ready", assemblyWidgetId=widget, layoutPaths=paths, requireLayoutAssets=require_layout,
                        counterWidgetId=self.counter_widget,
                        chrome={"path": str(chrome), "version": version, "sha256": fingerprint(chrome)})
+        if self.require_widget_bundle:
+            if widget is None:
+                raise ValueError("The bundle check requires a reviewed Assembly6D widget")
+            receipt["requireWidgetBundle"] = True
         if self.expected_status:
             receipt["expectedStatus"] = dict(self.expected_status)
         if self.capture_layout:

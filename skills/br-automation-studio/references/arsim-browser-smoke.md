@@ -37,6 +37,12 @@ Use `br-studio operation-help arsim_browser_smoke` to discover the contract. Sel
 
 Run `br-studio run --request <browser-request.json>`. Set `timeoutSeconds` for the ARsim HTTP startup window and `browserTimeoutSeconds` for the complete Chrome probe. Select `--format markdown` on the same invocation if you need the readable format. Use a different session directory for each invocation.
 
+## Verify the Assembly6D bundle in both documents
+
+Set `requireWidgetBundle` to `true` in br-studio 0.38.0 or later to require the AS4 release bundle. The CLI finds `BRVisu/release/brease.js` in the reviewed RUC, checks for one named `widgets/mapp6D/Assembly6D/Assembly6D` AMD declaration, and compares the bytes served by the owned HTTP listener with that RUC member. The HTTP receipt records the archive path, module name and SHA-256.
+
+Each browser document must also show a same-origin script load for `/BRVisu/release/brease.js` with HTTP 200 or 304. See `widgetBundle` in both the `initial` and `reopened` document records. The browser status can reflect revalidation of its cache. The separate HTTP check supplies the byte comparison. The evidence covers the AS4 release bundle and document loads. Use the layout and counter checks for the rendered widget and PLC updates. [W3C Resource Timing](https://www.w3.org/TR/resource-timing/)
+
 ## Check the layout assets
 
 Use the [file-device review](layout-device-review.md) to verify the selected CPU's saved and compiled `6DData` declaration.

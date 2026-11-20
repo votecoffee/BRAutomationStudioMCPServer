@@ -7,6 +7,7 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock, patch
 
+from br_automation_studio.arsim_smoke import WIDGET_BUNDLE_PATH
 from br_automation_studio.browser_smoke import (
     ASSEMBLY_WIDGET, Page, assembly_dom_id, capture_layout_assets, debug_listener, layout_asset_paths, verify_navigation,
 )
@@ -180,6 +181,44 @@ class TestBrowserSmoke(unittest.TestCase):
             verify_navigation(page, URL, receipt)
         self.assertEqual(receipt["initial"]["layout"]["state"], "request_failed")
         self.assertEqual(receipt["initial"]["counterSamples"], ["1", "2", "3"])
+
+    @patch("br_automation_studio.browser_smoke.time.sleep")
+    @patch("br_automation_studio.browser_smoke.time.monotonic", return_value=0)
+    def test_required_bundle_is_observed_in_each_document(self, now, pause):
+        page = Mock(deadline=5)
+        page.read.side_effect = [
+            hmi("1", 10), hmi("2", 10), hmi("3", 10),
+            dict(hmi("4", 10), widgetBundle={"httpStatus": 200}),
+            {"url": "about:blank", "timeOrigin": 11},
+            hmi("5", 12), dict(hmi("6", 12), widgetBundle={"httpStatus": 304}),
+        ]
+        receipt = dict(self.receipt(), requireWidgetBundle=True)
+        verify_navigation(page, URL, receipt)
+        self.assertEqual(receipt["initial"]["counterSamples"], ["1", "2", "3"])
+        self.assertEqual(receipt["initial"]["widgetBundle"], {
+            "state": "observed", "path": WIDGET_BUNDLE_PATH, "httpStatus": 200,
+        })
+        self.assertEqual(receipt["reopened"]["widgetBundle"], {
+            "state": "observed", "path": WIDGET_BUNDLE_PATH, "httpStatus": 304,
+        })
+
+    @patch("br_automation_studio.browser_smoke.time.sleep")
+    @patch("br_automation_studio.browser_smoke.time.monotonic", side_effect=range(8))
+    def test_old_document_bundle_cannot_supply_reopened_evidence(self, now, pause):
+        page = Mock(deadline=7)
+        loaded = {"httpStatus": 200}
+        page.read.side_effect = [
+            *(dict(hmi(str(value), 10), widgetBundle=loaded) for value in (1, 2, 3)),
+            {"url": "about:blank", "timeOrigin": 11},
+            dict(hmi("100", 10), widgetBundle=loaded),
+            hmi("4", 12), dict(hmi("5", 12), widgetBundle={"httpStatus": 404}),
+        ]
+        receipt = dict(self.receipt(), requireWidgetBundle=True)
+        with self.assertRaisesRegex(TimeoutError, "same-origin mapp View bundle"):
+            verify_navigation(page, URL, receipt)
+        self.assertEqual(receipt["state"], "reopened_document")
+        self.assertEqual(receipt["reopened"]["counterSamples"], ["4", "5"])
+        self.assertEqual(receipt["reopened"]["widgetBundle"]["state"], "request_failed")
 
     def test_select_reviewed_assembly_id(self):
         widgets = [{"contentId": "Proof", "id": "Asmb"}, {"contentId": "Other", "id": "Asmb"}]

@@ -9,7 +9,10 @@ import unittest
 from unittest.mock import patch
 from zipfile import ZipFile
 
-from br_automation_studio.arsim_smoke import check_free, check_owned, expected_assets, loopback_profile, probe_http
+from br_automation_studio.arsim_smoke import (
+    WIDGET_BUNDLE_MEMBER, WIDGET_BUNDLE_PATH, WIDGET_MODULE, check_free, check_owned, expected_assets,
+    loopback_profile, probe_http,
+)
 from br_automation_studio.native_build import source_tree
 from br_automation_studio.ruc_review import CONTENT, VIEW, WIDGET_SCRIPT
 
@@ -102,6 +105,34 @@ class ArsimSmokeTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "did not match"):
                     probe_http(session, profile, [expected], receipt, 1)
         self.assertEqual(receipt["assets"], [response])
+
+    def test_required_bundle_contains_one_named_assembly_module(self):
+        package = self.project.parent / "bundle.zip"
+        declaration = f'define("{WIDGET_MODULE}",[],function(){{}})'.encode("ascii")
+        fixtures = [None, b'define("text!widgets/mapp6D/Assembly6D/Assembly6D.html",[],function(){})',
+                    declaration + b";" + declaration, declaration]
+        for bundle in fixtures:
+            with self.subTest(bundle=bundle):
+                with ZipFile(package, "w") as archive:
+                    archive.writestr("ProjectInformation.xml",
+                                     "<ProjectInformation><CPUType>AR000</CPUType>"
+                                     "<RuntimeType>AR Simulation</RuntimeType></ProjectInformation>")
+                    archive.writestr(f"{VIEW}/index.html", b"index")
+                    archive.writestr(f"{CONTENT}/Assembly.html", b"content")
+                    archive.writestr(WIDGET_SCRIPT, b"separately packaged script")
+                    if bundle is not None:
+                        archive.writestr(WIDGET_BUNDLE_MEMBER, bundle)
+                review = {"widgets": [{"contentId": "Assembly"}]}
+                profile = {"opcUaPort": None}
+                if bundle != declaration:
+                    with self.assertRaisesRegex(ValueError, "package asset|module declaration"):
+                        expected_assets(package, review, profile, require_widget_bundle=True)
+                    continue
+                _, assets = expected_assets(package, review, profile, require_widget_bundle=True)
+                asset, = (row for row in assets if row["path"] == WIDGET_BUNDLE_PATH)
+                self.assertEqual(asset["archiveMember"], WIDGET_BUNDLE_MEMBER)
+                self.assertEqual(asset["namedModule"], WIDGET_MODULE)
+                self.assertEqual(asset["sha256"], sha256(bundle).hexdigest())
 
     def test_counter_content_is_checked_even_when_not_in_the_assembly_content(self):
         path = self.project.parent / "RUC.zip"

@@ -5,6 +5,7 @@ from hashlib import sha256
 from http.client import HTTPConnection, HTTPException
 from ipaddress import ip_address
 from pathlib import Path
+import re
 from shutil import copyfile
 import time
 from urllib.parse import quote
@@ -20,6 +21,12 @@ from .windows_network import endpoints
 from .windows_version import product_version
 
 HOST = "127.0.0.1"
+WIDGET_BUNDLE_PATH = "/BRVisu/release/brease.js"
+WIDGET_BUNDLE_MEMBER = f"{VIEW}{WIDGET_BUNDLE_PATH}"
+WIDGET_MODULE = "widgets/mapp6D/Assembly6D/Assembly6D"
+WIDGET_MODULE_DECLARATION = re.compile(
+    rb"""(?:^|[;,{}])\s*define\s*\(\s*(["'])""" + re.escape(WIDGET_MODULE.encode("ascii")) + rb"""\1\s*,\s*\["""
+)
 # Effective engineering endpoints observed in the supported AS4 ARsim profile.
 ENGINEERING_PORTS = {11160, 11169}
 
@@ -119,12 +126,16 @@ def check_ua_settings(root, port):
         raise ValueError("Could not verify an explicit HMI OPC UA connection")
 
 
-def expected_assets(archive_path, review, profile, extra_content=()):
+def expected_assets(archive_path, review, profile, extra_content=(), *, require_widget_bundle=False):
     names = {f"{VIEW}/index.html", *(f"{CONTENT}/{content}.html" for content in extra_content)}
     for widget in review["widgets"]:
         names.add(f"{CONTENT}/{widget['contentId']}.html")
     if review["widgets"]:
         names.add(WIDGET_SCRIPT)
+    if require_widget_bundle:
+        if not review["widgets"]:
+            raise ValueError("The bundle check requires a reviewed Assembly6D widget")
+        names.add(WIDGET_BUNDLE_MEMBER)
     source = SavedFiles(archive_path.parent)
     with ZipFile(archive_path) as package:
         archive = Archive(package, source)
@@ -145,7 +156,12 @@ def expected_assets(archive_path, review, profile, extra_content=()):
             if item is None:
                 raise ValueError(f"Missing or ambiguous package asset {name}")
             data = archive.read(item)
-            assets.append({"path": name.removeprefix(VIEW), "bytes": len(data), "sha256": sha256(data).hexdigest()})
+            asset = {"path": name.removeprefix(VIEW), "bytes": len(data), "sha256": sha256(data).hexdigest()}
+            if name == WIDGET_BUNDLE_MEMBER:
+                if sum(1 for _ in WIDGET_MODULE_DECLARATION.finditer(data)) != 1:
+                    raise ValueError("The mapp View bundle must contain one named Assembly6D module declaration")
+                asset.update(archiveMember=name, namedModule=WIDGET_MODULE)
+            assets.append(asset)
         return xml.findtext("ARVersion"), assets
 
 
@@ -206,6 +222,8 @@ def probe_http(session, profile, assets, receipt, timeout):
         receipt["assets"].append(response)
         if response["status"] != 200 or any(response[key] != want[key] for key in ("bytes", "sha256")):
             raise ValueError(f"ARsim response did not match the packaged asset: {want['path']}")
+        if "archiveMember" in want:
+            response.update(archiveMember=want["archiveMember"], namedModule=want["namedModule"])
     receipt["ownedEndpoints"] = check_owned(profile["guardedPorts"], session.job.pids())
 
 
@@ -217,7 +235,7 @@ def ascii_pil_path(path):
 
 
 def arsim_smoke(project, job_dir, pvi, session_dir, timeout=30, runtime_probe=None, *,
-                extra_content=(), require_6d=True, before_start=None):
+                extra_content=(), require_6d=True, before_start=None, require_widget_bundle=False):
     report = review_ruc(project, job_dir, require_6d=require_6d)
     smoke = {"state": "not_started", "packageSha256": None, "assets": [], "cleanup": None}
     report["arsimSmoke"] = smoke
@@ -263,7 +281,8 @@ def arsim_smoke(project, job_dir, pvi, session_dir, timeout=30, runtime_probe=No
         copyfile(archive_path, staged)
         if fingerprint(staged) != smoke["packageSha256"]:
             raise ValueError("The staged RUC differs from the completed build")
-        version, assets = expected_assets(staged, reviewed, profile, extra_content)
+        version, assets = expected_assets(staged, reviewed, profile, extra_content,
+                                          require_widget_bundle=require_widget_bundle)
         smoke["runtimeVersion"] = version
         instructions.write_text(instruction, encoding="ascii", newline="\n")
         with (session_dir / "pvi-stdout.log").open("xb") as log:

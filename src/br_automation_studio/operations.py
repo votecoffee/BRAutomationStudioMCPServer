@@ -235,14 +235,16 @@ def arsim_inputs(arguments, request_directory):
 
 
 def run_arsim_smoke(arguments, request_directory, runtime_probe=None):
-    return arsim_smoke(*arsim_inputs(arguments, request_directory), runtime_probe)
+    return arsim_smoke(*arsim_inputs(arguments, request_directory), runtime_probe,
+                       require_widget_bundle=arguments.get("requireWidgetBundle", False))
 
 
 def run_arsim_browser_smoke(arguments, request_directory):
     probe = ChromeProbe(request_directory / arguments["browserExecutable"], arguments["counterWidgetId"],
                         arguments.get("assemblyWidgetId"), arguments.get("browserTimeoutSeconds", 30),
                         require_layout=arguments.get("requireLayoutAssets", False),
-                        capture_layout=arguments.get("captureLayoutAssets", False))
+                        capture_layout=arguments.get("captureLayoutAssets", False),
+                        require_widget_bundle=arguments.get("requireWidgetBundle", False))
     return run_arsim_smoke(arguments, request_directory, probe)
 
 
@@ -259,6 +261,7 @@ def run_arsim_hmi_smoke(arguments, request_directory, status_bindings=(), scan_c
         arguments.get("assemblyWidgetId"), arguments.get("browserTimeoutSeconds", 30),
         arguments.get("opcUaTimeoutSeconds", 20), require_layout=arguments.get("requireLayoutAssets", False),
         capture_layout=arguments.get("captureLayoutAssets", False),
+        require_widget_bundle=arguments.get("requireWidgetBundle", False),
         status_bindings=status_bindings, scan_capture=scan_capture,
     )
 
@@ -516,6 +519,8 @@ ARSIM_BROWSER_SMOKE = Operation(
         "counterWidgetId": {"type": "string", "minLength": 1, "description": "DOM ID of a read-only PLC-bound increasing counter widget."},
         "assemblyWidgetId": {"type": "string", "minLength": 1, "description": "DOM ID of a reviewed Assembly6D widget. Required when multiple are reviewed."},
         "browserTimeoutSeconds": {"type": "integer", "minimum": 1, "maximum": 120, "default": 30},
+        "requireWidgetBundle": {"type": "boolean", "default": False,
+                                "description": "Check the packaged Assembly6D bundle and require its script load in both HMI documents."},
         "requireLayoutAssets": {"type": "boolean", "default": False,
                                 "description": "Require expected 6DData requests with HTTP 200 or 304 and a bounded inline SVG in each HMI document."},
         "captureLayoutAssets": {"type": "boolean", "default": False,
@@ -545,6 +550,7 @@ ARSIM_HMI_SMOKE = Operation(
         "browserExecutable": ARSIM_BROWSER_SMOKE.arguments["browserExecutable"],
         "assemblyWidgetId": ARSIM_BROWSER_SMOKE.arguments["assemblyWidgetId"],
         "browserTimeoutSeconds": ARSIM_BROWSER_SMOKE.arguments["browserTimeoutSeconds"],
+        "requireWidgetBundle": ARSIM_BROWSER_SMOKE.arguments["requireWidgetBundle"],
         "requireLayoutAssets": ARSIM_BROWSER_SMOKE.arguments["requireLayoutAssets"],
         "captureLayoutAssets": ARSIM_BROWSER_SMOKE.arguments["captureLayoutAssets"],
         "opcUaTimeoutSeconds": ARSIM_OPCUA_SMOKE.arguments["opcUaTimeoutSeconds"],
