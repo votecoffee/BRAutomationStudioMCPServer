@@ -11,7 +11,7 @@ The standalone CLI exposes `project_inspect` for a saved project and `build_pref
 | `src/br_automation_studio/` | Inspect saved snapshots, resolve references, and produce typed diagnostics and artifact metadata. Own one operation catalog with request and result types. |
 | `src/br_automation_studio/cli.py` | Discover operations and schemas, accept a UTF-8 JSON request, and return structured JSON. Keep console formatting and exit codes at this boundary. |
 | `src/br_automation_studio/preflight.py` | Compare saved selections and selected library dependencies with local AS4 catalogs. |
-| Native build adapter, planned | Discover a selected local Automation Studio version and run explicit native jobs in private workspaces. Capture vendor diagnostics and verify generated artifacts. Add this layer when the saved-file workflow is ready. |
+| `src/br_automation_studio/native_build.py` and `windows_job.py` | Pin an installed AS4 toolchain and source tree, stage a private copy, run the native PC simulation build, and retain a job receipt with RUC evidence. |
 | `skills/br-automation-studio/` | Give future chats a short entry point that locates the installed standalone executable and routes work by operation. |
 | `skills/br-automation-studio/references/` | Maintain versioned workflow guides, request examples, and verification steps distributed with the CLI. |
 | `tests/fixtures/` | Hold synthetic inputs and expected outcomes, including unresolved references and unsupported formats. |
@@ -33,7 +33,7 @@ Add durable job IDs when native work begins. Keep each job's input snapshot, sel
 3. For the selected configuration, inventory the ACOPOS 6D layout and assembly, Traffic Manager object and mapping lists, and mapp View content. Resolve their explicit links. Diagnose missing or mistyped mapping targets and a widget whose assembly and manager links disagree.
 4. Produce a structured result and a readable report from the same findings. Include the selected configuration, checked links, unsupported objects, and source hashes. Validate the reporting with a synthetic project and a variant with an unresolved return edge. Verify the source bytes before and after the run.
 
-A later native build uses an installed, explicitly selected Automation Studio toolchain on a private copy. Begin with B&R's `BR.AS.Build.exe` and the documented switches for that release. The Automation Studio build result, generated module readback, ARsim connection, and browser behavior each provide their own evidence.
+A native build uses `build_plan` and `build_execute` with an installed AS4 toolchain and a private copy. The worker uses B&R's `BR.AS.Build.exe` to generate an offline RUC archive. The Automation Studio build result, generated module readback, ARsim connection, and browser behavior each provide their own evidence.
 
 ## Skill and installation workflow
 

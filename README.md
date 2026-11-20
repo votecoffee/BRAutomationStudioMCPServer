@@ -15,7 +15,7 @@ py -3 -m venv .local\venv
 .\.local\venv\Scripts\python.exe -m pip install .
 ```
 
-Saved-file inspection runs without Automation Studio. Native build workflows will require a compatible B&R installation.
+Saved-file inspection runs without Automation Studio. Native AS4 builds require a compatible B&R installation on Windows.
 
 ## Usage
 
@@ -26,6 +26,8 @@ $brStudio = '.\.local\venv\Scripts\br-studio.exe'
 & $brStudio operations
 & $brStudio operation-help project_inspect
 & $brStudio operation-help build_preflight
+& $brStudio operation-help build_plan
+& $brStudio operation-help build_execute
 & $brStudio run --request examples/inspect-loop.json
 & $brStudio run --request examples/inspect-loop.json --format markdown
 ```
@@ -33,6 +35,8 @@ $brStudio = '.\.local\venv\Scripts\br-studio.exe'
 The example reads a synthetic project. The result lists declared package versions, selected configuration and CPU, layout and assembly references, Traffic Manager endpoints, and Assembly6D widget links. It records SHA-256 hashes for the files read. Use the result as saved-file evidence. Native compilation and ARsim behavior need their own checks.
 
 For an installed AS4 toolchain, `build_preflight` compares the project with the selected Studio, Runtime, CPU and technology-package catalogs. [Build preflight workflow](skills/br-automation-studio/references/build-preflight.md)
+
+Use `build_plan` and `build_execute` to compile a pinned AS4 PC simulation project and collect the RUC archive and builder log. [Native build workflow](skills/br-automation-studio/references/native-build.md)
 
 ## Chat workflow
 

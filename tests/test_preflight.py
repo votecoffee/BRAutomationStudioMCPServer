@@ -1,10 +1,12 @@
 
+import json
 from pathlib import Path
 import os
 import shutil
 from tempfile import TemporaryDirectory
 import unittest
 from unittest.mock import patch
+from zipfile import ZipFile
 
 from br_automation_studio.operations import execute
 
@@ -151,3 +153,94 @@ class BuildPreflightTests(unittest.TestCase):
         view = response["result"]["preflight"]["technologyPackages"][1]
         self.assertEqual(view["components"][0]["payloadCandidates"], [payload.as_posix()])
         self.assertIsNone(view["components"][0]["source"])
+
+    def native_request(self, operation, **overrides):
+        arguments = {"project": "Loop/Loop.apj", "studioRoot": "Install/AS412", **overrides}
+        return execute({"schemaVersion": 1, "workspace": "native",
+                        "operation": operation, "arguments": arguments}, self.root)
+
+    def test_native_plan_binds_non_xml_source_and_rejects_reuse(self):
+        self.local_core("5.29.1")
+        extra = self.project / "Logical/Code.st"
+        self.put(extra, "x := 1;")
+        old = self.native_request("build_plan")["result"]["buildPlan"]
+        self.put(extra, "x := 2;")
+        with patch("br_automation_studio.native_build.run_build") as worker:
+            response = self.native_request("build_execute", planSha256=old["sha256"], jobDirectory="job1")
+            worker.assert_not_called()
+        self.assertEqual(response["status"], "issues")
+        self.assertIn("build_plan_changed", [item["code"] for item in response["result"]["diagnostics"]])
+        self.assertFalse((self.root / "job1").exists())
+
+    def test_native_result_retains_warning_and_ruc(self):
+        self.local_core("5.29.1")
+        self.put(self.project / "BuildOnly/old.txt", "previous output")
+        plan = self.native_request("build_plan")["result"]["buildPlan"]
+
+        def worker(args, project, dispatch, log, timeout):
+            self.assertNotEqual(project, self.project)
+            self.assertFalse((project / "BuildOnly/old.txt").exists())
+            self.assertIn("-simulation", args)
+            self.assertIn("-buildRUCPackage", args)
+            self.assertEqual(timeout, 12)
+            dispatch(42)
+            file = Path(args[args.index("-o") + 1]) / "ARsim/PC/RUCPackage/RUCPackage.zip"
+            file.parent.mkdir(parents=True)
+            with ZipFile(file, "w") as archive:
+                archive.writestr("FilesToTransfer/Data0/Test.br", "native package placeholder")
+            log.write(b"Build: 0 error(s), 1 warning(s)\r\n")
+            return 1, False, "empty"
+
+        with patch("br_automation_studio.native_build.run_build", side_effect=worker) as launch:
+            response = self.native_request("build_execute", planSha256=plan["sha256"],
+                                           jobDirectory="job1", timeoutSeconds=12)
+            repeated = self.native_request("build_execute", planSha256=plan["sha256"], jobDirectory="job1")
+            self.assertEqual(repeated["status"], "issues")
+            launch.assert_called_once()
+        self.assertEqual(response["status"], "partial")
+        result = response["result"]["nativeBuild"]
+        self.assertEqual(result["status"], "succeeded")
+        self.assertTrue(result["package"]["verifiedZip"])
+        self.assertEqual(json.loads((self.root / "job1/job.json").read_bytes()), result)
+        self.assertEqual((self.project / "BuildOnly/old.txt").read_text(encoding="utf-8"), "previous output")
+
+    def test_timeout_is_unknown_with_receipt(self):
+        self.local_core("5.29.1")
+        plan = self.native_request("build_plan")["result"]["buildPlan"]
+
+        def worker(args, project, dispatch, log, timeout):
+            dispatch(43)
+            log.write(b"Analyzing project...\n")
+            return 1, True, "empty"
+
+        with patch("br_automation_studio.native_build.run_build", side_effect=worker):
+            response = self.native_request("build_execute", planSha256=plan["sha256"], jobDirectory="job2")
+        self.assertEqual(response["status"], "issues")
+        job = json.loads((self.root / "job2/job.json").read_bytes())
+        self.assertEqual(job["status"], "unknown")
+        self.assertIsNone(job["package"])
+        self.assertTrue(job["timedOut"])
+
+    def test_native_clean_log_still_requires_a_valid_ruc(self):
+        self.local_core("5.29.1")
+        plan = self.native_request("build_plan")["result"]["buildPlan"]
+
+        def worker(args, project, dispatch, log, timeout):
+            dispatch(44)
+            log.write(b"Build: 0 error(s), 0 warning(s)\n")
+            return 0, False, "empty"
+
+        with patch("br_automation_studio.native_build.run_build", side_effect=worker):
+            response = self.native_request("build_execute", planSha256=plan["sha256"], jobDirectory="job3")
+        self.assertEqual(response["status"], "issues")
+        self.assertEqual(response["result"]["nativeBuild"]["status"], "artifact_failed")
+
+    def test_native_job_directory_cannot_be_inside_the_project(self):
+        self.local_core("5.29.1")
+        plan = self.native_request("build_plan")["result"]["buildPlan"]
+        with patch("br_automation_studio.native_build.run_build") as worker:
+            response = self.native_request("build_execute", planSha256=plan["sha256"],
+                                           jobDirectory="Loop/subjob")
+            worker.assert_not_called()
+        self.assertEqual(response["status"], "issues")
+        self.assertFalse((self.project / "subjob").exists())

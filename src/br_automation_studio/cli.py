@@ -44,8 +44,14 @@ def markdown(response):
             return "—"
         return escape(str(value), quote=False).replace("\r", " ").replace("\n", " ").replace("|", "&#124;")
 
+    titles = {
+        "project_inspect": "Saved Automation Studio project inspection",
+        "build_preflight": "AS4 build preflight",
+        "build_plan": "AS4 native build plan",
+        "build_execute": "AS4 native build receipt",
+    }
     lines = [
-        "# AS4 build preflight" if "preflight" in report else "# Saved Automation Studio project inspection", "",
+        f"# {titles[response['operation']]}", "",
         f"- Project **{text(report['project'])}**",
         f"- Status **{response['status']}**",
         f"- Configuration **{text(report['selectedConfiguration'])}**",
@@ -75,6 +81,17 @@ def markdown(response):
         for dependency in preflight["libraryDependencies"]:
             versions = ", ".join(dependency["selectedVersions"]) or "unresolved"
             lines.append(f"- {text(dependency['library'])} requires {text(dependency['requires'])} · {text(versions)}")
+    if plan := report.get("buildPlan"):
+        lines.extend(["", "## Build plan", "",
+                      f"- SHA-256 **{plan['sha256']}**",
+                      f"- Staged files **{len(plan['manifest']['inputs']['files'])}**"])
+    if job := report.get("nativeBuild"):
+        lines.extend(["", "## Native job", "",
+                      f"- Job {text(job['jobId'])} · {text(job['status'])} at {text(job['directory'])}"])
+        if summary := job.get("summary"):
+            lines.append(f"- Builder reported {summary['errors']} errors and {summary['warnings']} warnings")
+        if package := job["package"]:
+            lines.append(f"- RUC {text(package['path'])} · {package['entries']} ZIP entries · {package['sha256']}")
     lines.extend(["", "## Diagnostics", ""])
     for item in report["diagnostics"]:
         scope = f"{text(item['scope'])} · " if "scope" in item else ""

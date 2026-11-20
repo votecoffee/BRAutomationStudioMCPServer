@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Callable
 
 from .inspection import inspect_project
+from .native_build import execute_build, plan_build
 from .preflight import build_preflight
 
 SCHEMA_VERSION = 1
@@ -53,13 +54,29 @@ def inspect(arguments, request_directory):
     return inspect_project(project_path(arguments, request_directory), arguments.get("configuration"), arguments.get("cpu"))
 
 
-def preflight(arguments, request_directory):
+def build_inputs(arguments, request_directory):
     runtime_root = arguments.get("runtimeRoot")
-    return build_preflight(
+    return (
         project_path(arguments, request_directory),
         request_directory / arguments["studioRoot"],
         request_directory / runtime_root if runtime_root is not None else None,
         arguments.get("configuration"), arguments.get("cpu"),
+    )
+
+
+def preflight(arguments, request_directory):
+    return build_preflight(*build_inputs(arguments, request_directory))
+
+
+def build_plan(arguments, request_directory):
+    return plan_build(*build_inputs(arguments, request_directory))
+
+
+def build_execute(arguments, request_directory):
+    return execute_build(
+        *build_inputs(arguments, request_directory),
+        arguments["planSha256"], request_directory / arguments["jobDirectory"],
+        arguments.get("timeoutSeconds", 180),
     )
 
 
@@ -85,7 +102,26 @@ BUILD_PREFLIGHT = Operation(
     required=("project", "studioRoot"),
     handler=preflight,
 )
-OPERATIONS = {operation.name: operation for operation in (PROJECT_INSPECT, BUILD_PREFLIGHT)}
+BUILD_PLAN = Operation(
+    name="build_plan",
+    summary="Pin an offline AS4 PC_any simulation build to the source and installation read sets.",
+    arguments=BUILD_PREFLIGHT.arguments,
+    required=BUILD_PREFLIGHT.required,
+    handler=build_plan,
+)
+BUILD_EXECUTE = Operation(
+    name="build_execute",
+    summary="Compile a pinned AS4 simulation plan on a private copy and validate its RUC archive.",
+    arguments={
+        **BUILD_PLAN.arguments,
+        "planSha256": {"type": "string", "minLength": 64, "description": "SHA-256 from build_plan."},
+        "jobDirectory": {"type": "string", "minLength": 1, "description": "Unused directory outside all input roots."},
+        "timeoutSeconds": {"type": "integer", "minimum": 1, "maximum": 900, "default": 180},
+    },
+    required=(*BUILD_PLAN.required, "planSha256", "jobDirectory"),
+    handler=build_execute,
+)
+OPERATIONS = {item.name: item for item in (PROJECT_INSPECT, BUILD_PREFLIGHT, BUILD_PLAN, BUILD_EXECUTE)}
 
 
 def valid_text(value):
@@ -112,8 +148,12 @@ def execute(request, request_directory: Path):
     if missing := set(operation.required) - arguments.keys():
         raise InvalidRequest(f"Missing arguments: {', '.join(sorted(missing))}")
     for key, value in arguments.items():
-        if not valid_text(value):
-            raise InvalidRequest(f"{key} must be a nonempty string")
+        schema = operation.arguments[key]
+        if schema["type"] == "integer":
+            if type(value) is not int or not schema["minimum"] <= value <= schema["maximum"]:
+                raise InvalidRequest(f"{key} must be an integer between {schema['minimum']} and {schema['maximum']}")
+        elif not valid_text(value) or len(value) < schema["minLength"]:
+            raise InvalidRequest(f"{key} must be a nonempty string of at least {schema['minLength']} characters")
 
     result = operation.handler(arguments, request_directory)
     severities = {item["severity"] for item in result["diagnostics"]}
