@@ -228,6 +228,7 @@ class RucReviewTests(unittest.TestCase):
         response = self.binding_review()
         self.assertEqual(self.codes(response), ["binding_readback_mismatch"])
         self.assertEqual(response["result"]["diagnostics"][0]["path"], BINDING)
+        self.assertNotEqual(response["result"]["diagnostics"][0].get("scope"), "source")
 
     def test_orphan_compiled_binding_cannot_prove_active_binding(self):
         self.configure_display()

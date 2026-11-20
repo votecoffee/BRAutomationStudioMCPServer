@@ -169,7 +169,7 @@ class BindingTarget:
         binding = self.check_binding(matches, path, False)
         output.update(visualization=path.as_posix(), binding=binding.as_posix())
 
-    def compiled_binding(self, archive, source, output):
+    def compiled_binding(self, archive, output):
         visu_path = f"{SERVER}/{self.visualization}.vis"
         visu = unpack_xml(packaged_bytes(archive, visu_path), visu_path, VISUALIZATION)
         require(visu.get("id") == self.visualization, visu_path, "Compiled visualization ID differs")
@@ -177,7 +177,7 @@ class BindingTarget:
         matches = []
         for ref in nested(visu, "BindingsSets", "BindingsSet"):
             name = ref.get("refId") or ""
-            binding = source.member(Path(visu_path), f"{name}.binding")
+            binding = archive.diagnostics.member(Path(visu_path), f"{name}.binding")
             require(name and binding is not None, visu_path, "Invalid compiled binding set reference")
             binding_path = binding.as_posix()
             root = unpack_xml(packaged_bytes(archive, binding_path), binding_path,
@@ -222,7 +222,7 @@ class BindingTarget:
             saved["nodeMap"] = map_path.as_posix()
 
             report["state"] = "checking_compiled"
-            self.compiled_binding(archive, source, compiled)
+            self.compiled_binding(archive, compiled)
             html_path = f"{CONTENT}/{self.content}.html"
             widget_parser = RenderedWidget(self.dom_id)
             widget_parser.feed(packaged_bytes(archive, html_path).decode("utf-8-sig"))
@@ -252,4 +252,5 @@ class BindingTarget:
             require(compiled["accessLevel"] == "0x01", map_member, "Compiled variable access differs from CurrentRead alone")
             report["state"] = "matched"
         except BindingProblem as error:
-            source.issue("error", "binding_readback_mismatch", error.path, str(error))
+            diagnostics = archive.diagnostics if report["state"] == "checking_compiled" else source
+            diagnostics.issue("error", "binding_readback_mismatch", error.path, str(error))
