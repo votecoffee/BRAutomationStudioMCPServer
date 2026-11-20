@@ -141,6 +141,17 @@ def markdown_simulation_prerequisites(simulation, text):
     if media := simulation["simulatorZip"]:
         lines.append(f"- Simulator ZIP {text(media['path'])} · SHA-256 {text(media['sha256'])}"
                      f" · matches reviewed release {text(media['matched'])}")
+    if definition := simulation.get("mpTrafficDefinition"):
+        lines.append(f"- MpTraffic definition **{text(definition['state'])}**")
+        if "installed" in definition:
+            lines.append(f"- Saved mapp 6D {text(definition['mapp6DSelector'])} "
+                         f"· Installed build {text(definition['mapp6DBuild'])} "
+                         f"· MpTraffic {text(definition['libraryVersion'])}")
+            lines.append(f"- Enum values match {text(definition['enumMatched'])} "
+                         f"· IA32 binary matches {text(definition['payloadMatched'])}")
+            for profile in ("saved", "installed"):
+                values = ", ".join(f"{code} {label}" for code, label in definition[profile]["codes"].items())
+                lines.append(f"- {profile.title()} detection values {text(values)}")
     return lines
 
 

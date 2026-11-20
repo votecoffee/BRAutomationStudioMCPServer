@@ -100,6 +100,7 @@ def run_simulation_preflight(arguments, request_directory):
         *build_inputs(arguments, request_directory), family,
         request_directory / media if media is not None else None,
         request_directory / export if export is not None else None,
+        verify_mptraffic_enum=arguments.get("verifyMpTrafficEnum", False),
     )
 
 
@@ -303,6 +304,8 @@ SIMULATION_PREFLIGHT = Operation(
         **BUILD_PREFLIGHT.arguments,
         **SIMULATION_ENVIRONMENT.arguments,
         "launchPadExport": {"type": "string", "minLength": 1, "description": "Native LaunchPad .x6d for the intended route."},
+        "verifyMpTrafficEnum": {"type": "boolean", "default": False,
+                                "description": "Compare saved MpTraffic detection values and IA32 binary with the installed selection."},
     },
     required=(*BUILD_PREFLIGHT.required, "targetMapp6D"),
     handler=run_simulation_preflight,

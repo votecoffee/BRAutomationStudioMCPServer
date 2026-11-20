@@ -51,6 +51,12 @@ Use `br-studio operation-help simulation_preflight` to discover the contract. Se
 
 Run `br-studio run --request <simulation-preflight.json>`. Add `--format markdown` for the readable report.
 
+## Verify the MpTraffic definition before building
+
+Set `arguments.verifyMpTrafficEnum` to true with br-studio 0.34.0 or later when the project contains its registered MpTraffic library. The comparison reads the project .apj, the selected CPU's library references and the saved library descriptor. It compares the detection enum names and integer values with the exact mapp 6D and MpTraffic versions selected from the installed catalog. It also compares the saved and installed IA32 library binaries by SHA-256.
+
+Use `simulationPreflight.mpTrafficDefinition` for the result, both event maps, paths and hashes. A mismatch or unavailable definition blocks the requested verification. Formatting changes in `MpTraffic.typ` can have different hashes with the same event map. The comparison describes the saved selector even when the requested simulation family still has other prerequisites missing. After building, confirm the packaged binary and decode the captured events with [project-bound event decoding](cycle-scan-capture.md#decode-events-from-the-saved-project-and-ruc).
+
 ## Read the result
 
 - Check the project's saved selector against the intended family and the installed `TP.cfg`. The report shows each target-family selector and internal build. It checks the exact saved selector, the documented AS, Runtime and mapp Motion minimums, the mapp View selection, and the selected `McAcp6D` and `MpTraffic` library descriptors.

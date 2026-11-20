@@ -4,6 +4,7 @@ from dataclasses import asdict, dataclass
 from hashlib import file_digest
 from pathlib import Path
 
+from .mptraffic_events import compare_installed_definition
 from .preflight import PACKAGE_ROOT, RUNTIME_VERSION, build_preflight, engine, numeric_version, selected_package, within
 from .project import SavedFiles
 from .windows_msi import INSTALLSTATE_DEFAULT, installed_product
@@ -221,7 +222,8 @@ def simulation_environment(studio, family, simulator_zip=None):
     }
 
 
-def simulation_preflight(project, studio, runtime_root, configuration, cpu, family, simulator_zip=None, export=None):
+def simulation_preflight(project, studio, runtime_root, configuration, cpu, family, simulator_zip=None, export=None,
+                         *, verify_mptraffic_enum=False):
     pair = simulator_pair(family)
     report = build_preflight(project, studio, runtime_root, configuration, cpu)
     reader = SavedFiles(studio)
@@ -233,6 +235,22 @@ def simulation_preflight(project, studio, runtime_root, configuration, cpu, fami
     if export is None:
         reader.issue("error", "launchpad_export_missing", Path("."), "Supply the native LaunchPad .x6d for the intended route")
 
+    extra = {}
+    if verify_mptraffic_enum:
+        try:
+            definition = compare_installed_definition(project, studio, report)
+        except (OSError, RuntimeError, ValueError) as error:
+            definition = {"state": "unverified"}
+            reader.issue("error", "simulation_mptraffic_definition_unverified", Path(project.name), str(error))
+        else:
+            if not definition["enumMatched"]:
+                reader.issue("error", "simulation_mptraffic_enum_mismatch", Path(definition["saved"]["typeDeclaration"]),
+                             "Saved and installed MpTraffic detection enums have different names or values")
+            if not definition["payloadMatched"]:
+                reader.issue("error", "simulation_mptraffic_payload_mismatch", Path(definition["saved"]["payload"]),
+                             "Saved IA32 MpTraffic binary differs from the selected installed binary")
+        extra["mpTrafficDefinition"] = definition
+
     report["diagnostics"].extend(dict(item, scope="simulation") for item in reader.diagnostics)
     report["evidence"] = "simulation_prerequisite_metadata"
     report["simulationPreflight"] = {
@@ -240,5 +258,6 @@ def simulation_preflight(project, studio, runtime_root, configuration, cpu, fami
         "minimums": dict(MINIMUMS),
         "installedTargetCatalog": candidates, "targetCatalogSnapshot": reader.snapshot(),
         "simulatorInstallation": simulator, "simulatorZip": archive, "launchPadExport": native_export,
+        **extra,
     }
     return report

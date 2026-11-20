@@ -363,6 +363,61 @@ class BuildPreflightTests(unittest.TestCase):
 
     @patch("br_automation_studio.simulation_preflight.installed_product",
            return_value={"stateCode": 5, "version": "1.25.53"})
+    def test_simulation_verifies_saved_and_installed_mptraffic_definitions(self, msi):
+        self.prepare_simulation()
+        logical = self.project / "Logical"
+        root = logical / "Package.pkg"
+        root.write_bytes(root.read_bytes().replace(b"</Objects>", b'<Object Type="Package">Libraries</Object></Objects>'))
+        self.put(logical / "Libraries/Package.pkg",
+                 '<Package><Objects><Object Type="Library">MpTraffic</Object></Objects></Package>')
+        saved = logical / "Libraries/MpTraffic"
+        catalog = self.studio / PACKAGES / "mapp6D/2.7.0/Library/MpTraffic/V2.07.0"
+        descriptor = ('<Library Version="2.07.0"><Files><File>MpTraffic.typ</File></Files>'
+                      '<Dependencies><Dependency ObjectName="McBase" FromVersion="5.26.0"/></Dependencies></Library>')
+        enum = ("TYPE MpTrafficShDetectionEnum : (mpTRAFFIC_SH_NONE := 0, mpTRAFFIC_SH_ASSIGNED := 1, "
+                "mpTRAFFIC_SH_ARRIVAL := 2, mpTRAFFIC_SH_PASSTHROUGH := 3); END_TYPE")
+        for folder in (saved, catalog):
+            self.put(folder / "binary.lby", descriptor)
+            self.put(folder / "MpTraffic.typ", enum)
+            self.put(folder / "SG4/IA32/MpTraffic.br", "synthetic IA32 library")
+        self.put(saved / "MpTraffic.typ", enum + " (* saved declaration comment *)")
+
+        response = self.simulation(verifyMpTrafficEnum=True)
+        comparison = response["result"]["simulationPreflight"]["mpTrafficDefinition"]
+        self.assertEqual(response["status"], "complete", response["result"]["diagnostics"])
+        self.assertEqual(comparison["state"], "matched")
+        self.assertEqual(comparison["installed"]["codes"]["2"], "mpTRAFFIC_SH_ARRIVAL")
+        self.assertEqual(comparison["mapp6DBuild"], "2.7.0.10")
+        self.assertFalse(comparison["declarationBytesMatched"])
+        self.assertIn("MpTraffic definition **matched**", markdown(response))
+
+        for filename, wrong, code in (
+            ("MpTraffic.typ", enum.replace("ARRIVAL := 2", "ARRIVAL := 4"), "simulation_mptraffic_enum_mismatch"),
+            ("SG4/IA32/MpTraffic.br", "synthetic different library", "simulation_mptraffic_payload_mismatch"),
+        ):
+            with self.subTest(filename=filename):
+                path = saved / filename
+                old = path.read_bytes()
+                self.put(path, wrong)
+                failed = self.simulation(verifyMpTrafficEnum=True)["result"]
+                self.assertEqual(failed["simulationPreflight"]["state"], "blocked")
+                self.assertEqual(failed["simulationPreflight"]["mpTrafficDefinition"]["state"], "issues")
+                self.assertEqual([issue["code"] for issue in failed["diagnostics"]], [code])
+                path.write_bytes(old)
+
+    @patch("br_automation_studio.simulation_preflight.installed_product",
+           return_value={"stateCode": 5, "version": "1.25.53"})
+    def test_simulation_can_require_a_registered_saved_mptraffic_definition(self, msi):
+        self.prepare_simulation()
+        ordinary = self.simulation()["result"]["simulationPreflight"]
+        self.assertNotIn("mpTrafficDefinition", ordinary)
+        checked = self.simulation(verifyMpTrafficEnum=True)["result"]
+        self.assertEqual(checked["simulationPreflight"]["state"], "blocked")
+        self.assertEqual(checked["simulationPreflight"]["mpTrafficDefinition"], {"state": "unverified"})
+        self.assertEqual([issue["code"] for issue in checked["diagnostics"]], ["simulation_mptraffic_definition_unverified"])
+
+    @patch("br_automation_studio.simulation_preflight.installed_product",
+           return_value={"stateCode": 5, "version": "1.25.53"})
     def test_same_family_does_not_substitute_for_exact_saved_selector(self, msi):
         self.prepare_simulation(catalog_selector="2.7.1")
         response = self.simulation()
