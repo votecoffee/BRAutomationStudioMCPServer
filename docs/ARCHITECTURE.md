@@ -12,7 +12,7 @@ The standalone Automation Studio CLI exposes `project_inspect`, a read-only inve
 | `src/br_automation_studio/cli.py` | Discover operations and schemas, accept a UTF-8 JSON request, and return structured JSON. Keep console formatting and exit codes at this boundary. |
 | Native build adapter, planned | Discover a selected local Automation Studio version and run explicit native jobs in private workspaces. Capture vendor diagnostics and verify generated artifacts. Add this layer when the saved-file workflow is ready. |
 | `skills/br-automation-studio/` | Give future chats a short entry point that locates the installed standalone executable and routes work by operation. |
-| `workflows/` | Maintain versioned workflow guides, request examples, and verification steps distributed with the CLI. |
+| `skills/br-automation-studio/references/` | Maintain versioned workflow guides, request examples, and verification steps distributed with the CLI. |
 | `tests/fixtures/` | Hold synthetic inputs and expected outcomes, including unresolved references and unsupported formats. |
 
 Keep the core callable in process. A future MCP adapter can use the operation catalog for tool schemas and dispatch to the same functions. Project parsing, validation, and native job rules belong in the application layers above.
@@ -36,7 +36,7 @@ A later native build uses an installed, explicitly selected Automation Studio to
 
 ## Skill and installation workflow
 
-Publish the standalone executable, matching guides, and an application-owned skill as one versioned distribution. Use a stable per-user executable entry point. The skill should discover available operations, select the appropriate guide, verify supported inputs, and read receipts through the installed version. Keep detailed instructions in `workflows/` so a workflow has one maintained source.
+The source skill and its workflow can be read from the checkout. For a future packaged release, publish the standalone executable, matching guides, and an application-owned skill as one versioned distribution. Use a stable per-user executable entry point. The skill should discover available operations, select the appropriate guide, verify supported inputs, and read receipts through the installed version. Keep detailed instructions in the skill's `references/` directory so a workflow has one maintained source.
 
 Keep vendor installations and customer source paths in local settings. Keep raw exports, local corpus material, and artifacts out of tracked files. Use the ignored `.local/` directory for retained repo-specific material. Use synthetic fixtures for shareable examples. An installer should preserve existing local settings and support reverting to a verified previous version.
 

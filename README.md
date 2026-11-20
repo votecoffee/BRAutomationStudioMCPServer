@@ -31,9 +31,13 @@ $brStudio = '.\.local\venv\Scripts\br-studio.exe'
 
 The example reads a synthetic project. The result lists declared package versions, selected configuration and CPU, layout and assembly references, Traffic Manager endpoints, and Assembly6D widget links. It records SHA-256 hashes for the files read. Use the result as saved-file evidence. Native compilation and ARsim behavior need their own checks.
 
+## Chat workflow
+
+The repository includes a skill for selecting saved inputs and interpreting the inspection result. [B&R Automation Studio skill](skills/br-automation-studio/SKILL.md) · [Saved-project workflow](skills/br-automation-studio/references/project-inspection.md)
+
 ## Architecture
 
-The application design covers the shared operation catalog, standalone CLI, future chat skill, and the native build boundary. [Toolset architecture](docs/ARCHITECTURE.md)
+The application design covers the shared operation catalog, standalone CLI, chat skill, and the native build boundary. [Toolset architecture](docs/ARCHITECTURE.md)
 
 ## Maintainers
 
