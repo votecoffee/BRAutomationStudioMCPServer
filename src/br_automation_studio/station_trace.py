@@ -1,9 +1,9 @@
 """Review saved scan evidence for one inspection leg of a compiled Traffic Manager route."""
 
 from .launchpad_route import json_snapshot, launchpad_route_review, nonempty
+from .mptraffic_definition import ARRIVAL
 
 TRACE_LIMIT = 16 * 1024 * 1024
-ARRIVAL = "mpTRAFFIC_SH_ARRIVAL"
 MONITOR_CHECKPOINTS = ("monitorSequenceBeforeScan", "monitorSequenceAfterScan")
 FLAGS = ("inspectionBusy", "routePermitted", "stationClear", "release", "releaseBuffered",
          "releaseDone", "releaseAborted", "error", "monitorHealthy")

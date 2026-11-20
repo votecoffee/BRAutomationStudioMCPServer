@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 from zipfile import ZipFile
 
 from br_automation_studio.cli import markdown
-from br_automation_studio.native_build import execute_build
+from br_automation_studio.native_build import execute_build, stage_inputs
 from br_automation_studio.operations import execute
 
 FIXTURE = Path(__file__).resolve().parent / "fixtures/Loop"
@@ -207,6 +207,76 @@ class BuildPreflightTests(unittest.TestCase):
         self.assertEqual(json.loads((self.root / "job1/job.json").read_bytes()), result)
         self.assertEqual((self.project / "BuildOnly/old.txt").read_text(encoding="utf-8"), "previous output")
 
+    def test_mptraffic_read_set_is_part_of_the_native_plan_identity(self):
+        _, catalog, enum = self.prepare_mptraffic_definition()
+        plan = self.native_request("build_plan", verifyMpTrafficEnum=True)["result"]["buildPlan"]
+        evidence = plan["manifest"]["mpTrafficDefinition"]
+        self.assertEqual(evidence["state"], "matched")
+        self.assertEqual(evidence["installed"]["codes"]["2"], "mpTRAFFIC_SH_ARRIVAL")
+        self.assertEqual(plan, self.native_request("build_plan", verifyMpTrafficEnum=True)["result"]["buildPlan"])
+
+        with patch("br_automation_studio.native_build.run_build") as worker:
+            omitted = self.native_request("build_execute", planSha256=plan["sha256"], jobDirectory="omitted")
+            self.put(catalog / "MpTraffic.typ", enum + " (* edits the planned file but preserves the enum *)")
+            changed = self.native_request("build_execute", verifyMpTrafficEnum=True, planSha256=plan["sha256"],
+                                          jobDirectory="changed")
+            worker.assert_not_called()
+        for outcome in (omitted, changed):
+            self.assertEqual(outcome["status"], "issues")
+            self.assertEqual(outcome["result"]["diagnostics"][-1]["code"], "build_plan_changed")
+        self.assertFalse((self.root / "omitted").exists())
+        self.assertFalse((self.root / "changed").exists())
+
+    def test_mptraffic_installed_files_are_rehashed_after_staging(self):
+        _, catalog, enum = self.prepare_mptraffic_definition()
+        plan = self.native_request("build_plan", verifyMpTrafficEnum=True)["result"]["buildPlan"]
+
+        def stage_and_change(manifest, destination):
+            stage_inputs(manifest, destination)
+            self.put(catalog / "MpTraffic.typ", enum + " (* change after staging *)")
+
+        with (patch("br_automation_studio.native_build.stage_inputs", side_effect=stage_and_change),
+              patch("br_automation_studio.native_build.run_build") as worker):
+            outcome = self.native_request("build_execute", verifyMpTrafficEnum=True, planSha256=plan["sha256"],
+                                          jobDirectory="staged-change")
+            worker.assert_not_called()
+        result = outcome["result"]
+        self.assertEqual(result["nativeBuild"]["status"], "not_dispatched")
+        self.assertIn("Installation evidence changed before dispatch", result["diagnostics"][-1]["message"])
+        self.assertTrue(result["diagnostics"][-1]["message"].endswith("MpTraffic.typ"))
+
+    def test_mptraffic_pinned_build_requires_the_library_binary_in_its_ruc(self):
+        saved, _, _ = self.prepare_mptraffic_definition()
+        plan = self.native_request("build_plan", verifyMpTrafficEnum=True)["result"]["buildPlan"]
+        original = (saved / "SG4/IA32/MpTraffic.br").read_bytes()
+
+        for case, payload, status in (("matched", original, "succeeded"),
+                                      ("wrong", b"other binary", "artifact_failed"),
+                                      ("absent", None, "artifact_failed")):
+            with self.subTest(case=case):
+                def worker(args, cwd, dispatch, log, timeout):
+                    dispatch(45)
+                    artifact = Path(args[args.index("-o") + 1]) / "ARsim/PC/RUCPackage/RUCPackage.zip"
+                    artifact.parent.mkdir(parents=True)
+                    with ZipFile(artifact, "w") as archive:
+                        archive.writestr("FilesToTransfer/Data0/Example.br", b"synthetic module")
+                        if payload is not None:
+                            archive.writestr("FilesToTransfer/Data0/MpTraffic.br", payload)
+                    log.write(b"Build: 0 error(s), 0 warning(s)\n")
+                    return 0, False, "empty"
+
+                with patch("br_automation_studio.native_build.run_build", side_effect=worker):
+                    response = self.native_request("build_execute", verifyMpTrafficEnum=True, planSha256=plan["sha256"],
+                                                   jobDirectory=case)
+                job = response["result"]["nativeBuild"]
+                self.assertEqual(job["status"], status)
+                if case == "matched":
+                    self.assertEqual(job["package"]["mpTrafficPayload"]["sha256"], sha256(original).hexdigest())
+                    self.assertIn("Packaged MpTraffic", markdown(response))
+                else:
+                    self.assertIsNone(job["package"])
+                    self.assertEqual(response["result"]["diagnostics"][-1]["code"], "ruc_verification_failed")
+
     def test_native_build_uses_checked_drive_alias_at_launch(self):
         self.local_core("5.29.1")
         plan = self.native_request("build_plan")["result"]["buildPlan"]
@@ -361,9 +431,7 @@ class BuildPreflightTests(unittest.TestCase):
         msi.assert_called_once_with(evidence["reference"]["productCode"])
         self.assertIn("Expected Planar Motor Simulation Tool 117.25.53", markdown(response))
 
-    @patch("br_automation_studio.simulation_preflight.installed_product",
-           return_value={"stateCode": 5, "version": "1.25.53"})
-    def test_simulation_verifies_saved_and_installed_mptraffic_definitions(self, msi):
+    def prepare_mptraffic_definition(self):
         self.prepare_simulation()
         logical = self.project / "Logical"
         root = logical / "Package.pkg"
@@ -380,6 +448,12 @@ class BuildPreflightTests(unittest.TestCase):
             self.put(folder / "binary.lby", descriptor)
             self.put(folder / "MpTraffic.typ", enum)
             self.put(folder / "SG4/IA32/MpTraffic.br", "synthetic IA32 library")
+        return saved, catalog, enum
+
+    @patch("br_automation_studio.simulation_preflight.installed_product",
+           return_value={"stateCode": 5, "version": "1.25.53"})
+    def test_simulation_verifies_saved_and_installed_mptraffic_definitions(self, msi):
+        saved, catalog, enum = self.prepare_mptraffic_definition()
         self.put(saved / "MpTraffic.typ", enum + " (* saved declaration comment *)")
 
         response = self.simulation(verifyMpTrafficEnum=True)

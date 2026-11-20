@@ -69,7 +69,7 @@ For an installed AS4 toolchain, `build_preflight` compares the project with the 
 
 Use `simulation_environment` to check the AS4 package catalog, simulator registration and saved simulator media during workstation setup. Run `simulation_preflight` once the saved project and native LaunchPad export are available. [Simulation prerequisites and MpTraffic definition check](skills/br-automation-studio/references/simulation-preflight.md)
 
-Use `build_plan` and `build_execute` to compile a pinned AS4 PC simulation project and collect the RUC archive and builder log. Build dispatch supports short Windows drive aliases for deeply nested jobs. [Native build workflow](skills/br-automation-studio/references/native-build.md)
+Use `build_plan` and `build_execute` to compile a pinned AS4 PC simulation project and collect the RUC archive and builder log. Build dispatch supports short Windows drive aliases for deeply nested jobs. [Native build and pinned MpTraffic workflow](skills/br-automation-studio/references/native-build.md)
 
 After building, use `ruc_review` to compare the retained package's 6D modules, typed routes, linked exclusivity groups, and rendered widget links with the saved inputs. [RUC review workflow](skills/br-automation-studio/references/ruc-review.md) · [Traffic rule review](skills/br-automation-studio/references/traffic-rule-review.md)
 

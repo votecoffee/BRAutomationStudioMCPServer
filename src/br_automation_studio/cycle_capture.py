@@ -6,7 +6,7 @@ from hashlib import sha256
 from io import StringIO
 import re
 
-from .mptraffic_events import NONE
+from .mptraffic_definition import NONE
 from .station_trace import FLAGS, MONITOR_CHECKPOINTS, TRACE_LIMIT, TraceIssue, integer
 
 

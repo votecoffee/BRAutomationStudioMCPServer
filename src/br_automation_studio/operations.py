@@ -105,14 +105,15 @@ def run_simulation_preflight(arguments, request_directory):
 
 
 def build_plan(arguments, request_directory):
-    return plan_build(*build_inputs(arguments, request_directory))
+    return plan_build(*build_inputs(arguments, request_directory),
+                      verify_mptraffic_enum=arguments.get("verifyMpTrafficEnum", False))
 
 
 def build_execute(arguments, request_directory):
     return execute_build(
         *build_inputs(arguments, request_directory),
         arguments["planSha256"], request_directory / arguments["jobDirectory"],
-        arguments.get("timeoutSeconds", 180),
+        arguments.get("timeoutSeconds", 180), verify_mptraffic_enum=arguments.get("verifyMpTrafficEnum", False),
     )
 
 
@@ -313,7 +314,7 @@ SIMULATION_PREFLIGHT = Operation(
 BUILD_PLAN = Operation(
     name="build_plan",
     summary="Pin an offline AS4 PC_any simulation build to the source and installation read sets.",
-    arguments=BUILD_PREFLIGHT.arguments,
+    arguments={**BUILD_PREFLIGHT.arguments, "verifyMpTrafficEnum": SIMULATION_PREFLIGHT.arguments["verifyMpTrafficEnum"]},
     required=BUILD_PREFLIGHT.required,
     handler=build_plan,
 )

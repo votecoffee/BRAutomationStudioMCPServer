@@ -12,6 +12,7 @@ import stat
 from uuid import uuid4
 from zipfile import BadZipFile, ZipFile
 
+from .mptraffic_definition import check_installed_definition, verify_packaged_mptraffic
 from .preflight import build_preflight
 from .windows_job import run_build
 
@@ -76,7 +77,7 @@ def source_tree(root):
     return {"directories": sorted(directories), "files": sorted(files, key=lambda row: row["path"])}
 
 
-def plan_build(path, studio_root, runtime_root=None, configuration=None, cpu=None):
+def plan_build(path, studio_root, runtime_root=None, configuration=None, cpu=None, *, verify_mptraffic_enum=False):
     report = build_preflight(path, studio_root, runtime_root, configuration, cpu)
     report["buildPlan"] = None
     if blocked(report):
@@ -97,6 +98,12 @@ def plan_build(path, studio_root, runtime_root=None, configuration=None, cpu=Non
     if blocked(report):
         return report
 
+    definition = None
+    if verify_mptraffic_enum:
+        definition = report["mpTrafficDefinition"] = check_installed_definition(path, studio_root, report, "native_build")
+        if definition["state"] != "matched":
+            return report
+
     root = path.parent.resolve()
     try:
         inputs = source_tree(root)
@@ -107,7 +114,10 @@ def plan_build(path, studio_root, runtime_root=None, configuration=None, cpu=Non
     if len(files) != len(inputs["files"]):
         issue(report, "error", "ambiguous_source_paths", "Source files have conflicting names on this platform")
         return report
-    if any(files.get(os.path.normcase(row["path"])) != row["sha256"] for row in report["snapshot"]["files"]):
+    reviewed_sources = list(report["snapshot"]["files"])
+    if definition is not None:
+        reviewed_sources.extend(definition["saved"]["snapshot"]["files"])
+    if any(files.get(os.path.normcase(row["path"])) != row["sha256"] for row in reviewed_sources):
         issue(report, "error", "project_changed", "The source tree changed during build planning")
         return report
     if os.path.normcase(path.name) not in files:
@@ -122,6 +132,8 @@ def plan_build(path, studio_root, runtime_root=None, configuration=None, cpu=Non
         "runtimeRoot": preflight["runtimeRoot"], "runtimeSha256": preflight["runtimeSnapshot"]["sha256"],
         "inputs": inputs,
     }
+    if definition is not None:
+        plan["mpTrafficDefinition"] = definition
     report["buildPlan"] = {"sha256": identity(plan), "manifest": plan}
     return report
 
@@ -159,19 +171,22 @@ def log_summary(path):
     return summary
 
 
-def package_evidence(path, job_dir):
+def package_evidence(path, job_dir, *, mptraffic=None):
     with ZipFile(path) as bundle:
         if not bundle.namelist() or bundle.testzip() is not None:
             raise ValueError("RUC archive failed ZIP integrity verification")
-        return {
+        evidence = {
             "path": path.relative_to(job_dir).as_posix(), "sha256": fingerprint(path),
             "bytes": path.stat().st_size, "entries": len(bundle.infolist()), "verifiedZip": True,
         }
+        if mptraffic is not None:
+            evidence["mpTrafficPayload"] = verify_packaged_mptraffic(bundle, mptraffic["saved"]["payloadSha256"])
+        return evidence
 
 
 def execute_build(path, studio_root, runtime_root, configuration, cpu, plan_sha256, job_directory,
-                  timeout_seconds=180):
-    report = plan_build(path, studio_root, runtime_root, configuration, cpu)
+                  timeout_seconds=180, *, verify_mptraffic_enum=False):
+    report = plan_build(path, studio_root, runtime_root, configuration, cpu, verify_mptraffic_enum=verify_mptraffic_enum)
     plan = report["buildPlan"]
     if plan is None:
         return report
@@ -216,10 +231,13 @@ def execute_build(path, studio_root, runtime_root, configuration, cpu, plan_sha2
 
     try:
         stage_inputs(manifest, staged)
-        for name in ("studio", "runtime"):
-            catalog = report["preflight"]
-            root = Path(catalog[f"{name}Root"])
-            for pinned in catalog[f"{name}Snapshot"]["files"]:
+        catalog = report["preflight"]
+        checks = [(Path(catalog[f"{name}Root"]), catalog[f"{name}Snapshot"]) for name in ("studio", "runtime")]
+        definition = manifest.get("mpTrafficDefinition")
+        if definition is not None:
+            checks.append((Path(catalog["studioRoot"]), definition["installed"]["snapshot"]))
+        for root, snapshot in checks:
+            for pinned in snapshot["files"]:
                 if fingerprint(root / pinned["path"]) != pinned["sha256"]:
                     raise ValueError(f"Installation evidence changed before dispatch: {pinned['path']}")
         output.mkdir()
@@ -242,7 +260,7 @@ def execute_build(path, studio_root, runtime_root, configuration, cpu, plan_sha2
         else:
             ruc = output / manifest["configuration"] / manifest["cpu"] / "RUCPackage/RUCPackage.zip"
             try:
-                job["package"] = package_evidence(ruc, job_dir)
+                job["package"] = package_evidence(ruc, job_dir, mptraffic=definition)
                 job["status"] = "succeeded"
                 if summary["warnings"]:
                     issue(report, "warning", "native_build_warnings", f"Automation Studio reported {summary['warnings']} warnings")

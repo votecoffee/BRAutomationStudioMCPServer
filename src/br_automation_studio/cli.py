@@ -98,6 +98,8 @@ def markdown(response):
         lines.extend(markdown_simulation_prerequisites(simulation, text))
         if export := simulation["launchPadExport"]:
             lines.append(f"- LaunchPad export {text(export['path'])} · SHA-256 {text(export['sha256'])}")
+    if definition := report.get("mpTrafficDefinition"):
+        lines.extend(["", "## MpTraffic build verification", "", *markdown_mptraffic_definition(definition, text)])
     if plan := report.get("buildPlan"):
         lines.extend(["", "## Build plan", "",
                       f"- SHA-256 **{plan['sha256']}**",
@@ -109,6 +111,8 @@ def markdown(response):
             lines.append(f"- Builder reported {summary['errors']} errors and {summary['warnings']} warnings")
         if package := job["package"]:
             lines.append(f"- RUC {text(package['path'])} · {package['entries']} ZIP entries · {package['sha256']}")
+            if payload := package.get("mpTrafficPayload"):
+                lines.append(f"- Packaged MpTraffic {text(payload['path'])} · SHA-256 {payload['sha256']}")
     lines.extend(markdown_diagnostics(report["diagnostics"], text))
     return "\n".join(lines)
 
@@ -142,16 +146,21 @@ def markdown_simulation_prerequisites(simulation, text):
         lines.append(f"- Simulator ZIP {text(media['path'])} · SHA-256 {text(media['sha256'])}"
                      f" · matches reviewed release {text(media['matched'])}")
     if definition := simulation.get("mpTrafficDefinition"):
-        lines.append(f"- MpTraffic definition **{text(definition['state'])}**")
-        if "installed" in definition:
-            lines.append(f"- Saved mapp 6D {text(definition['mapp6DSelector'])} "
-                         f"· Installed build {text(definition['mapp6DBuild'])} "
-                         f"· MpTraffic {text(definition['libraryVersion'])}")
-            lines.append(f"- Enum values match {text(definition['enumMatched'])} "
-                         f"· IA32 binary matches {text(definition['payloadMatched'])}")
-            for profile in ("saved", "installed"):
-                values = ", ".join(f"{code} {label}" for code, label in definition[profile]["codes"].items())
-                lines.append(f"- {profile.title()} detection values {text(values)}")
+        lines.extend(markdown_mptraffic_definition(definition, text))
+    return lines
+
+
+def markdown_mptraffic_definition(definition, text):
+    lines = [f"- MpTraffic definition **{text(definition['state'])}**"]
+    if "installed" in definition:
+        lines.append(f"- Saved mapp 6D {text(definition['mapp6DSelector'])} "
+                     f"· Installed build {text(definition['mapp6DBuild'])} "
+                     f"· MpTraffic {text(definition['libraryVersion'])}")
+        lines.append(f"- Enum values match {text(definition['enumMatched'])} "
+                     f"· IA32 binary matches {text(definition['payloadMatched'])}")
+        for profile in ("saved", "installed"):
+            values = ", ".join(f"{code} {label}" for code, label in definition[profile]["codes"].items())
+            lines.append(f"- {profile.title()} detection values {text(values)}")
     return lines
 
 

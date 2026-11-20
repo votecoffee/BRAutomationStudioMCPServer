@@ -6,7 +6,8 @@ from tempfile import TemporaryDirectory
 import unittest
 from zipfile import ZipFile
 
-from br_automation_studio.mptraffic_events import detection_values, read_project_events
+from br_automation_studio.mptraffic_definition import detection_values
+from br_automation_studio.mptraffic_events import read_project_events
 from br_automation_studio.native_build import identity, source_tree
 from br_automation_studio.station_trace import ARRIVAL, TraceIssue
 

@@ -8,6 +8,12 @@ Create the same request as for [build preflight](build-preflight.md) with `opera
 
 Review the selected project, configuration, builder and diagnostics. Planning is read-only. It stops on preflight errors and can return a plan with warnings. Use a self-contained project copy whose dependencies and build behavior you trust. The worker invokes the vendor build, including any build behavior configured in the project.
 
+### Verify MpTraffic in the plan and RUC
+
+Since br-studio 0.35.0, set `verifyMpTrafficEnum` to true in both the plan and execution requests to carry the [MpTraffic definition check](simulation-preflight.md#verify-the-mptraffic-definition-before-building) into the native build. The plan compares the registered project declaration and IA32 binary with the selected AS4 catalog files. The plan SHA-256 covers the saved and installed declaration and payload hashes under `manifest.mpTrafficDefinition`.
+
+Execution repeats the comparison and rehashes the installed files after staging and before running the builder. A missing option or a changed pinned file, including a formatting-only edit to a declaration, requires a fresh reviewed plan. A completed build also needs the same MpTraffic binary in the RUC to pass package verification. Read `nativeBuild.package.mpTrafficPayload` for its member path, SHA-256 and size.
+
 ## Run the pinned copy
 
 Create a request using the same arguments as the plan. Below, replace the example hash with `result.buildPlan.sha256` and choose an unused `jobDirectory` under an existing parent outside the input roots.
