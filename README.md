@@ -51,7 +51,7 @@ Use `simulation_preflight` to compare the saved mapp 6D version, AS4 catalog, si
 
 Use `build_plan` and `build_execute` to compile a pinned AS4 PC simulation project and collect the RUC archive and builder log. [Native build workflow](skills/br-automation-studio/references/native-build.md)
 
-After building, use `ruc_review` to compare the retained package's 6D modules, typed routes, and rendered widget links with the saved inputs. [RUC review workflow](skills/br-automation-studio/references/ruc-review.md)
+After building, use `ruc_review` to compare the retained package's 6D modules, typed routes, linked exclusivity groups, and rendered widget links with the saved inputs. [RUC review workflow](skills/br-automation-studio/references/ruc-review.md) · [Traffic rule review](skills/br-automation-studio/references/traffic-rule-review.md)
 
 Use `launchpad_route_review` to compare a locally decoded LaunchPad cycle with a selected saved or compiled Traffic Manager. [LaunchPad route workflow](skills/br-automation-studio/references/launchpad-route-review.md)
 

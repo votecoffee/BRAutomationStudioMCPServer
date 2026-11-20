@@ -11,7 +11,7 @@ from zipfile import BadZipFile, ZipFile
 
 from .inspection import inspect_project
 from .json_io import invalid_constant, read_json, unique_object
-from .links import MotionLinks
+from .links import MotionLinks, RULE_ROLES
 from .native_build import identity, source_tree
 from .project import ProjectXml, SavedFiles, XML_LIMIT, children, tag
 
@@ -147,6 +147,21 @@ def read_motion(archive, saved, reader, geometry_manager=None, *, include_layout
     return motion.module_inventory, links, managers, ready
 
 
+def rule_key(rule):
+    roles = [tuple(sorted((item["name"], item["type"]) for item in rule[role])) for _, role in RULE_ROLES]
+    return rule["name"], rule["type"], *roles
+
+
+def compare_rules(reader, path, name, expected, actual):
+    before = {row["id"]: row for row in expected}
+    after = {row["id"]: row for row in actual}
+    for identity in sorted(before.keys() & after.keys()):
+        saved, compiled = before[identity], after[identity]
+        if saved["state"] == compiled["state"] == "read":
+            compare_rows(reader, path, f"{name} rule list {identity} contents",
+                         map(rule_key, saved["rules"]), map(rule_key, compiled["rules"]))
+
+
 def compare_motion(reader, saved, links, managers):
     path = Path(DATA)
     compare_rows(reader, path, "Assembly layouts",
@@ -163,6 +178,7 @@ def compare_motion(reader, saved, links, managers):
         compare_rows(reader, path, f"{name} typed objects",
                      [(item["name"], item["type"]) for item in before["objects"]],
                      [(item["name"], item["type"]) for item in after["objects"]])
+        compare_rules(reader, path, name, before["ruleEvidence"], after["ruleEvidence"])
         edge_fields = ("source", "sourceType", "destination", "destinationType")
         compare_rows(reader, path, f"{name} directed edges",
                      [tuple(item[field] for field in edge_fields) for item in before["edges"]],

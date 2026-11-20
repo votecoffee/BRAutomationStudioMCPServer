@@ -27,6 +27,7 @@ Run `br-studio run --request <review-request.json>`. Add `--format markdown` to 
 | Receipt and source | The plan hash recomputed from `plan.json` matches `job.json`. The job records a successful AS4 ARsim build. The supplied saved tree matches the manifest of staged inputs. |
 | Archive | The current ZIP's size, SHA-256, and member count match the job receipt. The reviewer reads selected members directly, using their ZIP CRCs. |
 | ACOPOS 6D | Readable XML in the expected `FilesToTransfer/Data0/*.br` modules preserves module identities and assembly–layout and manager–list references. The comparison includes station and waypoint types and the multiplicity of each directed edge. Each compiled endpoint is resolved within its own manager. |
+| Traffic rules | The linked exclusivity groups preserve their names and typed member, entry and exit references. [Traffic rule review](traffic-rule-review.md) |
 | mapp View | The expected AS4 content's rendered `brease.setOptions` JSON identifies the widget class, `mpLink` and `mpLinkTrafficManager`. The corresponding Assembly6D script path is present in the archive. |
 
 Read `result.rucReview` for the compiled references, graph and rendered links. A changed archive, missing member, wrong typed endpoint, duplicate edge or changed widget link produces an issue. A recognized module with an unreadable payload can produce a partial result. The JSON retains the diagnosed scope and the elements it could read.

@@ -60,6 +60,7 @@ def markdown(response):
         for manager in report["trafficManagers"]:
             for edge in manager["edges"]:
                 lines.append(f"- {text(manager['manager'])} · {text(edge['source'])} → {text(edge['destination'])}")
+    lines.extend(markdown_rules(report["trafficManagers"], text))
     lines.extend(["", "## Assembly6D widgets", ""])
     for item in report["widgets"]:
         lines.append(f"- {text(item['id'])} · assembly {text(item['assembly'])} · manager {text(item['manager'])}")
@@ -201,6 +202,7 @@ def markdown_ruc(response, text):
             lines.extend(["", f"## {text(manager['manager'])}", ""])
             for edge in manager["edges"]:
                 lines.append(f"- {text(edge['source'])} ({text(edge['sourceType'])}) → {text(edge['destination'])} ({text(edge['destinationType'])})")
+    lines.extend(markdown_rules(review["trafficManagers"], text))
     if review["widgets"]:
         lines.extend(["", "## Rendered widgets", ""])
         for item in review["widgets"]:
@@ -211,6 +213,26 @@ def markdown_ruc(response, text):
     if not report["diagnostics"]:
         lines.append("The selected package checks matched the saved inputs.")
     return "\n".join(lines)
+
+
+def markdown_rules(managers, text):
+    if not managers:
+        return []
+    lines = ["", "## Traffic Manager rules", ""]
+    for manager in managers:
+        name = text(manager["manager"])
+        if not manager["ruleEvidence"]:
+            lines.append(f"- {name} has no resolved rule lists")
+        for row in manager["ruleEvidence"]:
+            lines.append(f"- {name} / {text(row['id'])} · {text(row['state'])} · "
+                         f"{len(row['rules'])} supported rules · {text(row['path'])}")
+            for rule in row["rules"]:
+                roles = []
+                for label in ("members", "entries", "exits"):
+                    refs = ", ".join(f"{ref['name']} ({ref['type']})" for ref in rule[label])
+                    roles.append(f"{label} {text(refs or None)}")
+                lines.append(f"  - {text(rule['name'])} · " + " · ".join(roles))
+    return lines
 
 
 def markdown_route(route, text):

@@ -6,6 +6,11 @@ from .project import children, tag
 
 ASSEMBLY_WIDGET = "widgets.mapp6D.Assembly6D"
 XSI_TYPE = "{http://www.w3.org/2001/XMLSchema-instance}type"
+RULE_ROLES = (
+    ("TrafficObjects", "members"),
+    ("EntryObjects", "entries"),
+    ("ExitObjects", "exits"),
+)
 
 
 def fields(node, name, field="Property"):
@@ -142,12 +147,78 @@ class MotionLinks:
             "objectLists": [item.get("ID") for _, item in object_lists],
             "mappingLists": [item.get("ID") for _, item in mapping_lists],
             "ruleLists": [item.get("ID") for _, item in rule_lists],
+            "ruleEvidence": [self.rules(file, item, objects) for file, item in rule_lists],
             "objects": [{"name": name, "type": kind} for name, kind in objects.items()],
             "edges": edges,
         }
         if collect_positions:
             result["positionEvidence"] = positions
         return result
+
+    def rules(self, path, rule_list, objects):
+        selectors = fields(rule_list, "TrafficRule", "Selector")
+        rules = []
+        verified = len(selectors) == len(rule_list)
+        if not verified:
+            self.source.issue("warning", "unsupported_rule", path, "Expected TrafficRule selectors in the linked list")
+        for selector in selectors:
+            kind = self.selector_type(path, selector)
+            types = fields(selector, "Type")
+            if len(types) > 1 or kind != "ExclusivityGroup":
+                self.source.issue("warning", "unsupported_rule", path, f"Expected one ExclusivityGroup rule type, read {kind!r}")
+                verified = False
+                continue
+            name = unique_property(selector, "Name")
+            if not name or not name.strip():
+                self.source.issue("error", "invalid_rule_name", path, "An exclusivity group needs one nonempty name")
+                verified = False
+                continue
+            rule = {"name": name, "type": kind}
+            known_fields = fields(selector, "Name") + types
+            for group, role in RULE_ROLES:
+                sections = fields(selector, group, "Group")
+                known_fields.extend(sections)
+                refs, supported = self.rule_refs(path, name, group, sections, objects)
+                rule[role] = refs
+                verified &= supported
+            if len(known_fields) != len(selector):
+                self.source.issue("warning", "unsupported_rule", path, f"Unrecognized fields in exclusivity group {name!r}")
+                verified = False
+            rules.append(rule)
+        return {"id": rule_list.get("ID"), "path": path.as_posix(), "state": "read" if verified else "unverified",
+                "rules": rules}
+
+    def rule_refs(self, path, name, group, sections, objects):
+        if not sections:
+            return [], True
+        if len(sections) != 1:
+            self.source.issue("error", "invalid_rule_group", path, f"Exclusivity group {name!r} repeats {group}")
+            return [], False
+        section, = sections
+        selectors = fields(section, "TrafficObject", "Selector")
+        verified = len(selectors) == len(section)
+        if not verified:
+            self.source.issue("warning", "unsupported_rule", path, f"Expected TrafficObject selectors in {name!r} {group}")
+        refs = []
+        for selector in selectors:
+            kind = self.selector_type(path, selector)
+            types = fields(selector, "Type")
+            references = fields(selector, "ExclusivityGroupObjectRef")
+            target = references[0].get("Value") if len(references) == 1 else None
+            if len(types) + len(references) != len(selector):
+                self.source.issue("warning", "unsupported_rule", path, f"Unrecognized endpoint fields in {name!r} {group}")
+                verified = False
+            if not target or len(types) > 1 or kind not in {"Station", "Waypoint"}:
+                self.source.issue("error", "invalid_rule_endpoint", path,
+                                  f"Exclusivity group {name!r} {group} needs a typed Station or Waypoint reference")
+                verified = False
+                continue
+            refs.append({"name": target, "type": kind})
+            if objects.get(target) != kind:
+                self.source.issue("error", "invalid_rule_endpoint", path,
+                                  f"Exclusivity group {name!r} {group} expects {kind} {target!r}, "
+                                  f"found {objects.get(target)!r} in this manager")
+        return refs, verified
 
     def selector_type(self, path, selector):
         value = selector.get("Value")

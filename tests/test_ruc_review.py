@@ -7,6 +7,7 @@ from pathlib import Path
 import shutil
 from tempfile import TemporaryDirectory
 import unittest
+from xml.etree import ElementTree as ET
 from zipfile import ZipFile
 
 from br_automation_studio.binding_review import NODESETS, SERVER
@@ -18,6 +19,7 @@ from br_automation_studio.ruc_review import CONTENT, DATA, WIDGET_SCRIPT
 FIXTURE = Path(__file__).resolve().parent / "fixtures/Loop"
 RUC_PATH = "binary/ARsim/PC/RUCPackage/RUCPackage.zip"
 MAPPING = f"{DATA}/DemoMappings.br"
+RULES = f"{DATA}/DemoRules.br"
 WIDGET = f"{CONTENT}/DemoOverview.html"
 DISPLAY = f"{SERVER}/CounterPanel.vis"
 BINDING = f"{SERVER}/2100.binding"
@@ -134,6 +136,77 @@ class RucReviewTests(unittest.TestCase):
         response = self.review()
         self.assertEqual(response["status"], "issues")
         self.assertEqual(self.codes(response), ["ruc_content_mismatch"])
+
+    def configure_exclusivity(self):
+        path = self.project / "Physical/ARsim/PC/mapp6D/DemoRules.trafficrulelist"
+        value = b"""<?xml version="1.0" encoding="utf-8"?>
+<Configuration><Element Type="trafficrulelist" ID="DemoRules">
+  <Selector ID="TrafficRule[1]" Value="ExclusivityGroup">
+    <Property ID="Type" Value="ExclusivityGroup"/>
+    <Property ID="Name" Value="InspectionZone"/>
+    <Group ID="TrafficObjects">
+      <Selector ID="TrafficObject[1]" Value="Station"><Property ID="ExclusivityGroupObjectRef" Value="Inspect"/></Selector>
+      <Selector ID="TrafficObject[2]" Value="Waypoint"><Property ID="ExclusivityGroupObjectRef" Value="Transit"/></Selector>
+    </Group>
+    <Group ID="EntryObjects"><Selector ID="TrafficObject[1]" Value="Station">
+      <Property ID="ExclusivityGroupObjectRef" Value="Load"/>
+    </Selector></Group>
+  </Selector>
+</Element></Configuration>"""
+        path.write_bytes(value)
+        manifest = self.plan["manifest"]
+        manifest["inputs"] = source_tree(self.project)
+        self.plan["sha256"] = identity(manifest)
+        self.write("plan.json", self.plan)
+        self.members[RULES] = b"synthetic BR prefix\0" + value + b"\0suffix"
+        return self.members[RULES]
+
+    def test_compiled_exclusivity_preserves_typed_roles(self):
+        value = self.configure_exclusivity()
+        # List order and compiler-generated type metadata are immaterial within a role.
+        xml = value.split(b"\0")[1]
+        document = ET.fromstring(xml)
+        members = document.find(".//Group[@ID='TrafficObjects']")
+        members[:] = list(reversed(members))
+        reference = document.find(".//Property[@Value='Load']")
+        reference.set("DataType", "STRING")
+        self.members[RULES] = b"synthetic BR prefix\0" + ET.tostring(document, encoding="utf-8", xml_declaration=True)
+        self.package()
+        response = self.review()
+        self.assertEqual(response["status"], "complete", response["result"]["diagnostics"])
+        manager, = response["result"]["rucReview"]["trafficManagers"]
+        rule_list, = manager["ruleEvidence"]
+        rule, = rule_list["rules"]
+        self.assertEqual(rule_list["state"], "read")
+        self.assertEqual(rule["members"], [{"name": "Transit", "type": "Waypoint"},
+                                           {"name": "Inspect", "type": "Station"}])
+        self.assertEqual(rule["entries"], [{"name": "Load", "type": "Station"}])
+        self.assertEqual(rule["exits"], [])
+        self.assertIn("entries Load (Station)", markdown(response))
+
+    def test_compiled_role_change_fails_with_valid_endpoints_and_same_route(self):
+        self.members[RULES] = self.configure_exclusivity().replace(b'ID="EntryObjects"', b'ID="ExitObjects"')
+        self.package()
+        response = self.review()
+        self.assertEqual(response["status"], "issues")
+        self.assertEqual(self.codes(response), ["ruc_content_mismatch"])
+        self.assertIn("DemoRules contents", response["result"]["diagnostics"][0]["message"])
+
+    def test_compiled_rule_rejects_wrong_type_in_selected_manager(self):
+        self.members[RULES] = self.configure_exclusivity().replace(b'Value="Inspect"', b'Value="Transit"')
+        self.package()
+        response = self.review()
+        self.assertIn("invalid_rule_endpoint", self.codes(response))
+        self.assertIn("expects Station 'Transit', found 'Waypoint'", response["result"]["diagnostics"][0]["message"])
+
+    def test_unknown_rule_format_is_unverified(self):
+        self.members[RULES] = self.configure_exclusivity().replace(b'Value="ExclusivityGroup"', b'Value="OtherRule"')
+        self.package()
+        response = self.review()
+        self.assertEqual(response["status"], "partial")
+        self.assertEqual(self.codes(response), ["unsupported_rule"])
+        rule_list, = response["result"]["rucReview"]["trafficManagers"][0]["ruleEvidence"]
+        self.assertEqual(rule_list["state"], "unverified")
 
     def test_changed_widget_link_fails_after_a_valid_archive(self):
         self.members[WIDGET] = self.members[WIDGET].replace(b"mapp6D::DemoTraffic", b"mapp6D::Other")

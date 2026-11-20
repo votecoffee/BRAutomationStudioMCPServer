@@ -32,4 +32,6 @@ The inspector selects a single declared configuration and CPU automatically. Sup
 
 Check `result.selectedConfiguration` and `result.selectedCpu` first. Then read `technologyPackages`, `assemblyLinks`, `trafficManagers`, `widgets` and `diagnostics`. Compare route endpoints within the manager that owns them. A logical widget can belong to another visualization or configuration. Confirm visibility and activation separately before changing its link.
 
+For the selected manager's exclusivity groups, inspect `trafficManagers[].ruleEvidence` or the Markdown rule section. [Traffic rule review](traffic-rule-review.md)
+
 `snapshot.files` lists the relative paths and exact SHA-256 hashes of the files read. The aggregate SHA-256 identifies that read set. Use a stable saved copy if the project is being changed elsewhere. The inspector checks the recorded AS4 XML forms, declared links, and typed endpoints. Geometry, recipe behavior, live bindings, installed package availability, and runtime activation need their own evidence.
