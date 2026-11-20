@@ -101,7 +101,7 @@ Use `launchpad_layout_review` to compare the linked 240 mm S3 layout and grid of
 
 Use `launchpad_frame_review` to compare route object positions under the same axis mappings that align the segment grids. [LaunchPad coordinate frame workflow](skills/br-automation-studio/references/launchpad-frame-review.md)
 
-Use `ruc_binding_review` to trace a selected one-way mapp View status binding through the saved project, compiled widget, and OPC UA exposure map. [Binding readback workflow](skills/br-automation-studio/references/ruc-binding-review.md)
+Use `ruc_binding_review` to trace a selected one-way mapp View status binding through the saved project, compiled widget and OPC UA exposure map. Set `verifyIecType` to compare the compiled node type with the selected CPU task's registered IEC declaration. [Binding readback workflow](skills/br-automation-studio/references/ruc-binding-review.md)
 
 For a private loopback fixture, `arsim_smoke` materializes the reviewed RUC and compares served mapp View assets with their packaged bytes. [ARsim smoke workflow](skills/br-automation-studio/references/arsim-smoke.md)
 

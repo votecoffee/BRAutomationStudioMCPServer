@@ -9,7 +9,9 @@ import re
 from xml.etree import ElementTree as ET
 from zlib import error as CompressionError
 
-from .project import ProjectXml, XML_LIMIT, package_files
+from .global_variables import GLOBAL_LIMIT
+from .motion_interfaces import declared_members, lexical_view
+from .project import ProjectXml, XML_LIMIT, children, choices, package_files
 from .ruc_review import CONTENT, DATA, VIEW, open_configuration
 
 SERVER = VIEW.removesuffix("/wwwRoot") + "/server"
@@ -18,6 +20,12 @@ VISUALIZATION = "{http://www.br-automation.com/iat2015/visualizationDefinition/v
 XSI_TYPE = "{http://www.w3.org/2001/XMLSchema-instance}type"
 NAMESPACE = "urn:B&R/pv/"
 TASK_VARIABLE = re.compile(r"::([a-zA-Z_][a-zA-Z0-9_]*):([a-zA-Z_][a-zA-Z0-9_]*)")
+VAR_BLOCK = re.compile(r"^[ \t]*VAR(?:[ \t]+(?:CONSTANT|RETAIN|NON_RETAIN))?[ \t]*\n"
+                       r"(.*?)^[ \t]*END_VAR[ \t]*;?[ \t]*$", re.I | re.M | re.S)
+IEC_NODE_TYPES = {
+    "SINT": "i=2", "USINT": "i=3", "INT": "i=4", "UINT": "i=5", "DINT": "i=6", "UDINT": "i=7",
+    "LINT": "i=8", "ULINT": "i=9", "REAL": "i=10", "LREAL": "i=11",
+}
 
 
 class BindingProblem(ValueError):
@@ -114,6 +122,64 @@ def variable_matches(root, task, variable):
             for field in nested(item, "Variable") if field.get("Name") == variable]
 
 
+def task_program(source, software, task):
+    root, _ = source.xml(software, "SwConfiguration")
+    require(root is not None, software, "Could not read the selected CPU's task assignments")
+    group, assignment = one(((group, row) for group in children(root, "TaskClass") for row in children(group, "Task")
+                             if (row.get("Name") or "").casefold() == task.casefold()),
+                            software, f"CPU task assignment for {task!r}")
+    reference = (assignment.get("Source") or "").split(".")
+    require(assignment.get("Language") == "IEC" and len(reference) >= 2 and reference[-1].casefold() == "prg"
+            and all(reference), software, f"Expected a registered IEC program source for task {task!r}")
+
+    package = Path("Logical/Package.pkg")
+    for name, kind in zip(reference[:-1], ("Package",) * (len(reference) - 2) + ("Program",)):
+        root, _ = source.xml(package, "Package")
+        require(root is not None, package, "Could not read the package for the selected IEC program")
+        folder = choices(source, package, root, kind).get(name.casefold())
+        require(folder is not None, package, f"No registered {kind.lower()} {name!r} for task {task!r}")
+        package = folder / "Package.pkg"
+    return folder / "IEC.prg", group.get("Name")
+
+
+def read_local_variables(source, path):
+    raw = source.read_bytes(path, GLOBAL_LIMIT, label="IEC task declaration file")
+    require(raw is not None, path, "Could not read the registered task declaration file")
+    try:
+        encoding = "utf-16" if raw.startswith((b"\xff\xfe", b"\xfe\xff")) else "utf-8-sig"
+        text = lexical_view(raw.decode(encoding).replace("\r\n", "\n").replace("\r", "\n"))
+        cursor = 0
+        for block in VAR_BLOCK.finditer(text):
+            require(not text[cursor:block.start()].strip(), path, "Unsupported IEC local variable block")
+            line = text.count("\n", 0, block.start(1)) + 1
+            yield from declared_members(block[1], line, "IEC local variable")
+            cursor = block.end()
+        require(not text[cursor:].strip(), path, "Unsupported or unclosed IEC local variable block")
+    except ValueError as error:
+        raise BindingProblem(path, str(error)) from error
+
+
+def saved_task_declaration(source, cpu, task, variable):
+    software = cpu.with_suffix(".sw")
+    program, task_class = task_program(source, software, task)
+    root, _ = source.xml(program, "Program")
+    require(root is not None, program, "Could not read the selected IEC program descriptor")
+    paths = []
+    for container in children(root, "Files"):
+        for element in children(container, "File"):
+            name = (element.text or "").strip()
+            if Path(name).suffix.casefold() == ".var":
+                path = source.member(program, name)
+                require(path is not None and path not in paths, program, "Invalid or duplicate local declaration file")
+                paths.append(path)
+    path, row = one(((path, row) for path in paths for row in read_local_variables(source, path)
+                     if row["name"].casefold() == variable.casefold()), program, f"local declaration for {variable!r}")
+    expected = IEC_NODE_TYPES.get(row["type"].upper())
+    require(expected is not None, path, f"Expected a directly declared numeric IEC scalar for {variable!r}")
+    return {"taskClass": task_class, "taskAssignment": software.as_posix(), "program": program.as_posix(),
+            "path": path.as_posix(), "sha256": source.sources[path.as_posix()], **row, "expectedDataType": expected}
+
+
 @dataclass(frozen=True)
 class BindingTarget:
     visualization: str
@@ -121,6 +187,7 @@ class BindingTarget:
     widget: str
     identifier: str
     require_default: bool = False
+    verify_iec_type: bool = False
 
     @property
     def dom_id(self):
@@ -234,6 +301,8 @@ class BindingTarget:
                                             cpu, f"saved default-view task variable {self.identifier!r}")
             require(task_node.get("Enable") == field.get("Enable") == "True", map_path, "Saved task variable is disabled")
             saved["nodeMap"] = map_path.as_posix()
+            if self.verify_iec_type:
+                saved["iecDeclaration"] = saved_task_declaration(source, cpu, task, variable)
             if self.require_default:
                 config, root = one(saved_documents(source, paths, ".mappviewcfg", "Configuration"),
                                    cpu, "saved mapp View configuration")
@@ -278,6 +347,11 @@ class BindingTarget:
             require(re.fullmatch(r"i=(?:[2-9]|10|11)", compiled["dataType"] or "") and len(node) == 0,
                     map_member, "Compiled variable is outside the supported scalar numeric node types")
             require(compiled["accessLevel"] == "0x01", map_member, "Compiled variable access differs from CurrentRead alone")
+            if self.verify_iec_type:
+                declaration = saved["iecDeclaration"]
+                require(compiled["dataType"] == declaration["expectedDataType"], map_member,
+                        f"Compiled node type {compiled['dataType']} differs from saved IEC {declaration['type']} "
+                        f"(expected {declaration['expectedDataType']})")
             report["state"] = "matched"
         except BindingProblem as error:
             diagnostics = archive.diagnostics if report["state"] == "checking_compiled" else source

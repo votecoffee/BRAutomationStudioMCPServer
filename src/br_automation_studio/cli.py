@@ -381,6 +381,9 @@ def markdown_ruc(response, text):
                         lines.append(f"- {text(key)} · {text(values[key])}")
                 if endpoint := values.get("endpoint"):
                     lines.append(f"- {text(endpoint['host'])}:{text(endpoint['port'])} · {text(endpoint['namespaceUri'])}")
+                if declaration := values.get("iecDeclaration"):
+                    lines.append(f"- IEC {text(declaration['type'])} · {text(declaration['path'])} line {declaration['line']} "
+                                 f"· Task class {text(declaration['taskClass'])} · Expected {text(declaration['expectedDataType'])}")
                 if "accessLevel" in values:
                     lines.append(f"- Data type {text(values['dataType'])} · AccessLevel {text(values['accessLevel'])}")
     if start := review.get("startPageWidget"):

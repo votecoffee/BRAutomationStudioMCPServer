@@ -26,6 +26,14 @@ Use `br-studio operation-help ruc_binding_review` for the request schema.
 
 Run `br-studio run --request <binding-request.json>`. Add `--format markdown` for the readable report.
 
+## Verify the saved IEC type
+
+With br-studio 0.47.0 or later, set `verifyIecType` to `true` in the request arguments. The check follows the task in the selected `Cpu.sw` through the registered Logical packages to its `IEC.prg` and local `.var` files. Read `bindingReview.saved.iecDeclaration` for the task class, program, IEC type, source line, file hash and expected OPC UA type. The saved declarations join the pinned source read set.
+
+The review supports directly declared, built-in numeric scalars. For example, a `DINT` declaration expects `i=6` (Int32), and `UDINT` expects `i=7` (UInt32). A missing or ambiguous declaration or a different compiled type fails this check. [PLCopen IEC to OPC UA type mapping](https://reference.opcfoundation.org/specs/OPC-30000/9.2)
+
+The same argument works on `arsim_hmi_smoke` and `arsim_status_smoke`. The status workflow verifies the heartbeat and every configured status declaration before launching ARsim. The direct OPC UA checks then compare the observed runtime integer types with the compiled node map.
+
 ## Read the result
 
 | Step | Required evidence |

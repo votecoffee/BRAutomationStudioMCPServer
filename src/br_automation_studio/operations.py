@@ -244,7 +244,8 @@ def run_launchpad_frame_review(arguments, request_directory):
 
 def binding_target(arguments):
     return BindingTarget(arguments["visualizationId"], arguments["contentId"],
-                         arguments["widgetId"], arguments["stringIdentifier"])
+                         arguments["widgetId"], arguments["stringIdentifier"],
+                         verify_iec_type=arguments.get("verifyIecType", False))
 
 
 def ruc_binding_review(arguments, request_directory):
@@ -557,6 +558,8 @@ RUC_BINDING_REVIEW = Operation(
         "contentId": {"type": "string", "minLength": 1, "description": "Saved content ID."},
         "widgetId": {"type": "string", "minLength": 1, "description": "Saved widget ID within that content."},
         "stringIdentifier": {"type": "string", "minLength": 1, "description": "Expected V1 OPC UA ::Task:Variable identifier."},
+        "verifyIecType": {"type": "boolean", "default": False,
+                          "description": "Match the compiled OPC UA data type to the selected IEC task declaration."},
     },
     required=(*RUC_REVIEW.required, "visualizationId", "contentId", "widgetId", "stringIdentifier"),
     handler=ruc_binding_review,

@@ -623,11 +623,11 @@ END_VAR
         self.members[MAP] = compress(node_map)
         return node_map
 
-    def binding_review(self):
+    def binding_review(self, **options):
         return execute({"schemaVersion": 1, "workspace": "readback", "operation": "ruc_binding_review",
                         "arguments": {"project": "Loop/Loop.apj", "jobDirectory": "retained",
                                       "visualizationId": "CounterPanel", "contentId": "DemoOverview",
-                                      "widgetId": "CountView", "stringIdentifier": "::Pulse:Count"}}, self.root)
+                                      "widgetId": "CountView", "stringIdentifier": "::Pulse:Count", **options}}, self.root)
 
     def test_readback_resolves_generated_binding_and_counter_map(self):
         self.configure_display()
@@ -639,6 +639,49 @@ END_VAR
         self.assertEqual(report["compiled"]["dataType"], "i=6")
         self.assertEqual(report["compiled"]["accessLevel"], "0x01")
         self.assertIn("::Pulse:Count → DemoOverview_CountView", markdown(response))
+
+    def test_typed_binding_uses_registered_iec_program_and_checks_signedness(self):
+        node_map = self.configure_display()
+        package = self.project / "Logical/Package.pkg"
+        package.write_bytes(package.read_bytes().replace(
+            b"</Objects>", b'<Object Type="Package">Tasks</Object></Objects>'))
+        program = self.project / "Logical/Tasks/Counter"
+        program.mkdir(parents=True)
+        (program.parent / "Package.pkg").write_bytes(
+            b'<Package><Objects><Object Type="Program">Counter</Object></Objects></Package>')
+        (program / "IEC.prg").write_bytes(
+            b'<Program><Files><File Private="true">Variables.var</File></Files></Program>')
+        variables = program / "Variables.var"
+        variables.write_bytes(
+            "(* Count : UDINT; *)\r\nVAR RETAIN\r\n    Count, Previous : DINT := 0;\r\nEND_VAR\r\n".encode("utf-16"))
+        (program / "Unregistered.var").write_bytes(b"VAR\nCount : UDINT;\nEND_VAR\n")
+        software = self.project / "Physical/ARsim/PC/Cpu.sw"
+        software.write_bytes(b'<SwConfiguration><TaskClass Name="Cyclic#4">'
+                             b'<Task Name="Pulse" Language="IEC" Source="Tasks.Counter.prg"/>'
+                             b'</TaskClass></SwConfiguration>')
+        self.plan["manifest"]["inputs"] = source_tree(self.project)
+        self.plan["sha256"] = identity(self.plan["manifest"])
+        self.write("plan.json", self.plan)
+        self.package()
+
+        response = self.binding_review(verifyIecType=True)
+        self.assertEqual(response["status"], "complete", response)
+        result = response["result"]
+        declaration = result["bindingReview"]["saved"]["iecDeclaration"]
+        self.assertEqual(declaration["program"], "Logical/Tasks/Counter/IEC.prg")
+        self.assertEqual(declaration["taskClass"], "Cyclic#4")
+        self.assertEqual((declaration["type"], declaration["line"], declaration["expectedDataType"]), ("DINT", 3, "i=6"))
+        sources = {row["path"]: row["sha256"] for row in result["snapshot"]["files"]}
+        self.assertEqual(sources[declaration["path"]], declaration["sha256"])
+        self.assertNotIn("Logical/Tasks/Counter/Unregistered.var", sources)
+        self.assertIn("IEC DINT · Logical/Tasks/Counter/Variables.var line 3", markdown(response))
+
+        self.members[MAP] = compress(node_map.replace(b'DataType="i=6"', b'DataType="i=7"'))
+        self.package()
+        self.assertEqual(self.binding_review()["status"], "complete")
+        failed = self.binding_review(verifyIecType=True)
+        self.assertEqual(self.codes(failed), ["binding_readback_mismatch"])
+        self.assertIn("Compiled node type i=7 differs from saved IEC DINT", failed["result"]["diagnostics"][0]["message"])
 
     def test_compiled_binding_source_is_checked_even_when_the_archive_is_valid(self):
         self.configure_display()
