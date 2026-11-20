@@ -1,6 +1,6 @@
 ---
 name: br-automation-studio
-description: Inspect saved B&R Automation Studio projects with the standalone br-studio CLI. Use for declared package versions, ACOPOS 6D assembly and Traffic Manager references, mapp View Assembly6D links, AS4 build preflight, offline ARsim RUC builds, compiled RUC and mapp View binding readback, loopback mapp View HTTP and browser smoke tests, direct OPC UA counter reads, and combined HMI checks.
+description: Inspect saved B&R Automation Studio projects with the standalone br-studio CLI. Use for declared package versions, ACOPOS 6D assembly and Traffic Manager references, mapp View Assembly6D links, AS4 build and complete simulation preflight, offline ARsim RUC builds, compiled RUC and mapp View binding readback, loopback mapp View HTTP and browser smoke tests, direct OPC UA counter reads, and combined HMI checks.
 ---
 
 # B&R Automation Studio
@@ -10,6 +10,8 @@ Use the `project_inspect` operation for a saved `.apj` backed by its Physical an
 Find `br-studio` on PATH or use the checkout's `.local/venv/Scripts/br-studio.exe` after installation. Confirm the operation is available with `br-studio operations`, then read `br-studio operation-help project_inspect`. Use the [saved-project workflow](references/project-inspection.md) for the request, exit codes, and readback.
 
 Use `build_preflight` when checking an identified AS4 installation against the saved project. Read the [build preflight workflow](references/build-preflight.md) for Runtime catalog selection and diagnostic scope.
+
+Use the [complete simulation preflight](references/simulation-preflight.md) to verify the intended mapp 6D line, installed simulator identity, and the supplied LaunchPad export before the motion run.
 
 For a native build on a trusted saved copy, follow the [native AS4 build workflow](references/native-build.md). It pins the source and toolchain and retains the RUC and builder log.
 

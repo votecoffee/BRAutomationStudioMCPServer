@@ -14,6 +14,7 @@ from .native_build import execute_build, plan_build
 from .opcua_smoke import OpcUaProbe
 from .preflight import build_preflight
 from .ruc_review import review_ruc
+from .simulation_preflight import PAIRS, simulation_preflight
 
 SCHEMA_VERSION = 1
 
@@ -72,6 +73,19 @@ def build_inputs(arguments, request_directory):
 
 def preflight(arguments, request_directory):
     return build_preflight(*build_inputs(arguments, request_directory))
+
+
+def run_simulation_preflight(arguments, request_directory):
+    family = arguments["targetMapp6D"]
+    if family not in PAIRS:
+        raise InvalidRequest("targetMapp6D must be a supported AS4 family (2.4 or 2.7)")
+    media = arguments.get("simulatorZip")
+    export = arguments.get("launchPadExport")
+    return simulation_preflight(
+        *build_inputs(arguments, request_directory), family,
+        request_directory / media if media is not None else None,
+        request_directory / export if export is not None else None,
+    )
 
 
 def build_plan(arguments, request_directory):
@@ -157,6 +171,18 @@ BUILD_PREFLIGHT = Operation(
     },
     required=("project", "studioRoot"),
     handler=preflight,
+)
+SIMULATION_PREFLIGHT = Operation(
+    name="simulation_preflight",
+    summary="Check a saved AS4 project, workstation and native export prerequisites for matched ACOPOS 6D simulation.",
+    arguments={
+        **BUILD_PREFLIGHT.arguments,
+        "targetMapp6D": {"type": "string", "minLength": 3, "description": "Reviewed AS4 family, 2.4 or 2.7."},
+        "simulatorZip": {"type": "string", "minLength": 1, "description": "Optional B&R simulator ZIP to match by SHA-256."},
+        "launchPadExport": {"type": "string", "minLength": 1, "description": "Native LaunchPad .x6d for the intended route."},
+    },
+    required=(*BUILD_PREFLIGHT.required, "targetMapp6D"),
+    handler=run_simulation_preflight,
 )
 BUILD_PLAN = Operation(
     name="build_plan",
@@ -252,7 +278,7 @@ ARSIM_HMI_SMOKE = Operation(
     handler=run_arsim_hmi_smoke,
 )
 OPERATIONS = {item.name: item for item in (
-    PROJECT_INSPECT, BUILD_PREFLIGHT, BUILD_PLAN, BUILD_EXECUTE, RUC_REVIEW, RUC_BINDING_REVIEW,
+    PROJECT_INSPECT, BUILD_PREFLIGHT, SIMULATION_PREFLIGHT, BUILD_PLAN, BUILD_EXECUTE, RUC_REVIEW, RUC_BINDING_REVIEW,
     ARSIM_SMOKE, ARSIM_BROWSER_SMOKE, ARSIM_OPCUA_SMOKE, ARSIM_HMI_SMOKE,
 )}
 

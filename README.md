@@ -26,6 +26,7 @@ $brStudio = '.\.local\venv\Scripts\br-studio.exe'
 & $brStudio operations
 & $brStudio operation-help project_inspect
 & $brStudio operation-help build_preflight
+& $brStudio operation-help simulation_preflight
 & $brStudio operation-help build_plan
 & $brStudio operation-help build_execute
 & $brStudio operation-help ruc_review
@@ -41,6 +42,8 @@ $brStudio = '.\.local\venv\Scripts\br-studio.exe'
 The example reads a synthetic project. The result lists declared package versions, selected configuration and CPU, layout and assembly references, Traffic Manager endpoints, and Assembly6D widget links. It records SHA-256 hashes for the files read. Use the result as saved-file evidence. Native compilation and ARsim behavior need their own checks.
 
 For an installed AS4 toolchain, `build_preflight` compares the project with the selected Studio, Runtime, CPU and technology-package catalogs. [Build preflight workflow](skills/br-automation-studio/references/build-preflight.md)
+
+Use `simulation_preflight` to compare the saved mapp 6D version, AS4 catalog, simulator release and native LaunchPad export before a complete motion simulation. [Simulation prerequisite workflow](skills/br-automation-studio/references/simulation-preflight.md)
 
 Use `build_plan` and `build_execute` to compile a pinned AS4 PC simulation project and collect the RUC archive and builder log. [Native build workflow](skills/br-automation-studio/references/native-build.md)
 

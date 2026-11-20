@@ -1,4 +1,5 @@
 
+from hashlib import sha256
 import json
 from pathlib import Path
 import os
@@ -8,6 +9,7 @@ import unittest
 from unittest.mock import patch
 from zipfile import ZipFile
 
+from br_automation_studio.cli import markdown
 from br_automation_studio.operations import execute
 
 FIXTURE = Path(__file__).resolve().parent / "fixtures/Loop"
@@ -244,3 +246,82 @@ class BuildPreflightTests(unittest.TestCase):
             worker.assert_not_called()
         self.assertEqual(response["status"], "issues")
         self.assertFalse((self.project / "subjob").exists())
+
+    def prepare_simulation(self, selector="2.7.0", catalog_selector=None, internal=None):
+        if catalog_selector is None:
+            catalog_selector = selector
+        if internal is None:
+            internal = f"{catalog_selector}.10"
+        component = "2.07.0"
+        apj = self.project / "Loop.apj"
+        data = apj.read_text(encoding="utf-8")
+        data = data.replace('mapp6D Version="2.2.0"', f'mapp6D Version="{selector}"').replace("2.02.0", component)
+        data = data.replace("</TechnologyPackages>", '<mappMotion Version="5.29.1" /></TechnologyPackages>')
+        apj.write_text(data, encoding="utf-8")
+        self.local_core("5.29.1")
+        self.manifest("mappMotion", "5.29.1", "5.29.1.2", "", "4.9")
+        self.manifest("mapp6D", catalog_selector, internal,
+                      self.six_d_components().replace("2.02", "2.07"), "4.9")
+        package = self.studio / PACKAGES / "mapp6D" / catalog_selector
+        for library in ("McAcp6D", "MpTraffic"):
+            self.put(package / "Library" / library / f"V{component}/binary.lby", self.library(component, "McBase"))
+        self.put(package / f"Modules/McAcp6DSys/V{component}/SG4/IA32/McAcp6DSys.br", "synthetic payload")
+        export = self.root / "Export.x6d"
+        export.write_bytes(b"synthetic artifact bytes")
+        return export
+
+    def simulation(self, **overrides):
+        arguments = {"project": "Loop/Loop.apj", "studioRoot": "Install/AS412",
+                     "targetMapp6D": "2.7", "launchPadExport": "Export.x6d", **overrides}
+        return execute({"schemaVersion": 1, "workspace": "preflight",
+                        "operation": "simulation_preflight", "arguments": arguments}, self.root)
+
+    @patch("br_automation_studio.simulation_preflight.installed_product",
+           return_value={"stateCode": 5, "version": "1.25.53"})
+    def test_simulation_checks_exact_catalog_and_fingerprints_export(self, msi):
+        export = self.prepare_simulation()
+        response = self.simulation()
+        result = response["result"]
+        evidence = result["simulationPreflight"]
+        self.assertEqual(response["status"], "complete", result["diagnostics"])
+        self.assertEqual(evidence["state"], "inputs_present")
+        self.assertEqual(evidence["installedTargetCatalog"][0]["internalVersion"], "2.7.0.10")
+        self.assertTrue(evidence["installedTargetCatalog"][0]["verified"])
+        self.assertEqual(evidence["launchPadExport"]["sha256"], sha256(export.read_bytes()).hexdigest())
+        msi.assert_called_once_with(evidence["reference"]["productCode"])
+        self.assertIn("Expected Planar Motor Simulation Tool 117.25.53", markdown(response))
+
+    @patch("br_automation_studio.simulation_preflight.installed_product",
+           return_value={"stateCode": 5, "version": "1.25.53"})
+    def test_same_family_does_not_substitute_for_exact_saved_selector(self, msi):
+        self.prepare_simulation(catalog_selector="2.7.1")
+        response = self.simulation()
+        result = response["result"]
+        self.assertIn("simulation_selected_package_missing", [item["code"] for item in result["diagnostics"]])
+        self.assertTrue(result["simulationPreflight"]["installedTargetCatalog"][0]["verified"])
+
+    @patch("br_automation_studio.simulation_preflight.installed_product",
+           return_value={"stateCode": 5, "version": "1.25.53"})
+    def test_manifest_internal_build_must_match_target_family(self, msi):
+        self.prepare_simulation(internal="2.4.1.10")
+        result = self.simulation()["result"]
+        self.assertIn("simulation_catalog_missing", [item["code"] for item in result["diagnostics"]])
+        self.assertFalse(result["simulationPreflight"]["installedTargetCatalog"][0]["verified"])
+
+    @patch("br_automation_studio.simulation_preflight.installed_product")
+    def test_wrong_msi_version_or_other_user_blocks_simulation(self, msi):
+        self.prepare_simulation()
+        for observation in ({"stateCode": 5, "version": "1.27.14"}, {"stateCode": 2, "version": None}):
+            with self.subTest(observation=observation):
+                msi.return_value = dict(observation)
+                result = self.simulation()["result"]
+                self.assertEqual(result["simulationPreflight"]["state"], "blocked")
+                self.assertIn("simulator_installation_missing", [item["code"] for item in result["diagnostics"]])
+
+    @patch("br_automation_studio.simulation_preflight.installed_product",
+           return_value={"stateCode": 5, "version": "1.20.43"})
+    def test_early_24_selector_does_not_clear_the_reviewed_simulator_gate(self, msi):
+        self.prepare_simulation(selector="2.4.0")
+        result = self.simulation(targetMapp6D="2.4")["result"]
+        self.assertIn("simulation_catalog_missing", [item["code"] for item in result["diagnostics"]])
+        self.assertFalse(result["simulationPreflight"]["installedTargetCatalog"][0]["verified"])

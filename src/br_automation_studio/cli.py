@@ -28,6 +28,7 @@ def markdown(response):
     titles = {
         "project_inspect": "Saved Automation Studio project inspection",
         "build_preflight": "AS4 build preflight",
+        "simulation_preflight": "AS4 ACOPOS 6D simulation preflight",
         "build_plan": "AS4 native build plan",
         "build_execute": "AS4 native build receipt",
     }
@@ -62,6 +63,26 @@ def markdown(response):
         for dependency in preflight["libraryDependencies"]:
             versions = ", ".join(dependency["selectedVersions"]) or "unresolved"
             lines.append(f"- {text(dependency['library'])} requires {text(dependency['requires'])} · {text(versions)}")
+    if simulation := report.get("simulationPreflight"):
+        reference = simulation["reference"]
+        installer = simulation["simulatorInstallation"]
+        lines.extend(["", "## Complete simulation prerequisites", "",
+                      f"- State **{text(simulation['state'])}** · Target mapp 6D {text(simulation['targetMapp6D'])}",
+                      f"- Expected Planar Motor Simulation Tool {text(reference['simulatorVersion'])}",
+                      f"- Windows Installer state {text(installer['state'])} ({text(installer['stateCode'])})"
+                      f" · version {text(installer['version'])} · expected {text(reference['msiVersion'])}",
+                      f"- Reference segment firmware {text(reference['segmentFirmware'])}"
+                      f" · Application data {text(reference['segmentApplicationData'])}"])
+        if not simulation["installedTargetCatalog"]:
+            lines.append("- No installed catalog selectors for this family")
+        for candidate in simulation["installedTargetCatalog"]:
+            lines.append(f"- Catalog selector {text(candidate['selector'])} · build {text(candidate['internalVersion'])}"
+                         f" · manifest verified {text(candidate['verified'])}")
+        if media := simulation["simulatorZip"]:
+            lines.append(f"- Simulator ZIP {text(media['path'])} · SHA-256 {text(media['sha256'])}"
+                         f" · matches reviewed release {text(media['matched'])}")
+        if export := simulation["launchPadExport"]:
+            lines.append(f"- LaunchPad export {text(export['path'])} · SHA-256 {text(export['sha256'])}")
     if plan := report.get("buildPlan"):
         lines.extend(["", "## Build plan", "",
                       f"- SHA-256 **{plan['sha256']}**",

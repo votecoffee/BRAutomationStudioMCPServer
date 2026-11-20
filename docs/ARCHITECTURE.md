@@ -11,6 +11,7 @@ The standalone CLI exposes `project_inspect` for a saved project and `build_pref
 | `src/br_automation_studio/` | Inspect saved snapshots, resolve references, and produce typed diagnostics and artifact metadata. Own one operation catalog with request and result types. |
 | `src/br_automation_studio/cli.py` | Discover operations and schemas, accept a UTF-8 JSON request, and return structured JSON. Keep console formatting and exit codes at this boundary. |
 | `src/br_automation_studio/preflight.py` | Compare saved selections and selected library dependencies with local AS4 catalogs. |
+| `src/br_automation_studio/simulation_preflight.py` | Check a reviewed AS4 mapp 6D pair, exact package selection, simulator media and registration, and native LaunchPad export identity. |
 | `src/br_automation_studio/native_build.py` and `windows_job.py` | Pin an installed AS4 toolchain and source tree, stage a private copy, run the native PC simulation build, and retain a job receipt with RUC evidence. |
 | `src/br_automation_studio/ruc_review.py` | Bind a retained archive to a completed build and verify the saved-to-compiled relationships. |
 | `src/br_automation_studio/binding_review.py` | Follow the saved and packaged visualization binding references for a selected mapp View widget. Verify the expected OPC UA source and read back its compiled node exposure. |
