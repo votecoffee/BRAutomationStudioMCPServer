@@ -45,9 +45,10 @@ class CycleHmiTest(unittest.TestCase):
                          "result": {"rucReview": self.ruc, "arsimSmoke": self.smoke, "diagnostics": [],
                                     "evidence": "arsim_loopback_status"}}
 
-    def check(self):
+    def check(self, require_capture=False):
         checked = {}
-        check_cycle_hmi(self.cycle, self.trace, self.ruc, self.document, checked)
+        check_cycle_hmi(self.cycle, self.trace, self.ruc, self.document, checked,
+                        require_session_capture=require_capture)
         return checked
 
     def test_matching_synthetic_capture_retains_request_and_order(self):
@@ -56,6 +57,30 @@ class CycleHmiTest(unittest.TestCase):
         self.assertEqual(receipt["status"]["requestId"]["value"], 13)
         self.assertEqual(receipt["status"]["releaseTotal"]["identifier"], "::Station:releaseTotal")
         self.assertEqual(receipt["heartbeat"]["atHold"], receipt["heartbeat"]["directBeforeLast"])
+
+    def test_strict_pairing_requires_a_retained_scan(self):
+        self.assertNotIn("scanCapture", self.check())
+        with self.assertRaises(TraceIssue) as issue:
+            self.check(require_capture=True)
+        self.assertEqual(issue.exception.code, "cycle_hmi_scan_capture_missing")
+
+    def test_retained_scan_must_match_reviewed_bytes_and_listener(self):
+        digest, size = "c" * 64, 128
+        self.cycle["scanCapture"] = {"sha256": digest, "bytes": size}
+        retained = {"state": "retained", "sha256": digest, "bytes": size, "path": "scan-capture.csv",
+                    "ownedListener": self.owner}
+        self.hmi["scanCapture"] = retained
+        self.assertEqual(self.check(require_capture=True)["scanCapture"]["sha256"], digest)
+        for change in ({"sha256": "d" * 64}, {"bytes": size + 1}, {"ownedListener": dict(self.owner, pid=900)}):
+            with self.subTest(change=change), self.assertRaises(TraceIssue) as issue:
+                self.hmi["scanCapture"] = retained | change
+                self.check()
+            self.assertEqual(issue.exception.code, "cycle_hmi_scan_capture_mismatch")
+        self.hmi["scanCapture"] = retained
+        del self.cycle["scanCapture"]
+        with self.assertRaises(TraceIssue) as issue:
+            self.check()
+        self.assertEqual(issue.exception.code, "cycle_hmi_scan_capture_mismatch")
 
     def test_package_is_checked_before_session_and_hold(self):
         self.smoke["packageSha256"] = "c" * 64

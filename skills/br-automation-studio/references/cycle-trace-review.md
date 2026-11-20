@@ -59,4 +59,6 @@ Set the optional `arguments.hmiStatusReport` to the completed `arsim_status_smok
 - The heartbeat at the hold must be at or before the last direct pre-browser sample. The direct samples bracket increasing browser samples across the initial, blank and reopened pages.
 - The four status values must agree with the hold in both OPC UA read windows and both rendered documents. The reviewer checks the matched compiled bindings, node types and read-only access and quality of the OPC UA samples.
 
+If the status smoke retained a scan file, point `arguments.scanCsv` to that file and use its SHA-256 in the scan descriptor. The paired review checks its bytes against the same session's receipt. Set `requireSessionScanCapture` to true when this acquisition is part of acceptance. [Retain a scan file during the HMI status smoke](arsim-status-smoke.md#retain-a-scan-file-from-the-same-runtime)
+
 Use `cycleHmiReview.state` for the pairing outcome. A failed pairing yields `issues` while preserving an independently matched cycle. Retain both input reports and the raw capture provenance. The joined check establishes consistency across supplied observations. A synthetic trace retains its synthetic capture classification.

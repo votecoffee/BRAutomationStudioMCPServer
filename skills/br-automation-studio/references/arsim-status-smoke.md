@@ -24,6 +24,14 @@ Install the `browser` and `opcua` extras. Run `br-studio operation-help arsim_st
 
 To include Assembly6D in this check, supply the reviewed `assemblyWidgetId` or request the layout check with `requireLayoutAssets` or `captureLayoutAssets`. Leaving those fields unset runs the numeric status and heartbeat checks.
 
+## Retain a scan file from the same runtime
+
+Since br-studio 0.31.0, set `scanCaptureFile` to a finalized `.csv` basename such as `inspection-cycle.csv` when the simulation project can export its scan buffer. Have the project publish the final name in its ARsim `USER` file device after the next hold. Close the temporary output before publishing the final name, and publish it once per run. The smoke probe checks that the final name is absent after materialization and before starting ARsim.
+
+After both browser documents and direct OPC UA reads pass, the tool waits up to `scanCaptureTimeoutSeconds` for the final file. The default is 20 seconds. It checks that the original owned listener is still serving, reads at most 16 MiB from the finalized file, and saves the exact bytes as `scan-capture.csv` next to `session.json`. The status smoke reports an issue if the expected file is missing or cannot be retained. A file retained during the session binds its bytes to the smoke report. Keep the project's acquisition record to identify the producer.
+
+Retain the response, `session.json` and captured file together. In `cycle_trace_review`, use the retained file as `scanCsv`, copy the same SHA-256 into the cycle descriptor and set `requireSessionScanCapture` to true. The review compares that file with the status receipt's hash and byte length even when the retained copy has been moved. [Scan file descriptor and review](cycle-scan-capture.md#bind-the-scan-file)
+
 ## Read the evidence
 
 - Check the saved and compiled binding reviews for each numeric widget. A mismatch stops before ARsim starts.

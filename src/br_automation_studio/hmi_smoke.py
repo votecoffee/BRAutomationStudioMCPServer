@@ -9,6 +9,7 @@ from .browser_smoke import ChromeProbe
 from .json_io import read_json
 from .opcua_smoke import INTEGER_NODE_TYPES, OpcUaProbe, StatusNode
 from .ruc_review import review_ruc
+from .runtime_capture import RuntimeScanCapture
 
 
 def check_samples(before, browser, after, expected_type, comparison):
@@ -64,6 +65,7 @@ class HmiProbe:
     browser: ChromeProbe
     opcua_timeout: int
     status_bindings: tuple = ()
+    scan_capture: RuntimeScanCapture | None = None
     key: ClassVar[str] = "hmi"
 
     @property
@@ -103,6 +105,8 @@ class HmiProbe:
         read_browser = self.browser.prepare(reviewed, profile, browser)
         after = receipt["opcUaAfter"] = {}
         ua_after = opcua.prepare(reviewed, profile, after)
+        if self.scan_capture is not None:
+            receipt["scanCapture"] = {"state": "not_started"}
         receipt["state"] = "ready"
 
         def probe(session_dir, owned_listener):
@@ -121,6 +125,9 @@ class HmiProbe:
             ua_after(session_dir, original_opcua_listener)
             receipt["state"] = "comparing_values"
             check_samples(before, browser, after, expected, receipt.setdefault("comparison", {}))
+            if self.scan_capture is not None:
+                receipt["state"] = "retaining_scan"
+                self.scan_capture.retain(session_dir, lambda: original_opcua_listener(port), receipt["scanCapture"])
             receipt["state"] = "complete"
 
         return probe
@@ -128,7 +135,7 @@ class HmiProbe:
 
 def arsim_hmi_smoke(project, job_dir, pvi, session_dir, timeout, target, chrome,
                     assembly_widget, browser_timeout, opcua_timeout, *, require_layout=False, capture_layout=False,
-                    status_bindings=()):
+                    status_bindings=(), scan_capture=None):
     binding_report = review_ruc(project, job_dir, replace(target, require_default=True))
     if binding_report["evidence"] != "ruc_binding_readback":
         binding_report["arsimSmoke"] = {"state": "not_started", "packageSha256": None, "assets": [], "cleanup": None}
@@ -148,9 +155,10 @@ def arsim_hmi_smoke(project, job_dir, pvi, session_dir, timeout, target, chrome,
     browser = ChromeProbe(chrome, target.dom_id, assembly_widget, browser_timeout,
                           require_layout=require_layout, capture_layout=capture_layout,
                           expected_status=expected_status, check_assembly=check_assembly)
-    probe = HmiProbe(binding_report, browser, opcua_timeout, tuple(statuses))
+    probe = HmiProbe(binding_report, browser, opcua_timeout, tuple(statuses), scan_capture)
+    before_start = scan_capture.require_absent if scan_capture is not None else None
     report = arsim_smoke(project, job_dir, pvi, session_dir, timeout, probe, extra_content=(target.content,),
-                         require_6d=check_assembly)
+                         require_6d=check_assembly, before_start=before_start)
     report["bindingReview"] = binding_report["bindingReview"]
     report["bindingSnapshot"] = binding_report["snapshot"]
     return report

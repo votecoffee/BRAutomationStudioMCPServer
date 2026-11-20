@@ -187,7 +187,7 @@ def materialize_cycle(trace, path, summary):
     if len(raw) > TRACE_LIMIT:
         raise ValueError(f"CSV input exceeds {TRACE_LIMIT} bytes")
     digest = sha256(raw).hexdigest()
-    summary.update(path=str(path.resolve()), sha256=digest, format=format_name, delimiter=delimiter)
+    summary.update(path=str(path.resolve()), bytes=len(raw), sha256=digest, format=format_name, delimiter=delimiter)
     if capture.get("sha256") != digest:
         raise TraceIssue("cycle_capture_hash_mismatch", "The CSV hash differs from its cycle trace descriptor")
     decoded = raw.decode("utf-8-sig")

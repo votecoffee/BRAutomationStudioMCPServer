@@ -21,6 +21,7 @@ from .native_build import execute_build, plan_build
 from .opcua_smoke import OpcUaProbe
 from .preflight import build_preflight
 from .ruc_review import review_ruc
+from .runtime_capture import RuntimeScanCapture
 from .simulation_preflight import PAIRS, simulation_environment, simulation_preflight
 from .station_trace import station_trace_review
 
@@ -167,10 +168,14 @@ def run_station_trace_review(arguments, request_directory):
 def run_cycle_trace_review(arguments, request_directory):
     status_report = arguments.get("hmiStatusReport")
     scan_csv = arguments.get("scanCsv")
+    require_capture = arguments.get("requireSessionScanCapture", False)
+    if require_capture and (not status_report or not scan_csv):
+        raise InvalidRequest("requireSessionScanCapture needs both hmiStatusReport and scanCsv")
     return cycle_trace_review(*launchpad_inputs(arguments, request_directory), arguments["sourceStation"],
                               request_directory / arguments["trace"],
                               hmi_status_path=request_directory / status_report if status_report else None,
-                              scan_csv_path=request_directory / scan_csv if scan_csv else None)
+                              scan_csv_path=request_directory / scan_csv if scan_csv else None,
+                              require_session_capture=require_capture)
 
 
 def run_launchpad_motion_review(arguments, request_directory):
@@ -238,20 +243,24 @@ def run_arsim_opcua_smoke(arguments, request_directory):
     return run_arsim_smoke(arguments, request_directory, probe)
 
 
-def run_arsim_hmi_smoke(arguments, request_directory, status_bindings=()):
+def run_arsim_hmi_smoke(arguments, request_directory, status_bindings=(), scan_capture=None):
     return arsim_hmi_smoke(
         *arsim_inputs(arguments, request_directory),
         binding_target(arguments), request_directory / arguments["browserExecutable"],
         arguments.get("assemblyWidgetId"), arguments.get("browserTimeoutSeconds", 30),
         arguments.get("opcUaTimeoutSeconds", 20), require_layout=arguments.get("requireLayoutAssets", False),
         capture_layout=arguments.get("captureLayoutAssets", False),
-        status_bindings=status_bindings,
+        status_bindings=status_bindings, scan_capture=scan_capture,
     )
 
 
 def run_arsim_status_smoke(arguments, request_directory):
+    filename = arguments.get("scanCaptureFile")
+    if filename is None and "scanCaptureTimeoutSeconds" in arguments:
+        raise InvalidRequest("scanCaptureTimeoutSeconds needs scanCaptureFile")
+    capture = RuntimeScanCapture(filename, arguments.get("scanCaptureTimeoutSeconds", 20)) if filename else None
     bindings = read_status_bindings(request_directory / arguments["statusBindingFile"], binding_target(arguments))
-    return run_arsim_hmi_smoke(arguments, request_directory, bindings)
+    return run_arsim_hmi_smoke(arguments, request_directory, bindings, capture)
 
 
 PROJECT_INSPECT = Operation(
@@ -400,6 +409,8 @@ CYCLE_TRACE_REVIEW = Operation(
                     "description": "Recorded PLC scan samples bound by the trace descriptor's SHA-256."},
         "hmiStatusReport": {"type": "string", "minLength": 1,
                             "description": "Completed arsim_status_smoke JSON for the same cycle RUC and session."},
+        "requireSessionScanCapture": {"type": "boolean", "default": False,
+                                      "description": "Require the HMI session to have retained the reviewed scan file."},
     },
     required=STATION_TRACE_REVIEW.required,
     handler=run_cycle_trace_review,
@@ -526,6 +537,9 @@ ARSIM_STATUS_SMOKE = Operation(
     arguments={
         **ARSIM_HMI_SMOKE.arguments,
         "statusBindingFile": {"type": "string", "minLength": 1, "description": "JSON file with expected numeric widget bindings."},
+        "scanCaptureFile": {"type": "string", "minLength": 1,
+                            "description": "Finalized .csv filename in the owned ARsim USER directory."},
+        "scanCaptureTimeoutSeconds": {"type": "integer", "minimum": 1, "maximum": 120, "default": 20},
     },
     required=(*ARSIM_HMI_SMOKE.required, "statusBindingFile"),
     handler=run_arsim_status_smoke,

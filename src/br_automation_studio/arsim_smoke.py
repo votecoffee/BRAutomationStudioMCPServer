@@ -216,7 +216,8 @@ def ascii_pil_path(path):
     return value
 
 
-def arsim_smoke(project, job_dir, pvi, session_dir, timeout=30, runtime_probe=None, *, extra_content=(), require_6d=True):
+def arsim_smoke(project, job_dir, pvi, session_dir, timeout=30, runtime_probe=None, *,
+                extra_content=(), require_6d=True, before_start=None):
     report = review_ruc(project, job_dir, require_6d=require_6d)
     smoke = {"state": "not_started", "packageSha256": None, "assets": [], "cleanup": None}
     report["arsimSmoke"] = smoke
@@ -275,6 +276,8 @@ def arsim_smoke(project, job_dir, pvi, session_dir, timeout=30, runtime_probe=No
         if not loader.is_file() or not loader.resolve().is_relative_to(target.resolve()):
             raise ValueError("The materialized runtime does not contain its expected loader")
 
+        if before_start is not None:
+            before_start(session_dir)
         check_free(profile["guardedPorts"])
         smoke.update(state="probing", loaderSha256=fingerprint(loader))
         write_json(receipt, smoke)

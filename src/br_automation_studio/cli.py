@@ -233,6 +233,10 @@ def markdown_ruc(response, text):
                 lines.append(f"- OPC UA before {text(comparison['directBeforeLast'])} · "
                              f"Browser {text(comparison['browserFirst'])} to {text(comparison['browserLast'])} · "
                              f"OPC UA after {text(comparison['directAfterFirst'])}")
+            if capture := hmi.get("scanCapture"):
+                lines.append(f"- Session scan capture {text(capture['state'])}")
+                if capture["state"] == "retained":
+                    lines.append(f"- {text(capture['path'])} · {capture['bytes']} bytes · SHA-256 {capture['sha256']}")
             if first := hmi.get("opcUaBefore"):
                 lines.extend(markdown_opcua("Direct OPC UA read before the browser", first, text))
             if browser := hmi.get("browser"):
@@ -468,6 +472,8 @@ def markdown_cycle_hmi(hmi, text):
         lines.append(f"- Status report SHA-256 {status_report['sha256']}")
     if "sessionId" in hmi:
         lines.append(f"- ARsim session {text(hmi['sessionId'])} · Cycle capture {text(hmi['captureKind'])}")
+    if capture := hmi.get("scanCapture"):
+        lines.append(f"- Session scan file matched · {capture['bytes']} bytes · SHA-256 {capture['sha256']}")
     if heartbeat := hmi.get("heartbeat"):
         lines.append(f"- Heartbeat at hold {text(heartbeat['atHold'])} "
                      f"· Last direct sample before browser {text(heartbeat.get('directBeforeLast'))}")

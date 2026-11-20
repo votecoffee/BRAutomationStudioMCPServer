@@ -5,6 +5,7 @@ from .browser_smoke import numeric_text
 from .hmi_smoke import check_samples
 from .launchpad_route import json_snapshot
 from .opcua_smoke import CURRENT_READ, INTEGER_NODE_TYPES
+from .runtime_capture import CAPTURE_COPY
 from .station_trace import TRACE_LIMIT, TraceIssue, integer
 
 
@@ -126,8 +127,23 @@ def check_status_role(hmi, package, role, identifier, expected, widgets):
     return {"identifier": identifier, "widget": widget, "value": expected, "variantType": variant_type}
 
 
-def check_cycle_hmi(cycle, trace, ruc, document, result):
+def check_session_capture(hmi, cycle, result, required):
+    if "scanCapture" not in hmi:
+        if required:
+            raise TraceIssue("cycle_hmi_scan_capture_missing", "The HMI session has no retained scan capture")
+        return
+    retained, reviewed = hmi["scanCapture"], cycle.get("scanCapture", {})
+    if (retained.get("state") != "retained" or retained.get("path") != CAPTURE_COPY
+            or retained.get("ownedListener") != hmi["opcUaAfter"]["ownedListener"]
+            or not integer(retained.get("bytes"), 1) or retained["bytes"] != reviewed.get("bytes")
+            or retained.get("sha256") != reviewed.get("sha256")):
+        raise TraceIssue("cycle_hmi_scan_capture_mismatch", "The reviewed scan file differs from the one retained by the HMI session")
+    result["scanCapture"] = {"state": "matched", "sha256": retained["sha256"], "bytes": retained["bytes"]}
+
+
+def check_cycle_hmi(cycle, trace, ruc, document, result, *, require_session_capture=False):
     hmi, witness = check_run(document, ruc, trace, result)
+    check_session_capture(hmi, cycle, result, require_session_capture)
     identifiers = witness["bindings"]
     if (set(identifiers) != set(ROLES)
             or not all(isinstance(value, str) and value.strip() for value in identifiers.values())
@@ -144,11 +160,12 @@ def check_cycle_hmi(cycle, trace, ruc, document, result):
         checked[role] = check_status_role(hmi, result["packageSha256"], role, identifiers[role], expected[role], widgets)
 
 
-def review_cycle_hmi(report, trace, path):
+def review_cycle_hmi(report, trace, path, *, require_session_capture=False):
     result = report["cycleHmiReview"]
     try:
         document, result["statusReport"] = json_snapshot(path, TRACE_LIMIT)
-        check_cycle_hmi(report["cycleTraceReview"], trace, report["rucReview"], document, result)
+        check_cycle_hmi(report["cycleTraceReview"], trace, report["rucReview"], document, result,
+                        require_session_capture=require_session_capture)
     except (AttributeError, KeyError, OSError, RuntimeError, TypeError, ValueError) as error:
         code = error.code if isinstance(error, TraceIssue) else "cycle_hmi_invalid"
         message = str(error) if isinstance(error, (OSError, RuntimeError, ValueError)) else "The status or cycle evidence has missing or malformed fields"

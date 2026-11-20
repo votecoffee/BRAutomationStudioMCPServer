@@ -113,7 +113,7 @@ def check_cycle(trace, identity, outbound_path, inbound_path, result):
 
 
 def cycle_trace_review(project, configuration, cpu, manager_id, lpj, readback, name_map, job_directory,
-                       source_station, trace_path, *, hmi_status_path=None, scan_csv_path=None):
+                       source_station, trace_path, *, hmi_status_path=None, scan_csv_path=None, require_session_capture=False):
     report = launchpad_route_review(project, configuration, cpu, manager_id, lpj, readback, name_map, job_directory,
                                     include_stations=True)
     result = report["cycleTraceReview"] = {"state": "not_checked", "sourceStation": source_station}
@@ -145,5 +145,5 @@ def cycle_trace_review(project, configuration, cpu, manager_id, lpj, readback, n
         result["state"] = "matched"
         report["evidence"] = "cycle_trace_readback"
         if hmi_status_path is not None:
-            review_cycle_hmi(report, trace, hmi_status_path)
+            review_cycle_hmi(report, trace, hmi_status_path, require_session_capture=require_session_capture)
     return report
