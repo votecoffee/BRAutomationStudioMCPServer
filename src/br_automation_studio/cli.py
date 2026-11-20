@@ -445,6 +445,10 @@ def markdown_browser(browser, text):
         if document := browser.get(phase):
             samples = ", ".join(document["counterSamples"])
             lines.append(f"- {label} · Samples {text(samples or None)} · Time origin {text(document.get('timeOrigin'))}")
+            if layout := document.get("layout"):
+                lines.append(f"  - Layout {text(layout['state'])} · Inline SVGs with layout bounds {text(layout['boundedSvgCount'])}")
+                for role, asset in layout["assets"].items():
+                    lines.append(f"  - {text(role)} {text(asset['path'])} · HTTP {text(asset['httpStatus'])}")
     return lines
 
 

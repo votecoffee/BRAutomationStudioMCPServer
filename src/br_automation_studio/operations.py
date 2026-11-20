@@ -190,7 +190,8 @@ def run_arsim_smoke(arguments, request_directory, runtime_probe=None):
 
 def run_arsim_browser_smoke(arguments, request_directory):
     probe = ChromeProbe(request_directory / arguments["browserExecutable"], arguments["counterWidgetId"],
-                        arguments.get("assemblyWidgetId"), arguments.get("browserTimeoutSeconds", 30))
+                        arguments.get("assemblyWidgetId"), arguments.get("browserTimeoutSeconds", 30),
+                        require_layout=arguments.get("requireLayoutAssets", False))
     return run_arsim_smoke(arguments, request_directory, probe)
 
 
@@ -205,7 +206,7 @@ def run_arsim_hmi_smoke(arguments, request_directory):
         *arsim_inputs(arguments, request_directory),
         binding_target(arguments), request_directory / arguments["browserExecutable"],
         arguments.get("assemblyWidgetId"), arguments.get("browserTimeoutSeconds", 30),
-        arguments.get("opcUaTimeoutSeconds", 20),
+        arguments.get("opcUaTimeoutSeconds", 20), require_layout=arguments.get("requireLayoutAssets", False),
     )
 
 
@@ -384,6 +385,8 @@ ARSIM_BROWSER_SMOKE = Operation(
         "counterWidgetId": {"type": "string", "minLength": 1, "description": "DOM ID of a read-only PLC-bound increasing counter widget."},
         "assemblyWidgetId": {"type": "string", "minLength": 1, "description": "DOM ID of a reviewed Assembly6D widget. Required when multiple are reviewed."},
         "browserTimeoutSeconds": {"type": "integer", "minimum": 1, "maximum": 120, "default": 30},
+        "requireLayoutAssets": {"type": "boolean", "default": False,
+                                "description": "Require expected 6DData requests with HTTP 200 or 304 and a bounded inline SVG in each HMI document."},
     },
     required=(*ARSIM_SMOKE.required, "browserExecutable", "counterWidgetId"),
     handler=run_arsim_browser_smoke,
@@ -409,6 +412,7 @@ ARSIM_HMI_SMOKE = Operation(
         "browserExecutable": ARSIM_BROWSER_SMOKE.arguments["browserExecutable"],
         "assemblyWidgetId": ARSIM_BROWSER_SMOKE.arguments["assemblyWidgetId"],
         "browserTimeoutSeconds": ARSIM_BROWSER_SMOKE.arguments["browserTimeoutSeconds"],
+        "requireLayoutAssets": ARSIM_BROWSER_SMOKE.arguments["requireLayoutAssets"],
         "opcUaTimeoutSeconds": ARSIM_OPCUA_SMOKE.arguments["opcUaTimeoutSeconds"],
     },
     required=(*ARSIM_SMOKE.required, "visualizationId", "contentId", "widgetId", "stringIdentifier", "browserExecutable"),
@@ -450,6 +454,9 @@ def execute(request, request_directory: Path):
         if schema["type"] == "integer":
             if type(value) is not int or not schema["minimum"] <= value <= schema["maximum"]:
                 raise InvalidRequest(f"{key} must be an integer between {schema['minimum']} and {schema['maximum']}")
+        elif schema["type"] == "boolean":
+            if type(value) is not bool:
+                raise InvalidRequest(f"{key} must be a Boolean")
         elif not valid_text(value) or len(value) < schema["minLength"]:
             raise InvalidRequest(f"{key} must be a nonempty string of at least {schema['minLength']} characters")
 

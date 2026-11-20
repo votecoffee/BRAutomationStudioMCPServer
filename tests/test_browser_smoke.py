@@ -3,7 +3,9 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock, patch
 
-from br_automation_studio.browser_smoke import ASSEMBLY_WIDGET, Page, assembly_dom_id, debug_listener, verify_navigation
+from br_automation_studio.browser_smoke import (
+    ASSEMBLY_WIDGET, Page, assembly_dom_id, debug_listener, layout_asset_paths, verify_navigation,
+)
 
 URL = "http://127.0.0.1:18081/"
 
@@ -56,6 +58,58 @@ class TestBrowserSmoke(unittest.TestCase):
         with self.assertRaises(TimeoutError):
             verify_navigation(page, URL, receipt)
         self.assertEqual(receipt["initial"]["counterSamples"], [])
+
+    def test_layout_asset_paths_select_the_reviewed_symbol_names(self):
+        widget = dict(contentId="Proof", id="Asmb", assembly="mapp6D::Assembly_A", manager="mapp6D::Manager_A")
+        self.assertEqual(layout_asset_paths([widget], "Proof_Asmb"), {
+            "assembly": "/FileDevice:6DData/Assembly_A.svg",
+            "trafficManager": "/FileDevice:6DData/Manager_A.svg",
+        })
+        no_manager = dict(widget, manager="")
+        self.assertEqual(layout_asset_paths([no_manager], "Proof_Asmb"), {
+            "assembly": "/FileDevice:6DData/Assembly_A.svg",
+        })
+        for assembly in ("../other", "mapp6D::A/B", None):
+            with self.subTest(assembly=assembly):
+                self.assertEqual(layout_asset_paths([dict(widget, assembly=assembly)], "Proof_Asmb"), {})
+
+    @patch("br_automation_studio.browser_smoke.time.sleep")
+    @patch("br_automation_studio.browser_smoke.time.monotonic", return_value=0)
+    def test_required_layout_waits_for_both_documents_without_extending_counter_sample_sets(self, now, pause):
+        paths = {"assembly": "/FileDevice:6DData/A.svg", "trafficManager": "/FileDevice:6DData/T.svg"}
+
+        def seen(value, origin, assembly, manager, bounds=0):
+            return dict(hmi(value, origin), layout={"boundedSvgCount": bounds,
+                                                  "statuses": {"assembly": assembly, "trafficManager": manager}})
+
+        page = Mock(deadline=2)
+        page.read.side_effect = [
+            seen("1", 10, None, None), seen("2", 10, 200, None, 1), seen("3", 10, 200, None, 1),
+            seen("4", 10, 200, 200, 1), {"url": "about:blank", "timeOrigin": 11},
+            seen("5", 12, 200, 200, 0), seen("6", 12, 200, 200, 0),
+            seen("7", 12, 304, 200, 1),
+        ]
+        receipt = dict(self.receipt(), requireLayoutAssets=True, layoutPaths=paths)
+        verify_navigation(page, URL, receipt)
+        self.assertEqual(receipt["initial"]["counterSamples"], ["1", "2", "3"])
+        self.assertEqual(receipt["reopened"]["counterSamples"], ["5", "6"])
+        self.assertEqual(receipt["initial"]["layout"]["state"], "observed")
+        layout = receipt["reopened"]["layout"]
+        self.assertEqual(layout["state"], "observed")
+        self.assertEqual(layout["assets"]["assembly"], {"path": paths["assembly"], "httpStatus": 304})
+
+    @patch("br_automation_studio.browser_smoke.time.sleep")
+    @patch("br_automation_studio.browser_smoke.time.monotonic", side_effect=range(4))
+    def test_required_layout_fails_after_counter_passes_if_overlay_request_fails(self, now, pause):
+        layout = {"boundedSvgCount": 1, "statuses": {"assembly": 200, "trafficManager": 404}}
+        page = Mock(deadline=3)
+        page.read.side_effect = [dict(hmi(str(x), 10), layout=layout) for x in range(1, 4)]
+        receipt = dict(self.receipt(), requireLayoutAssets=True,
+                       layoutPaths={"assembly": "/FileDevice:6DData/A.svg", "trafficManager": "/FileDevice:6DData/T.svg"})
+        with self.assertRaisesRegex(TimeoutError, "6DData SVG requests"):
+            verify_navigation(page, URL, receipt)
+        self.assertEqual(receipt["initial"]["layout"]["state"], "request_failed")
+        self.assertEqual(receipt["initial"]["counterSamples"], ["1", "2", "3"])
 
     def test_select_reviewed_assembly_id(self):
         widgets = [{"contentId": "Proof", "id": "Asmb"}, {"contentId": "Other", "id": "Asmb"}]

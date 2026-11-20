@@ -36,6 +36,8 @@ Use `br-studio operation-help arsim_hmi_smoke` to discover the request contract.
 
 Run `br-studio run --request <hmi-request.json>`. Use `--format markdown` for the readable report. Give every launch a new session directory. The runtime uses the [loopback fixture prerequisites](arsim-smoke.md). The OPC UA timeout applies separately to each direct read window.
 
+The browser report includes the expected `6DData` SVG requests and an inline SVG count for each observed HMI document. Set `requireLayoutAssets` to `true` to require HTTP 200 or 304 for the assembly SVG and the linked manager SVG (when configured), plus an inline SVG with nonzero layout bounds inside the widget. The counter and SVG checks use the same document window. The SVG result covers the completed requests and DOM bounds. Visual accuracy and live shuttle motion require target evidence.
+
 ## Read the evidence
 
 1. Confirm the binding, compiled default visualization, 6D configuration and rendered Assembly6D links belong to the same completed build. A binding or default visualization mismatch stops before runtime materialization.

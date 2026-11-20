@@ -37,6 +37,12 @@ Use `br-studio operation-help arsim_browser_smoke` to discover the contract. Sel
 
 Run `br-studio run --request <browser-request.json>`. Set `timeoutSeconds` for the ARsim HTTP startup window and `browserTimeoutSeconds` for the complete Chrome probe. Select `--format markdown` on the same invocation if you need the readable format. Use a different session directory for each invocation.
 
+## Check the layout assets
+
+The browser report includes the expected `6DData` SVG requests and an inline SVG count for each observed HMI document. Set `requireLayoutAssets` to `true` to require HTTP 200 or 304 for the assembly SVG and the linked manager SVG (when configured), plus an inline SVG with nonzero layout bounds inside the widget. The counter and SVG checks use the same document window. The SVG result covers the completed requests and DOM bounds. Visual accuracy and live shuttle motion require target evidence.
+
+The expected URLs are derived from the compiled widget links as `/FileDevice:6DData/<symbol>.svg`. The report uses browser resource timing for those exact URLs. An unavailable status or missing inline bounds leaves the layout unverified. An HTTP error is reported as `request_failed`. [B&R layout display troubleshooting](https://help.br-automation.com/#/en/4/motion/mapp_6d/leitfaden/getting_started_mapp_6d/faq.html)
+
 ## Interpret the receipts
 
 - Check for `arsim_loopback_browser` in `result.evidence` and `complete` in `result.arsimSmoke.browser.state`. The receipt includes the pinned RUC and HTTP asset checks, Chrome version, owned debugger endpoint, widget IDs, and the numeric samples.
