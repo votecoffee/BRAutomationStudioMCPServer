@@ -12,6 +12,7 @@ from .browser_smoke import ChromeProbe
 from .hmi_smoke import arsim_hmi_smoke
 from .inspection import inspect_project
 from .layout_device import layout_device_review
+from .layout_svg import layout_svg_review
 from .launchpad_frame import launchpad_frame_review
 from .launchpad_geometry import GeometryCriteria
 from .launchpad_route import launchpad_route_review
@@ -121,6 +122,12 @@ def run_layout_device_review(arguments, request_directory):
     job = arguments.get("jobDirectory")
     return layout_device_review(project_path(arguments, request_directory), arguments.get("configuration"),
                                 arguments.get("cpu"), request_directory / job if job is not None else None)
+
+
+def run_layout_svg_review(arguments, request_directory):
+    return layout_svg_review(project_path(arguments, request_directory), request_directory / arguments["jobDirectory"],
+                             arguments["managerId"], request_directory / arguments["assemblySvg"],
+                             request_directory / arguments["trafficSvg"])
 
 
 def launchpad_inputs(arguments, request_directory):
@@ -298,6 +305,18 @@ LAYOUT_DEVICE_REVIEW = Operation(
     required=("project",),
     handler=run_layout_device_review,
 )
+LAYOUT_SVG_REVIEW = Operation(
+    name="layout_svg_review",
+    summary="Compare retained AS4 layout SVG geometry and traffic links with the saved project and RUC.",
+    arguments={
+        **RUC_REVIEW.arguments,
+        "managerId": {"type": "string", "minLength": 1, "description": "Selected Traffic Manager element ID."},
+        "assemblySvg": {"type": "string", "minLength": 1, "description": "Retained generated assembly SVG file."},
+        "trafficSvg": {"type": "string", "minLength": 1, "description": "Retained generated Traffic Manager SVG file."},
+    },
+    required=("project", "jobDirectory", "managerId", "assemblySvg", "trafficSvg"),
+    handler=run_layout_svg_review,
+)
 LAUNCHPAD_ROUTE_REVIEW = Operation(
     name="launchpad_route_review",
     summary="Compare one saved LaunchPad cycle with the typed route of a selected saved or compiled Traffic Manager.",
@@ -434,7 +453,7 @@ ARSIM_HMI_SMOKE = Operation(
 )
 OPERATIONS = {item.name: item for item in (
     PROJECT_INSPECT, BUILD_PREFLIGHT, SIMULATION_PREFLIGHT, BUILD_PLAN, BUILD_EXECUTE, RUC_REVIEW,
-    ASSEMBLY_IO_REVIEW, LAYOUT_DEVICE_REVIEW,
+    ASSEMBLY_IO_REVIEW, LAYOUT_DEVICE_REVIEW, LAYOUT_SVG_REVIEW,
     LAUNCHPAD_ROUTE_REVIEW, LAUNCHPAD_STATION_REVIEW, LAUNCHPAD_RECOVERY_REVIEW, LAUNCHPAD_MOTION_REVIEW,
     LAUNCHPAD_GEOMETRY_REVIEW, LAUNCHPAD_LAYOUT_REVIEW, LAUNCHPAD_FRAME_REVIEW, RUC_BINDING_REVIEW,
     ARSIM_SMOKE, ARSIM_BROWSER_SMOKE, ARSIM_OPCUA_SMOKE, ARSIM_HMI_SMOKE,

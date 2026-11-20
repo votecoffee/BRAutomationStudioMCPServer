@@ -42,6 +42,7 @@ $brStudio = '.\.local\venv\Scripts\br-studio.exe'
 & $brStudio operation-help ruc_review
 & $brStudio operation-help assembly_io_review
 & $brStudio operation-help layout_device_review
+& $brStudio operation-help layout_svg_review
 & $brStudio operation-help launchpad_route_review
 & $brStudio operation-help launchpad_station_review
 & $brStudio operation-help launchpad_recovery_review
@@ -71,6 +72,8 @@ After building, use `ruc_review` to compare the retained package's 6D modules, t
 Use `assembly_io_review` to trace the selected assembly's communication variable references to saved IEC declarations and check its compiled read-axis flags. [Assembly I/O workflow](skills/br-automation-studio/references/assembly-io-review.md)
 
 Use `layout_device_review` to verify the selected CPU's saved and compiled `6DData` declaration before checking the runtime SVGs. [Layout file-device workflow](skills/br-automation-studio/references/layout-device-review.md)
+
+Use `layout_svg_review` to compare the generated segment grid, marker positions and directed mapping IDs with the saved project and its RUC. [Generated layout workflow](skills/br-automation-studio/references/layout-svg-review.md)
 
 Use `launchpad_route_review` to compare a locally decoded LaunchPad cycle with a selected saved or compiled Traffic Manager. [LaunchPad route workflow](skills/br-automation-studio/references/launchpad-route-review.md)
 

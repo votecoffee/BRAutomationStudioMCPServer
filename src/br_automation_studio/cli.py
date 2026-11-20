@@ -140,6 +140,8 @@ def markdown_ruc(response, text):
     title = "# AS4 RUC review"
     if response["operation"] == "layout_device_review":
         title = "# Compiled Assembly6D file-device review"
+    elif response["operation"] == "layout_svg_review":
+        title = "# Generated Assembly6D SVG review"
     elif response["operation"] == "assembly_io_review":
         title = "# Compiled ACOPOS 6D assembly I/O review"
     elif response["operation"] == "arsim_hmi_smoke":
@@ -216,6 +218,8 @@ def markdown_ruc(response, text):
                     lines.append(f"- Data type {text(values['dataType'])} · AccessLevel {text(values['accessLevel'])}")
     if layout_device := report.get("layoutDeviceReview"):
         lines.extend(markdown_layout_device(layout_device, text))
+    if layout_svg := report.get("layoutSvgReview"):
+        lines.extend(markdown_layout_svg(layout_svg, text))
     if io_review := report.get("ioReview"):
         lines.extend(markdown_io(io_review, text))
     if route := report.get("routeReview"):
@@ -256,6 +260,27 @@ def markdown_layout_device(review, text):
     for label, target in (("Saved", "target"), ("Compiled", "deviceParameter")):
         if row := review[label.lower()]:
             lines.append(f"- {label} {text(row['state'])} · {text(row['path'])} · {text(row.get(target))}")
+    return lines
+
+
+def markdown_layout_svg(review, text):
+    lines = ["", "## Generated layout", "",
+             f"- State {text(review['state'])} · Manager {text(review['managerId'])}"]
+    if "layoutId" in review:
+        lines.append(f"- Assembly {text(review['assemblyId'])} · Layout {text(review['layoutId'])}")
+    for row in review["assets"].values():
+        lines.append(f"- {text(row['path'])} · SHA-256 {row['sha256']}")
+    if "segments" in review:
+        lines.append(f"- Segments matched {len(review['segments'])}")
+    if "objects" in review:
+        lines.extend([f"- Directed mapping links matched {len(review['edges'])}", "",
+                      "| Object | Type | Configured X/Y (mm) | SVG X/Y (mm) | Max axis delta (mm) |",
+                      "| --- | --- | --- | --- | ---: |"])
+        for row in review["objects"]:
+            configured = ", ".join(f"{value:.6f}" for value in row["configuredMm"])
+            actual = ", ".join(f"{value:.6f}" for value in row["svgMm"])
+            lines.append(f"| {text(row['name'])} | {text(row['type'])} | {configured} | {actual} | "
+                         f"{row['maxAxisDeltaMm']:.9f} |")
     return lines
 
 

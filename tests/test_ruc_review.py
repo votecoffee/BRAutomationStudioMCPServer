@@ -104,6 +104,75 @@ class RucReviewTests(unittest.TestCase):
         self.assertEqual(self.codes(response), ["ruc_source_changed"])
         self.assertIsNone(response["result"]["rucReview"]["archive"])
 
+    def test_generated_svg_comparison_checks_saved_compiled_and_rendered_positions(self):
+        modules = self.project / "Physical/ARsim/PC/mapp6D"
+        layout = modules / "FixtureLayout.layout6d"
+        objects = modules / "DemoObjects.trafficobjectlist"
+        layout.write_text("""<?xml version="1.0" encoding="utf-8"?>
+<Configuration><Element ID="FixtureLayout" Type="layout6d">
+<Property ID="GridSize" Value="0"/>
+<Group ID="UserOrigin"><Property ID="OffsetX" Value="0"/><Property ID="OffsetY" Value="0"/></Group>
+<Group ID="Segments"><Group ID="Segment[1]"><Property ID="TypeGrid240" Value="0"/>
+<Property ID="X" Value="0"/><Property ID="Y" Value="0"/><Property ID="IsMaster" Value="true"/>
+</Group></Group></Element></Configuration>""", encoding="utf-8")
+        source = ET.fromstring(objects.read_bytes())
+        for index, row in enumerate(source.findall("./Element/Selector"), start=1):
+            position = ET.SubElement(row, "Selector", ID="Position", Value="Absolute")
+            ET.SubElement(position, "Property", ID="X", Value=f"0.0{index}")
+            ET.SubElement(position, "Property", ID="Y", Value="0.02")
+        objects.write_bytes(ET.tostring(source, encoding="utf-8", xml_declaration=True))
+        for path in (layout, objects):
+            self.members[f"{DATA}/{path.stem}.br"] = b"prefix\0" + path.read_bytes() + b"\0suffix"
+        manifest = dict(self.plan["manifest"], inputs=source_tree(self.project))
+        self.plan = {"manifest": manifest, "sha256": identity(manifest)}
+        self.write("plan.json", self.plan)
+        self.package()
+        assembly = self.root / "assembly.svg"
+        traffic = self.root / "traffic.svg"
+        assembly.write_text("""<svg xmlns="http://www.w3.org/2000/svg" id="FixtureAssembly-svg">
+<g class="assembly" id="FixtureAssembly"><g class="layout" id="FixtureLayout" grid-size="240">
+<g class="segment" id="segment-1" segment-id="1" master="true" position-x="0" position-y="0"
+position-x-mm="0" position-y-mm="0" transform="translate(0 -240)"><g>
+<rect width="240" height="240"/></g></g></g></g></svg>""", encoding="utf-8")
+        overlay = """<svg xmlns="http://www.w3.org/2000/svg" id="DemoTraffic-svg">
+<g class="traffic-manager" id="DemoTraffic">
+<g class="station" id="station_Load" transform="translate(-5 -35)"><rect width="30" height="30"/></g>
+<g class="waypoint" id="waypoint_Transit" transform="translate(20 -20)"><ellipse rx="12" ry="12"/></g>
+<g class="station" id="station_Inspect" transform="translate(15 -35)"><rect width="30" height="30"/></g>
+<g class="link gray-one-way" id="mapping_Load_to_Transit"><line/></g>
+<g class="link gray-one-way" id="mapping_Transit_to_Inspect"><line/></g>
+<g class="link gray-one-way" id="mapping_Inspect_to_Load"><line/></g>
+</g></svg>"""
+        request = {"schemaVersion": 1, "workspace": "readback", "operation": "layout_svg_review",
+                   "arguments": {"project": "Loop/Loop.apj", "jobDirectory": "retained", "managerId": "DemoTraffic",
+                                 "assemblySvg": assembly.name, "trafficSvg": traffic.name}}
+        traffic.write_text(overlay, encoding="utf-8")
+        matched = execute(request, self.root)
+        self.assertEqual(matched["status"], "complete", matched)
+        result = matched["result"]["layoutSvgReview"]
+        self.assertEqual(len(result["edges"]), 3)
+        self.assertEqual(result["objects"][0]["svgMm"], (30, 20))
+        self.assertIn("Segments matched 1", markdown(matched))
+
+        failures = (
+            ("translate(20 -20)", "translate(21 -20)", "layout_svg_position_mismatch"),
+            ("mapping_Load_to_Transit", "mapping_Transit_to_Load", "layout_svg_mismatch"),
+        )
+        for original, changed, code in failures:
+            with self.subTest(code=code):
+                traffic.write_text(overlay.replace(original, changed), encoding="utf-8")
+                response = execute(request, self.root)
+                self.assertEqual(response["status"], "issues")
+                self.assertEqual(self.codes(response), [code])
+
+        traffic.write_text(overlay, encoding="utf-8")
+        member = f"{DATA}/DemoObjects.br"
+        self.members[member] = self.members[member].replace(b'Value="0.02"', b'Value="0.04"', 1)
+        self.package()
+        changed = execute(request, self.root)
+        self.assertEqual(changed["status"], "issues")
+        self.assertIn("Saved and compiled traffic object positions differ", markdown(changed))
+
     def test_other_zip_bytes_fail_hash_binding(self):
         self.package()
         with self.archive.open("ab") as stream:

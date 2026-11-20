@@ -272,7 +272,8 @@ def match_read_set(reader, path, manifest, result, snapshot, issues):
 
 
 def review_ruc(path, job_directory, binding=None, *, geometry_manager=None, include_layout=False,
-               recovery_manager=None, include_motion=False, include_io=False, include_layout_device=False):
+               recovery_manager=None, include_motion=False, include_io=False, include_layout_device=False,
+               include_saved_geometry=False):
     reader = SavedFiles(job_directory)
     result = {"evidence": "ruc_readback", "project": path.name, "selectedConfiguration": None,
               "selectedCpu": None, "snapshot": None, "diagnostics": reader.diagnostics}
@@ -291,14 +292,21 @@ def review_ruc(path, job_directory, binding=None, *, geometry_manager=None, incl
 
         if binding is None:
             saved = inspect_project(path, manifest["configuration"], manifest["cpu"],
+                                    geometry_manager=geometry_manager if include_saved_geometry else None,
+                                    include_layout=include_saved_geometry,
                                     recovery_manager=recovery_manager, include_motion=include_motion, include_io=include_io,
                                     include_layout_device=include_layout_device)
             if not match_read_set(reader, path, manifest, result, saved["snapshot"], saved["diagnostics"]):
                 return result
             if include_layout_device:
                 review["savedLayoutDevice"] = saved.get("savedLayoutDevice")
-            if include_motion or include_io:
+            if include_motion or include_io or include_saved_geometry:
                 review["savedAssemblyLinks"] = saved["assemblyLinks"]
+            if include_saved_geometry:
+                review["savedPositionEvidence"] = next(
+                    (row["positionEvidence"] for row in saved["trafficManagers"] if row["manager"] == geometry_manager),
+                    [],
+                )
             if include_io:
                 review["globalDeclarations"] = saved.get("globalDeclarations")
             if recovery_manager is not None:
