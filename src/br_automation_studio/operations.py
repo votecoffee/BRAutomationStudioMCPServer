@@ -21,6 +21,7 @@ from .opcua_smoke import OpcUaProbe
 from .preflight import build_preflight
 from .ruc_review import review_ruc
 from .simulation_preflight import PAIRS, simulation_environment, simulation_preflight
+from .station_trace import station_trace_review
 
 SCHEMA_VERSION = 1
 
@@ -155,6 +156,11 @@ def run_launchpad_route_review(arguments, request_directory, geometry=None, *, i
 
 def run_launchpad_station_review(arguments, request_directory):
     return launchpad_route_review(*launchpad_inputs(arguments, request_directory), include_stations=True)
+
+
+def run_station_trace_review(arguments, request_directory):
+    return station_trace_review(*launchpad_inputs(arguments, request_directory), arguments["sourceStation"],
+                                request_directory / arguments["trace"])
 
 
 def run_launchpad_motion_review(arguments, request_directory):
@@ -356,6 +362,17 @@ LAUNCHPAD_STATION_REVIEW = Operation(
     required=LAUNCHPAD_ROUTE_REVIEW.required,
     handler=run_launchpad_station_review,
 )
+STATION_TRACE_REVIEW = Operation(
+    name="station_trace_review",
+    summary="Compare saved inspection release and arrival evidence with a verified compiled station leg.",
+    arguments={
+        **LAUNCHPAD_ROUTE_REVIEW.arguments,
+        "sourceStation": {"type": "string", "minLength": 1, "description": "Imported name of the inspected source station."},
+        "trace": {"type": "string", "minLength": 1, "description": "File containing the normalized scan trace."},
+    },
+    required=(*LAUNCHPAD_ROUTE_REVIEW.required, "jobDirectory", "sourceStation", "trace"),
+    handler=run_station_trace_review,
+)
 LAUNCHPAD_RECOVERY_REVIEW = Operation(
     name="launchpad_recovery_review",
     summary="Compare station recovery declarations and saved-to-compiled recovery point positions for a matched route.",
@@ -475,7 +492,7 @@ ARSIM_HMI_SMOKE = Operation(
 OPERATIONS = {item.name: item for item in (
     PROJECT_INSPECT, BUILD_PREFLIGHT, SIMULATION_ENVIRONMENT, SIMULATION_PREFLIGHT, BUILD_PLAN, BUILD_EXECUTE, RUC_REVIEW,
     ASSEMBLY_IO_REVIEW, LAYOUT_DEVICE_REVIEW, LAYOUT_SVG_REVIEW,
-    LAUNCHPAD_ROUTE_REVIEW, LAUNCHPAD_STATION_REVIEW, LAUNCHPAD_RECOVERY_REVIEW, LAUNCHPAD_MOTION_REVIEW,
+    LAUNCHPAD_ROUTE_REVIEW, LAUNCHPAD_STATION_REVIEW, STATION_TRACE_REVIEW, LAUNCHPAD_RECOVERY_REVIEW, LAUNCHPAD_MOTION_REVIEW,
     LAUNCHPAD_GEOMETRY_REVIEW, LAUNCHPAD_LAYOUT_REVIEW, LAUNCHPAD_FRAME_REVIEW, RUC_BINDING_REVIEW,
     ARSIM_SMOKE, ARSIM_BROWSER_SMOKE, ARSIM_OPCUA_SMOKE, ARSIM_HMI_SMOKE,
 )}

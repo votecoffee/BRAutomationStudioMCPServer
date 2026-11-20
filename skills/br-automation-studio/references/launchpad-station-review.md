@@ -2,6 +2,8 @@
 
 Use `launchpad_station_review` to turn a matched LaunchPad cycle into paths between consecutive stations. Run it with the same inputs as [LaunchPad route review](launchpad-route-review.md). A leg includes its source Station, any intervening Waypoints, and the next Station. The final leg follows the return marker through to its station destination.
 
+Use the [inspection trace review](station-trace-review.md) with a retained compiled job when checking recorded inspection results, Release and destination arrival for one of those legs.
+
 ## Run the review
 
 Discover the request with `br-studio operation-help launchpad_station_review`. Start with the route review request and set `operation` to `launchpad_station_review`. Retain the original `.lpj` and its decoded JSON readback. Use `nameMap` if names changed on import. Add `jobDirectory` when reviewing a source-matched RUC, then run `br-studio run --request station-review.json --format markdown`.

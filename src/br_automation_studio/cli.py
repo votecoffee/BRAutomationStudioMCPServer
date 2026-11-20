@@ -188,6 +188,8 @@ def markdown_ruc(response, text):
         title = "# Compiled Traffic Manager route review"
     elif response["operation"] == "launchpad_station_review":
         title = "# Compiled Traffic Manager station review"
+    elif response["operation"] == "station_trace_review":
+        title = "# Traffic Manager inspection leg trace review"
     elif response["operation"] == "launchpad_recovery_review":
         title = "# Compiled Traffic Manager recovery review"
     elif response["operation"] == "launchpad_motion_review":
@@ -273,6 +275,8 @@ def markdown_ruc(response, text):
             lines.extend(["", f"## {text(manager['manager'])}", ""])
             for edge in manager["edges"]:
                 lines.append(f"- {text(edge['source'])} ({text(edge['sourceType'])}) → {text(edge['destination'])} ({text(edge['destinationType'])})")
+    if trace := report.get("stationTraceReview"):
+        lines.extend(markdown_station_trace(trace, text))
     lines.extend(markdown_rules(review["trafficManagers"], text))
     if review["widgets"]:
         lines.extend(["", "## Rendered widgets", ""])
@@ -398,6 +402,26 @@ def markdown_stations(station_review, text):
         if model["state"] != "read":
             model_steps += " · unverified"
         lines.append(f"| {text(path)} | {wraps} | {model_steps} | {text(model['fixedDwellTime'])} |")
+    return lines
+
+
+def markdown_station_trace(trace, text):
+    lines = ["", "## Inspection leg trace", "", f"- State **{text(trace['state'])}**"]
+    if "path" in trace:
+        lines.append(f"- Path {' → '.join(text(name) for name in trace['path'])}")
+    if identity := trace.get("trace"):
+        lines.append(f"- Trace {text(identity['path'])} · SHA-256 {identity['sha256']}")
+    if "captureKind" in trace:
+        lines.append(f"- Capture {text(trace['captureKind'])} · Request {text(trace['requestId'])} · Shuttle {text(trace['shuttleId'])}")
+    if "releaseScans" in trace:
+        scans = ", ".join(map(str, trace["releaseScans"])) or None
+        lines.append(f"- Approved result scan {text(trace['acceptedResultScan'])} · Release edge scans {text(scans)}")
+        lines.append(f"- Buffered scan {text(trace['bufferedScan'])} · Done scan {text(trace['doneScan'])}")
+        lines.append(f"- Ignored results {trace['ignoredResults']} · Ignored detections {trace['ignoredDetections']}")
+    if arrival := trace.get("arrival"):
+        lines.append(f"- Arrival at {text(arrival['station'])} · Scan {arrival['scan']} · Monitor sequence {arrival['sequence']}")
+    if fault := trace.get("firstFault"):
+        lines.append(f"- First adapter status {fault['statusId']} at scan {fault['scan']}")
     return lines
 
 

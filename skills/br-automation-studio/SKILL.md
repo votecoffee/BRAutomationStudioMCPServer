@@ -27,6 +27,8 @@ Use the [LaunchPad route workflow](references/launchpad-route-review.md) to comp
 
 Use the [LaunchPad station workflow](references/launchpad-station-review.md) to follow each leg between stations and read its source station model waits before checking the native recipe.
 
+Use the [inspection trace workflow](references/station-trace-review.md) to verify one recorded release, departure and destination arrival for the same request and shuttle against the compiled station path.
+
 Use the [LaunchPad recovery workflow](references/launchpad-recovery-review.md) to compare station declarations and the saved and compiled point sequence.
 
 Use the [LaunchPad motion workflow](references/launchpad-motion-review.md) to read raw exit values and check the linked assembly's saved and compiled in-plane limits.
