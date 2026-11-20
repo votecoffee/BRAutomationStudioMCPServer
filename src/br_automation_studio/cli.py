@@ -28,6 +28,7 @@ def markdown(response):
     titles = {
         "project_inspect": "Saved Automation Studio project inspection",
         "assembly_io_review": "Saved ACOPOS 6D assembly I/O review",
+        "layout_device_review": "Saved Assembly6D file-device review",
         "launchpad_route_review": "Saved Traffic Manager route review",
         "launchpad_station_review": "Saved Traffic Manager station review",
         "launchpad_recovery_review": "Saved Traffic Manager recovery review",
@@ -51,6 +52,8 @@ def markdown(response):
         "## Declared technology packages", "",
     ]
     lines.extend(f"- {text(item['name'])} {text(item['version'])}" for item in report["technologyPackages"])
+    if layout_device := report.get("layoutDeviceReview"):
+        lines.extend(markdown_layout_device(layout_device, text))
     if io_review := report.get("ioReview"):
         lines.extend(markdown_io(io_review, text))
     if route := report.get("routeReview"):
@@ -135,7 +138,9 @@ def markdown_ruc(response, text):
     smoke = report.get("arsimSmoke")
     binding = report.get("bindingReview")
     title = "# AS4 RUC review"
-    if response["operation"] == "assembly_io_review":
+    if response["operation"] == "layout_device_review":
+        title = "# Compiled Assembly6D file-device review"
+    elif response["operation"] == "assembly_io_review":
         title = "# Compiled ACOPOS 6D assembly I/O review"
     elif response["operation"] == "arsim_hmi_smoke":
         title = "# AS4 mapp View end-to-end smoke"
@@ -209,6 +214,8 @@ def markdown_ruc(response, text):
                     lines.append(f"- {text(endpoint['host'])}:{text(endpoint['port'])} · {text(endpoint['namespaceUri'])}")
                 if "accessLevel" in values:
                     lines.append(f"- Data type {text(values['dataType'])} · AccessLevel {text(values['accessLevel'])}")
+    if layout_device := report.get("layoutDeviceReview"):
+        lines.extend(markdown_layout_device(layout_device, text))
     if io_review := report.get("ioReview"):
         lines.extend(markdown_io(io_review, text))
     if route := report.get("routeReview"):
@@ -241,6 +248,15 @@ def markdown_ruc(response, text):
     if not report["diagnostics"]:
         lines.append("The selected package checks matched the saved inputs.")
     return "\n".join(lines)
+
+
+def markdown_layout_device(review, text):
+    lines = ["", "## Assembly6D file device", "", f"- Device {text(review['name'])} · State {text(review['state'])}",
+             f"- Saved-to-compiled path {text(review['pathComparison'])}"]
+    for label, target in (("Saved", "target"), ("Compiled", "deviceParameter")):
+        if row := review[label.lower()]:
+            lines.append(f"- {label} {text(row['state'])} · {text(row['path'])} · {text(row.get(target))}")
+    return lines
 
 
 def markdown_io(review, text):

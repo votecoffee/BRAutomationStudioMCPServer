@@ -2,21 +2,23 @@
 """Inspect saved project selections and assembly links without running vendor tools."""
 
 from pathlib import Path
+from .file_device import read_saved_layout_device
 from .global_variables import global_declarations
 from .links import MotionLinks
 from .project import MOTION_TYPES, SavedFiles, children, choices, package_files, select, tag
 
 
 def inspect_project(path, configuration=None, cpu=None, *, geometry_manager=None, include_layout=False,
-                    recovery_manager=None, include_motion=False, include_io=False):
+                    recovery_manager=None, include_motion=False, include_io=False, include_layout_device=False):
     path = Path(path)
     return inspect_saved(SavedFiles(path.parent), Path(path.name), configuration, cpu,
                          geometry_manager=geometry_manager, include_layout=include_layout,
-                         recovery_manager=recovery_manager, include_motion=include_motion, include_io=include_io)
+                         recovery_manager=recovery_manager, include_motion=include_motion, include_io=include_io,
+                         include_layout_device=include_layout_device)
 
 
 def inspect_saved(source, project, configuration=None, cpu=None, *, geometry_manager=None, include_layout=False,
-                    recovery_manager=None, include_motion=False, include_io=False):
+                    recovery_manager=None, include_motion=False, include_io=False, include_layout_device=False):
     node, studio = source.xml(project, "Project")
     packages = []
     if node is not None:
@@ -67,6 +69,8 @@ def inspect_saved(source, project, configuration=None, cpu=None, *, geometry_man
                 modules = motion.module_inventory
 
     extra = {"globalDeclarations": global_declarations(source)} if include_io and selected_cpu else {}
+    if include_layout_device and selected_cpu:
+        extra["savedLayoutDevice"] = read_saved_layout_device(source, selected_configuration.name, selected_cpu.name)
     return {
         **extra,
         "evidence": "saved_files",

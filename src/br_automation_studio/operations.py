@@ -11,6 +11,7 @@ from .binding_review import BindingTarget
 from .browser_smoke import ChromeProbe
 from .hmi_smoke import arsim_hmi_smoke
 from .inspection import inspect_project
+from .layout_device import layout_device_review
 from .launchpad_frame import launchpad_frame_review
 from .launchpad_geometry import GeometryCriteria
 from .launchpad_route import launchpad_route_review
@@ -114,6 +115,12 @@ def run_assembly_io_review(arguments, request_directory):
     return assembly_io_review(project_path(arguments, request_directory), arguments.get("configuration"),
                               arguments.get("cpu"), arguments["assemblyId"],
                               request_directory / job if job is not None else None)
+
+
+def run_layout_device_review(arguments, request_directory):
+    job = arguments.get("jobDirectory")
+    return layout_device_review(project_path(arguments, request_directory), arguments.get("configuration"),
+                                arguments.get("cpu"), request_directory / job if job is not None else None)
 
 
 def launchpad_inputs(arguments, request_directory):
@@ -284,6 +291,13 @@ ASSEMBLY_IO_REVIEW = Operation(
     required=("project", "assemblyId"),
     handler=run_assembly_io_review,
 )
+LAYOUT_DEVICE_REVIEW = Operation(
+    name="layout_device_review",
+    summary="Verify the saved and packaged AS4 CPU file device used by the Assembly6D layout.",
+    arguments={**PROJECT_INSPECT.arguments, "jobDirectory": RUC_REVIEW.arguments["jobDirectory"]},
+    required=("project",),
+    handler=run_layout_device_review,
+)
 LAUNCHPAD_ROUTE_REVIEW = Operation(
     name="launchpad_route_review",
     summary="Compare one saved LaunchPad cycle with the typed route of a selected saved or compiled Traffic Manager.",
@@ -419,7 +433,8 @@ ARSIM_HMI_SMOKE = Operation(
     handler=run_arsim_hmi_smoke,
 )
 OPERATIONS = {item.name: item for item in (
-    PROJECT_INSPECT, BUILD_PREFLIGHT, SIMULATION_PREFLIGHT, BUILD_PLAN, BUILD_EXECUTE, RUC_REVIEW, ASSEMBLY_IO_REVIEW,
+    PROJECT_INSPECT, BUILD_PREFLIGHT, SIMULATION_PREFLIGHT, BUILD_PLAN, BUILD_EXECUTE, RUC_REVIEW,
+    ASSEMBLY_IO_REVIEW, LAYOUT_DEVICE_REVIEW,
     LAUNCHPAD_ROUTE_REVIEW, LAUNCHPAD_STATION_REVIEW, LAUNCHPAD_RECOVERY_REVIEW, LAUNCHPAD_MOTION_REVIEW,
     LAUNCHPAD_GEOMETRY_REVIEW, LAUNCHPAD_LAYOUT_REVIEW, LAUNCHPAD_FRAME_REVIEW, RUC_BINDING_REVIEW,
     ARSIM_SMOKE, ARSIM_BROWSER_SMOKE, ARSIM_OPCUA_SMOKE, ARSIM_HMI_SMOKE,

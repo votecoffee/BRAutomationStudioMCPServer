@@ -360,6 +360,56 @@ END_VAR
         self.assertEqual(set(self.codes(response)), {"assembly_io_declaration_unverified"})
         self.assertNotIn("Logical/Global.var", {row["path"] for row in response["result"]["snapshot"]["files"]})
 
+    def review_layout_device(self, saved, compiled):
+        hardware = self.project / "Physical/ARsim/Hardware.hw"
+        params = '' if saved is None else f"""
+      <Group ID="FileDevice1"/>
+      <Parameter ID="FileDeviceName1" Value="6DData"/>
+      <Parameter ID="FileDevicePath1" Value="{saved}"/>"""
+        hardware.write_text(f'<Hardware><Module Name="PC">{params}</Module></Hardware>', encoding="utf-8")
+        self.plan["manifest"]["inputs"] = source_tree(self.project)
+        self.plan["sha256"] = identity(self.plan["manifest"])
+        self.write("plan.json", self.plan)
+        device = '' if compiled is None else f"""
+      <n ID="6DData"><d ID="DeviceParam">{compiled}</d><d ID="DDriverName">DdNtFiLowio</d></n>"""
+        tree = f'<?xml version="1.0"?><tree><n ID="DEVICES"><n ID="USER"/>{device}</n></tree>'
+        self.members[f"{DATA}/$$sysconf.br"] = b"synthetic BR preface\0" + tree.encode() + b"\0suffix"
+        self.package()
+        return execute({"schemaVersion": 1, "workspace": "device", "operation": "layout_device_review",
+                        "arguments": {"project": "Loop/Loop.apj", "jobDirectory": "retained"}}, self.root)
+
+    def test_layout_device_distinguishes_missing_saved_device_from_default_user_device(self):
+        response = self.review_layout_device(None, None)
+        result = response["result"]
+        self.assertEqual(response["status"], "issues")
+        self.assertEqual(self.codes(response), ["layout_device_missing"])
+        review = result["layoutDeviceReview"]
+        self.assertEqual(review["saved"]["state"], "absent")
+        self.assertEqual(review["compiled"]["state"], "absent")
+        self.assertIn("Physical/ARsim/Hardware.hw", {row["path"] for row in result["snapshot"]["files"]})
+
+    def test_layout_device_binds_matching_user_partition_target(self):
+        response = self.review_layout_device("USER_PATH", "/DEVICE=USER_PATH")
+        self.assertEqual(response["status"], "complete", response["result"]["diagnostics"])
+        review = response["result"]["layoutDeviceReview"]
+        self.assertEqual(review["pathComparison"], "matched")
+        self.assertEqual(review["compiled"]["driver"], "DdNtFiLowio")
+        self.assertIn("/DEVICE=USER_PATH", markdown(response))
+
+    def test_layout_device_rejects_missing_or_changed_compiled_declaration(self):
+        for value, reason in ((None, "layout_device_not_compiled"),
+                              ("/DEVICE=Other", "layout_device_path_mismatch")):
+            with self.subTest(value=value):
+                response = self.review_layout_device("USER_PATH", value)
+                self.assertEqual(response["status"], "issues")
+                self.assertEqual(self.codes(response), [reason])
+
+    def test_layout_device_leaves_unsupported_saved_path_equivalence_unverified(self):
+        response = self.review_layout_device("C:/Temp", "/DEVICE=C:/Temp")
+        self.assertEqual(response["status"], "partial")
+        self.assertEqual(self.codes(response), ["layout_device_path_unverified"])
+        self.assertEqual(response["result"]["layoutDeviceReview"]["pathComparison"], "unverified")
+
     def test_changed_widget_link_fails_after_a_valid_archive(self):
         self.members[WIDGET] = self.members[WIDGET].replace(b"mapp6D::DemoTraffic", b"mapp6D::Other")
         self.package()

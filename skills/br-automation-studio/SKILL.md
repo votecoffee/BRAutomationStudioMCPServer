@@ -1,6 +1,6 @@
 ---
 name: br-automation-studio
-description: Inspect saved B&R Automation Studio projects with the standalone br-studio CLI. Use for declared package versions, ACOPOS 6D assembly I/O and Traffic Manager references and linked exclusivity rules, LaunchPad route, station path, model wait, recovery and motion readback, geometry, segment layout, and coordinate frame comparisons, mapp View Assembly6D links, AS4 build and complete simulation preflight, offline ARsim RUC builds, compiled RUC and mapp View binding readback, loopback mapp View HTTP and browser smoke tests, direct OPC UA counter reads, and combined HMI checks.
+description: Inspect saved B&R Automation Studio projects with the standalone br-studio CLI. Use for declared package versions, ACOPOS 6D assembly I/O and Traffic Manager references and linked exclusivity rules, LaunchPad route, station path, model wait, recovery and motion readback, geometry, segment layout, and coordinate frame comparisons, mapp View Assembly6D links, layout file-device declarations, AS4 build and complete simulation preflight, offline ARsim RUC builds, compiled RUC and mapp View binding readback, loopback mapp View HTTP and browser smoke tests, direct OPC UA counter reads, and combined HMI checks.
 ---
 
 # B&R Automation Studio
@@ -18,6 +18,8 @@ For a native build on a trusted saved copy, follow the [native AS4 build workflo
 Use the [RUC review workflow](references/ruc-review.md) to bind the package to a successful job and compare its compiled 6D routes and widget links with the matching saved project.
 
 Use the [assembly I/O workflow](references/assembly-io-review.md) to trace the selected assembly's I/O names to saved IEC declarations and verify compiled read-axis options.
+
+Use the [layout file-device workflow](references/layout-device-review.md) to check the saved `6DData` slot and its compiled ARsim declaration before checking the generated SVGs.
 
 Use the [LaunchPad route workflow](references/launchpad-route-review.md) to compare a saved unbranched route with the selected manager in source or a retained RUC.
 

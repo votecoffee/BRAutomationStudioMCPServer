@@ -9,6 +9,7 @@ import re
 from xml.etree import ElementTree as ET
 from zipfile import BadZipFile, ZipFile
 
+from .file_device import SYSTEM_CONFIG, read_compiled_layout_device
 from .inspection import inspect_project
 from .json_io import invalid_constant, read_json, unique_object
 from .links import MotionLinks, RULE_ROLES
@@ -271,7 +272,7 @@ def match_read_set(reader, path, manifest, result, snapshot, issues):
 
 
 def review_ruc(path, job_directory, binding=None, *, geometry_manager=None, include_layout=False,
-               recovery_manager=None, include_motion=False, include_io=False):
+               recovery_manager=None, include_motion=False, include_io=False, include_layout_device=False):
     reader = SavedFiles(job_directory)
     result = {"evidence": "ruc_readback", "project": path.name, "selectedConfiguration": None,
               "selectedCpu": None, "snapshot": None, "diagnostics": reader.diagnostics}
@@ -290,9 +291,12 @@ def review_ruc(path, job_directory, binding=None, *, geometry_manager=None, incl
 
         if binding is None:
             saved = inspect_project(path, manifest["configuration"], manifest["cpu"],
-                                    recovery_manager=recovery_manager, include_motion=include_motion, include_io=include_io)
+                                    recovery_manager=recovery_manager, include_motion=include_motion, include_io=include_io,
+                                    include_layout_device=include_layout_device)
             if not match_read_set(reader, path, manifest, result, saved["snapshot"], saved["diagnostics"]):
                 return result
+            if include_layout_device:
+                review["savedLayoutDevice"] = saved.get("savedLayoutDevice")
             if include_motion or include_io:
                 review["savedAssemblyLinks"] = saved["assemblyLinks"]
             if include_io:
@@ -325,6 +329,10 @@ def review_ruc(path, job_directory, binding=None, *, geometry_manager=None, incl
                     elif binding_report["state"] == "matched":
                         binding_report["state"] = "unverified"
                     return result
+                if include_layout_device:
+                    member = archive.member(SYSTEM_CONFIG)
+                    if member is not None:
+                        review["compiledLayoutDevice"] = read_compiled_layout_device(archive.read(member))
                 modules, links, managers, ready = read_motion(archive, saved, reader, geometry_manager,
                                                               include_layout=include_layout,
                                                               recovery_manager=recovery_manager, include_motion=include_motion,
