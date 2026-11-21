@@ -55,6 +55,14 @@ Capture the actual function block inputs as `exitVelocityMps` and `exitAccelerat
 
 Read `stationTraceReview.releaseMotion` for the Release scan, expected and recorded inputs, and the compiled limits. A missing witness leaves the motion check incomplete and a different value fails it. The expected inputs verify the recorded command. Use separate measured position or velocity evidence to assess the actual movement.
 
+## Check position at the two station events
+
+With br-studio 0.61.0 or later, set `positionToleranceMicrometres` in the request to the allowed difference on each axis. Use the same LaunchPad save, readback and name map as the RUC built with `verifyLaunchPadPositions` and `"launchPadReadAxes": ["X", "Y"]`. Record the actual position in the assembly's Automation Studio coordinate frame. [Verify coordinates](native-build.md#pin-the-reviewed-traffic-positions) · [Verify read axes](native-build.md#pin-the-assembly-io-and-read-axes)
+
+On the Release edge and accepted destination-arrival scan, record `positionSampleScan` and `positionShuttleId` from the actual position sample, `positionValid` as a Boolean, and `positionXM` and `positionYM` as decimal strings in metres. Keep the sample's actual scan and identity when carrying values between tasks. A stale or unavailable observation leaves the check incomplete. A wrong shuttle or a position outside the tolerance fails it.
+
+Read `stationTraceReview.positionReview.samples` for the two station positions from the compiled RUC, the recorded samples and signed per-axis differences in micrometres. Capture intermediate samples separately to establish trajectory or waypoint traversal.
+
 ## Interpret the result
 
 - `matched` requires one Release edge with the approved request and shuttle, route permission, station clear and inspection busy clear. The same leg needs ReleaseDone and a fresh `mpTRAFFIC_SH_ARRIVAL` at the expected station for that shuttle. Either observation may appear first in the PLC trace after release.

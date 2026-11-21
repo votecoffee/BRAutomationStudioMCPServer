@@ -1,7 +1,9 @@
 from copy import deepcopy
 import unittest
 
-from br_automation_studio.station_trace import ARRIVAL, FLAGS, TraceIssue, check_leg, check_release_motion, trace_header
+from br_automation_studio.station_trace import (
+    ARRIVAL, FLAGS, TraceIssue, check_leg, check_leg_positions, check_release_motion, trace_header,
+)
 
 
 class StationTraceTest(unittest.TestCase):
@@ -137,3 +139,35 @@ class StationTraceTest(unittest.TestCase):
         with self.assertRaises(TraceIssue) as caught:
             check_release_motion(report, self.trace, expected, leg)
         self.assertEqual(caught.exception.code, "station_trace_motion_limits_unverified")
+
+    def test_position_check_needs_fresh_same_shuttle_samples_and_enforces_the_per_axis_limit(self):
+        positions = {"Inspect": {"xyMetres": ["0.66", "0.060"], "path": "Objects.br"},
+                     "Outfeed": {"xyMetres": ["0.84", "0.12"], "path": "Objects.br"}}
+        pinned = {"manager": "Traffic", "files": {"project": {"sha256": "a" * 64}, "readback": {"sha256": "c" * 64}},
+                  "positions": {"state": "matched", "compiled": positions},
+                  "assemblyIo": {"state": "matched", "planned": {"requiredReadAxes": ["X", "Y"]}}}
+        report = {"routeReview": {"launchPad": {"sourceSha256": "a" * 64, "readbackSha256": "c" * 64}},
+                  "rucReview": {"launchPadRoute": pinned}}
+        release = {"positionValid": True, "positionSampleScan": 19, "positionShuttleId": 3,
+                   "positionXM": "0.660005", "positionYM": "0.060"}
+        arrival = dict(release, positionSampleScan=20, positionXM="0.84", positionYM="0.119996")
+        self.trace["scans"][2].update(release)
+        self.trace["scans"][3].update(arrival)
+        receipt = self.check(self.trace)
+        check_leg_positions(report, self.trace, 5, receipt)
+        review = receipt["positionReview"]
+        self.assertEqual(review["state"], "matched")
+        self.assertEqual(review["samples"]["release"]["deltaMicrometres"][0], "5")
+        self.assertEqual(review["samples"]["arrival"]["deltaMicrometres"][1], "-4")
+
+        for fields, code, severity in (
+            ({"positionSampleScan": 19}, "station_trace_position_stale", "warning"),
+            ({"positionShuttleId": 4}, "station_trace_position_shuttle", "error"),
+            ({"positionValid": False}, "station_trace_position_missing", "warning"),
+            ({"positionYM": "0.119994"}, "station_trace_position_mismatch", "error"),
+        ):
+            with self.subTest(fields=fields):
+                self.trace["scans"][3].update(arrival | fields)
+                with self.assertRaises(TraceIssue) as caught:
+                    check_leg_positions(report, self.trace, 5, self.check(self.trace))
+                self.assertEqual((caught.exception.code, caught.exception.severity), (code, severity))

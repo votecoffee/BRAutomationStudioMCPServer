@@ -28,7 +28,7 @@ from .ruc_review import review_ruc
 from .runtime_capture import RuntimeScanCapture
 from .simulation_preflight import COMPANION_MEDIA_27, PAIRS, simulation_environment, simulation_preflight
 from .start_page import StartPageWidget
-from .station_trace import release_motion_value, station_trace_review
+from .station_trace import station_trace_review, trace_decimal
 from .widget_packages import widget_package_review
 
 SCHEMA_VERSION = 1
@@ -256,7 +256,7 @@ def expected_release_motion(arguments):
         raise InvalidRequest("Supply both expectedExitVelocityMps and expectedExitAccelerationMps2")
     for value in expected.values():
         try:
-            release_motion_value(value)
+            trace_decimal(value)
         except ValueError as error:
             raise InvalidRequest(str(error)) from error
     return expected or None
@@ -264,7 +264,8 @@ def expected_release_motion(arguments):
 
 def run_station_trace_review(arguments, request_directory):
     return station_trace_review(*launchpad_inputs(arguments, request_directory), arguments["sourceStation"],
-                                request_directory / arguments["trace"], expected_motion=expected_release_motion(arguments))
+                                request_directory / arguments["trace"], expected_motion=expected_release_motion(arguments),
+                                position_tolerance_um=arguments.get("positionToleranceMicrometres"))
 
 
 def run_cycle_trace_review(arguments, request_directory):
@@ -277,7 +278,8 @@ def run_cycle_trace_review(arguments, request_directory):
                               request_directory / arguments["trace"],
                               hmi_status_path=request_directory / status_report if status_report else None,
                               scan_csv_path=request_directory / scan_csv if scan_csv else None,
-                              require_session_capture=require_capture, expected_motion=expected_release_motion(arguments))
+                              require_session_capture=require_capture, expected_motion=expected_release_motion(arguments),
+                              position_tolerance_um=arguments.get("positionToleranceMicrometres"))
 
 
 def run_launchpad_motion_review(arguments, request_directory):
@@ -578,6 +580,8 @@ STATION_TRACE_INPUTS = {
                                 "description": "Expected ExitVelocity on the Release edge as a decimal string in m/s."},
     "expectedExitAccelerationMps2": {"type": "string", "minLength": 1,
                                      "description": "Expected ExitAcceleration on the Release edge as a decimal string in m/s²."},
+    "positionToleranceMicrometres": {"type": "integer", "minimum": 0, "maximum": 9007199254740991,
+                                      "description": "Maximum per-axis difference from the compiled station position at Release and arrival."},
 }
 STATION_TRACE_REVIEW = Operation(
     name="station_trace_review",

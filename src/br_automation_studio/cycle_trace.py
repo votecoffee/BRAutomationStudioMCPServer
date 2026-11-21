@@ -8,7 +8,7 @@ from .launchpad_route import json_snapshot, launchpad_route_review
 from .mptraffic_events import read_project_events
 from .station_trace import (
     MONITOR_CHECKPOINTS, TRACE_LIMIT, TraceIssue, check_bound_leg, check_detections, check_monitor_checkpoint,
-    check_release_motion, integer, leg_identity, scan_detections, selected_leg,
+    check_leg_positions, check_release_motion, integer, leg_identity, scan_detections, selected_leg,
 )
 
 
@@ -119,7 +119,7 @@ def check_cycle(trace, identity, outbound_path, inbound_path, result):
 
 def cycle_trace_review(project, configuration, cpu, manager_id, lpj, readback, name_map, job_directory,
                        source_station, trace_path, *, hmi_status_path=None, scan_csv_path=None, require_session_capture=False,
-                       expected_motion=None):
+                       expected_motion=None, position_tolerance_um=None):
     report = launchpad_route_review(project, configuration, cpu, manager_id, lpj, readback, name_map, job_directory,
                                     include_stations=True)
     result = report["cycleTraceReview"] = {"state": "not_checked", "sourceStation": source_station}
@@ -148,7 +148,11 @@ def cycle_trace_review(project, configuration, cpu, manager_id, lpj, readback, n
             result["phase"] = "release_motion"
             evidence_path = scan_csv_path or trace_path
             check_release_motion(report, trace["inspectionLeg"], expected_motion, result["outbound"])
-            result["phase"] = "complete"
+        if position_tolerance_um is not None:
+            result["phase"] = "position_witnesses"
+            evidence_path = scan_csv_path or trace_path
+            check_leg_positions(report, trace["inspectionLeg"], position_tolerance_um, result["outbound"])
+        result["phase"] = "complete"
     except (CsvError, OSError, RuntimeError, ValueError) as error:
         severity = error.severity if isinstance(error, TraceIssue) else "error"
         code = error.code if isinstance(error, TraceIssue) else "cycle_trace_invalid"

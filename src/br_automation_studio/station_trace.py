@@ -1,6 +1,6 @@
 """Review saved scan evidence for one inspection leg of a compiled Traffic Manager route."""
 
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, DecimalException, Inexact, InvalidOperation, localcontext
 
 from .launchpad_route import json_snapshot, launchpad_route_review, nonempty
 from .mptraffic_definition import ARRIVAL
@@ -8,6 +8,9 @@ from .mptraffic_definition import ARRIVAL
 TRACE_LIMIT = 16 * 1024 * 1024
 MONITOR_CHECKPOINTS = ("monitorSequenceBeforeScan", "monitorSequenceAfterScan")
 RELEASE_MOTION_FIELDS = ("exitVelocityMps", "exitAccelerationMps2")
+POSITION_COORDINATES = ("positionXM", "positionYM")
+POSITION_IDENTIFIERS = ("positionSampleScan", "positionShuttleId")
+POSITION_FIELDS = (*POSITION_IDENTIFIERS, "positionValid", *POSITION_COORDINATES)
 FLAGS = ("inspectionBusy", "routePermitted", "stationClear", "release", "releaseBuffered",
          "releaseDone", "releaseAborted", "error", "monitorHealthy")
 
@@ -196,30 +199,36 @@ def check_bound_leg(trace, identity, result):
     check_leg(trace, result)
 
 
-def release_motion_value(raw):
+def trace_decimal(raw):
     if not isinstance(raw, str) or not raw or raw != raw.strip() or "_" in raw:
-        raise ValueError("Release motion values must be finite decimal strings")
+        raise ValueError("Trace values must be finite decimal strings")
     try:
         value = Decimal(raw)
     except InvalidOperation as error:
-        raise ValueError("Release motion values must be finite decimal strings") from error
+        raise ValueError("Trace values must be finite decimal strings") from error
     if not value.is_finite():
-        raise ValueError("Release motion values must be finite decimal strings")
+        raise ValueError("Trace values must be finite decimal strings")
     return value
+
+
+def bound_launchpad_evidence(report, manager):
+    route = report["routeReview"]
+    proof = route["launchPad"]
+    binding = report["rucReview"].get("launchPadRoute", {})
+    files = binding.get("files", {})
+    if (binding.get("manager") != manager
+            or files.get("project", {}).get("sha256") != proof["sourceSha256"]
+            or files.get("readback", {}).get("sha256") != proof["readbackSha256"]
+            or files.get("nameMap", {}).get("sha256") != route.get("nameMap", {}).get("sha256")):
+        return {}
+    return binding
 
 
 def check_release_motion(report, trace, expected, leg):
     scan = leg["releaseScans"][0]
     result = leg["releaseMotion"] = {"state": "unverified", "scan": scan, "expected": expected}
-    route = report["routeReview"]
-    proof = route["launchPad"]
-    binding = report["rucReview"].get("launchPadRoute", {})
-    limits = binding.get("motionLimits", {})
-    files = binding.get("files", {})
-    if (binding.get("manager") != trace["managerId"] or limits.get("state") != "matched"
-            or files.get("project", {}).get("sha256") != proof["sourceSha256"]
-            or files.get("readback", {}).get("sha256") != proof["readbackSha256"]
-            or files.get("nameMap", {}).get("sha256") != route.get("nameMap", {}).get("sha256")):
+    limits = bound_launchpad_evidence(report, trace["managerId"]).get("motionLimits", {})
+    if limits.get("state") != "matched":
         raise TraceIssue("station_trace_motion_limits_unverified",
                          "Use the same LaunchPad inputs and a RUC with verified motion limits for the traced manager",
                          "warning")
@@ -232,7 +241,7 @@ def check_release_motion(report, trace, expected, leg):
                          f"Release scan {scan} is missing {', '.join(missing)}", "warning")
     try:
         mismatches = [key for key in RELEASE_MOTION_FIELDS
-                      if release_motion_value(observed[key]) != release_motion_value(expected[key])]
+                      if trace_decimal(observed[key]) != trace_decimal(expected[key])]
     except ValueError as error:
         raise TraceIssue("station_trace_release_motion_invalid", f"Release scan {scan}: {error}") from error
     if mismatches:
@@ -242,8 +251,62 @@ def check_release_motion(report, trace, expected, leg):
     result.update(state="matched", changedFields=[])
 
 
+def check_position_sample(row, shuttle, expected, tolerance_um, witness):
+    scan = row["scan"]
+    values = {key: row.get(key) for key in POSITION_FIELDS}
+    witness["observed"] = values
+    if any(value in (None, "") for value in values.values()) or values["positionValid"] is False:
+        raise TraceIssue("station_trace_position_missing", f"Scan {scan} needs a valid captured shuttle position", "warning")
+    if (values["positionValid"] is not True or not integer(values["positionSampleScan"])
+            or not integer(values["positionShuttleId"], 1)):
+        raise TraceIssue("station_trace_position_invalid", f"Scan {scan} has malformed position identity or validity")
+    if values["positionSampleScan"] != scan:
+        raise TraceIssue("station_trace_position_stale", f"Scan {scan} has a position sample from a different scan", "warning")
+    if values["positionShuttleId"] != shuttle:
+        raise TraceIssue("station_trace_position_shuttle", f"Scan {scan} has a position sample for a different shuttle")
+    try:
+        actual = [trace_decimal(values[key]) for key in POSITION_COORDINATES]
+        reference = [trace_decimal(value) for value in expected]
+        with localcontext() as context:
+            context.prec = max(context.prec, *(len(value.as_tuple().digits) + 16 for value in actual + reference))
+            context.traps[Inexact] = True
+            delta = [(value - target).scaleb(6) for value, target in zip(actual, reference)]
+    except (DecimalException, ValueError) as error:
+        raise TraceIssue("station_trace_position_invalid", f"Scan {scan} needs exactly comparable X and Y in metres") from error
+    witness["deltaMicrometres"] = [str(value) for value in delta]
+    if any(value.copy_abs() > tolerance_um for value in delta):
+        raise TraceIssue("station_trace_position_mismatch", f"Scan {scan} exceeds the position tolerance at {witness['station']!r}")
+    witness["state"] = "matched"
+
+
+def check_leg_positions(report, trace, tolerance_um, leg):
+    result = leg["positionReview"] = {"state": "unverified", "toleranceMicrometres": tolerance_um, "samples": {}}
+    binding = bound_launchpad_evidence(report, trace["managerId"])
+    positions, assembly_io = (binding.get(name, {}) for name in ("positions", "assemblyIo"))
+    if (positions.get("state") != "matched" or assembly_io.get("state") != "matched"
+            or not {"X", "Y"}.issubset(assembly_io["planned"]["requiredReadAxes"])):
+        raise TraceIssue("station_trace_position_context_unverified",
+                         "Use the same LaunchPad inputs and a RUC with verified positions and explicit X and Y read axes",
+                         "warning")
+    compiled = positions["compiled"]
+    endpoints = (("release", trace["sourceStation"], leg["releaseScans"][0]),
+                 ("arrival", trace["destinationStation"], leg["arrival"]["scan"]))
+    for event, station, scan in endpoints:
+        expected = compiled[station]["xyMetres"]
+        witness = result["samples"][event] = {"state": "unverified", "station": station, "scan": scan,
+                                               "expectedXYMetres": expected, "configurationPath": compiled[station]["path"]}
+        sample = next(row for row in trace["scans"] if row["scan"] == scan)
+        try:
+            check_position_sample(sample, trace["shuttleId"], expected, tolerance_um, witness)
+        except TraceIssue as error:
+            if error.severity == "error":
+                witness["state"] = result["state"] = "issues"
+            raise
+    result["state"] = "matched"
+
+
 def station_trace_review(project, configuration, cpu, manager_id, lpj, readback, name_map, job_directory,
-                         source_station, trace_path, *, expected_motion=None):
+                         source_station, trace_path, *, expected_motion=None, position_tolerance_um=None):
     report = launchpad_route_review(project, configuration, cpu, manager_id, lpj, readback, name_map, job_directory,
                                     include_stations=True)
     result = report["stationTraceReview"] = {"state": "not_checked", "sourceStation": source_station}
@@ -258,6 +321,8 @@ def station_trace_review(project, configuration, cpu, manager_id, lpj, readback,
         check_bound_leg(trace, identity, result)
         if expected_motion is not None:
             check_release_motion(report, trace, expected_motion, result)
+        if position_tolerance_um is not None:
+            check_leg_positions(report, trace, position_tolerance_um, result)
     except (OSError, RuntimeError, ValueError) as error:
         severity = error.severity if isinstance(error, TraceIssue) else "error"
         code = error.code if isinstance(error, TraceIssue) else "station_trace_invalid"

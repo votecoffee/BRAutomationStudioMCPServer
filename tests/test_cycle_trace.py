@@ -218,6 +218,26 @@ class CycleTraceTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "distinct CSV column"):
             self.materialize(trace, data)
 
+    def test_mapped_position_sample_keeps_its_own_scan_and_shuttle_identity(self):
+        trace, columns, rows = self.scan_csv()
+        sample = {"positionSampleScan": "11.000", "positionShuttleId": "3.0", "positionValid": "1.0",
+                  "positionXM": "6.60000e-1", "positionYM": "0.0600"}
+        names = {f"inspection.{name}": f"Observed {name}" for name in sample}
+        columns.extend(names.values())
+        rows[2].update({column: sample[role.partition(".")[2]] for role, column in names.items()})
+        trace["scanCapture"]["columns"] = names
+        output = StringIO(newline="")
+        writer = csv.DictWriter(output, fieldnames=columns, lineterminator="\r\n")
+        writer.writeheader()
+        writer.writerows(rows)
+        normalized, capture = self.materialize(trace, output.getvalue().encode("utf-8"))
+        self.assertEqual(capture["positionColumns"], names)
+        release = normalized["inspectionLeg"]["scans"][2]
+        self.assertEqual(release["scan"], 12)
+        self.assertEqual({name: release[name] for name in sample}, sample | {
+            "positionSampleScan": 11, "positionShuttleId": 3, "positionValid": True,
+        })
+
     def test_as_chart_needs_aligned_signals_and_preserves_the_sample_count(self):
         trace, columns, rows = self.scan_csv()
         motion = {"inspection.exitVelocityMps": "0.6000", "inspection.exitAccelerationMps2": "6.000"}

@@ -646,6 +646,10 @@ def markdown_station_trace(trace, text):
         if observed := motion.get("observed"):
             lines.append(f"- Exit velocity {text(observed['exitVelocityMps'])} m/s · "
                          f"Exit acceleration {text(observed['exitAccelerationMps2'])} m/s²")
+    if positions := trace.get("positionReview"):
+        lines.append(f"- Station positions {text(positions['state'])} · Tolerance {positions['toleranceMicrometres']} µm per axis")
+        for event, point in positions["samples"].items():
+            lines.append(f"- {event.title()} position at {text(point['station'])} · Scan {point['scan']} · {text(point['state'])}")
     if fault := trace.get("firstFault"):
         lines.append(f"- First adapter status {fault['statusId']} at scan {fault['scan']}")
     return lines

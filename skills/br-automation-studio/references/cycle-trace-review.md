@@ -16,6 +16,8 @@ The cycle JSON has `schemaVersion` set to 1 and three objects. To supply the sca
 
 With br-studio 0.59.0 or later, include both `expectedExitVelocityMps` and `expectedExitAccelerationMps2` to compare the outbound Release-edge inputs with the intended command. Use the same LaunchPad inputs as the RUC built with `verifyLaunchPadMotionLimits`. The cycle uses the values from the normalized `inspectionLeg.scans` or the [mapped scan capture](cycle-scan-capture.md#verify-the-motion-inputs-in-the-saved-scan-file). Read `cycleTraceReview.outbound.releaseMotion` for the result. If this check is requested, a supplied HMI pairing is evaluated after the motion check passes.
 
+With br-studio 0.61.0 or later, set `positionToleranceMicrometres` to verify the same shuttle's XY sample on the outbound Release and accepted arrival scans. A requested position check must pass before any HMI pairing. [Sample fields and required RUC evidence](station-trace-review.md#check-position-at-the-two-station-events)
+
 ## Record the return leg
 
 Use the same PLC scan index as the outbound trace. Start while the inspected shuttle occupies the return source station. This may overlap the outbound capture from its accepted arrival onward. A return starting after the outbound interval must begin at the next scan.

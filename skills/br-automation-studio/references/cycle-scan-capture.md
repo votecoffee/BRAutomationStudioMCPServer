@@ -45,6 +45,7 @@ The field names below are the default column names. In `columns`, map every fiel
 | Outbound station | `inspection.requestId`, `inspection.selectedShuttleId`, `inspection.inspectionBusy`, `inspection.routePermitted`, `inspection.stationClear`, `inspection.release`, `inspection.releaseBuffered`, `inspection.releaseDone`, `inspection.releaseAborted`, `inspection.error`, `inspection.monitorHealthy`, `inspection.statusId` |
 | Inspection result | `inspection.resultPresent`, `inspection.result.requestId`, `inspection.result.shuttleId`, `inspection.result.acknowledged`, `inspection.result.approved` |
 | Optional release motion | `inspection.exitVelocityMps` and `inspection.exitAccelerationMps2` |
+| Optional station positions | `inspection.positionSampleScan`, `inspection.positionShuttleId`, `inspection.positionValid`, `inspection.positionXM` and `inspection.positionYM` |
 | Return source | `return.sourceHealthy`, `return.occupyingShuttleId`, `return.monitorHealthy`, `return.error`, `return.statusId` |
 | Destination monitors | Each of `inspection.detection` and `return.detection` needs `.sequence`, `.station`, `.shuttleId`, `.event`. |
 | Next held request | `hold.station`, `hold.requestId`, `hold.shuttleId`, `hold.held`, `hold.release`, `hold.resultAccepted` |
@@ -61,6 +62,10 @@ Read only the window-specific columns for each selected phase. A fault needs its
 With br-studio 0.59.0 or later, record the outbound station's `ExitVelocity` and `ExitAcceleration` in the same PLC task sample as Release. The optional default column names are `inspection.exitVelocityMps` and `inspection.exitAccelerationMps2`. Map other CSV headers or AS chart titles under `scanCapture.columns`. Preserve the original decimal strings including exponent notation and trailing zeros. Use m/s and m/s².
 
 Pass both expected inputs as decimal strings to `cycle_trace_review` and use the RUC and LaunchPad files from a build with `verifyLaunchPadMotionLimits`. The check uses the exact Release-edge row. A blank cell or an absent observation on that scan leaves the motion check incomplete. Read `cycleTraceReview.scanCapture.releaseMotionColumns` for the source columns and `cycleTraceReview.outbound.releaseMotion` for the comparison. [Expected inputs](station-trace-review.md#check-the-motion-inputs-on-the-release-edge)
+
+## Check the two station positions in the scan file
+
+Map the five optional position columns to the recorded PLC sample fields and set `positionToleranceMicrometres` in the cycle review request. Check the source position on the Release edge and the destination position on the accepted arrival scan. Use the position sample's own scan index and shuttle ID. Preserve coordinate text in metres and the sample validity flag. Blank values are permitted where the capture provides no observation. Read `cycleTraceReview.scanCapture.positionColumns` for the selected headers and `cycleTraceReview.outbound.positionReview` for the comparison. [Position checks and required RUC evidence](station-trace-review.md#check-position-at-the-two-station-events)
 
 ## Decode events from the saved project and RUC
 
