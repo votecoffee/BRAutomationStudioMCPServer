@@ -2,6 +2,7 @@
 """Bind one reviewed LaunchPad export to a saved manager and retain its inputs."""
 
 from dataclasses import dataclass
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from shutil import copyfile
 
@@ -27,6 +28,7 @@ class LaunchPadBuildInputs:
     manager: str
     name_map: Path | None = None
     verify_layout: bool = False
+    verify_positions: bool = False
 
 
 def selected_manager(manager, managers):
@@ -102,6 +104,49 @@ def compiled_launchpad_layout(pinned, assembly, assembly_links):
     return {"state": "matched" if matched else "issues", "assembly": assembly, "layoutId": layout["layoutId"],
             "path": layout["path"], "gridMm": pinned["gridMm"], "segmentType": pinned["segmentType"],
             "plannedGrid": pinned["grid"], "compiledGrid": grid}
+
+
+def decimal_position(values, name):
+    message = f"Traffic object {name!r} needs two finite X/Y values in metres"
+    if not isinstance(values, list) or len(values) != 2 or not all(nonempty(value) for value in values):
+        raise ValueError(message)
+    try:
+        xy = tuple(Decimal(value) for value in values)
+    except InvalidOperation as error:
+        raise ValueError(message) from error
+    if not all(value.is_finite() for value in xy):
+        raise ValueError(message)
+    return xy
+
+
+def launchpad_positions(binding, managers):
+    manager = selected_manager(binding["manager"], managers)
+    expected = {row["importedName"]: row["type"] for row in binding["objects"]}
+    measured = {}
+    for row in manager["positionEvidence"]:
+        name = row["name"]
+        if name in measured or row["mode"] != "Absolute" or expected.get(name) != row["type"]:
+            raise ValueError(f"Traffic object {name!r} needs one Absolute position of the reviewed type")
+        decimal_position(row["xy"], name)
+        measured[name] = {"type": row["type"], "xyMetres": row["xy"], "path": row["path"]}
+    if measured.keys() != expected.keys():
+        raise ValueError("Expected positions for every object in the reviewed LaunchPad route")
+    return measured
+
+
+def compiled_launchpad_positions(binding, managers):
+    pinned = binding["positions"]
+    compiled = launchpad_positions(binding, managers)
+    if not isinstance(pinned, dict) or pinned.keys() != compiled.keys():
+        raise ValueError("The build plan has an invalid set of LaunchPad positions")
+    moved = []
+    for name, actual in compiled.items():
+        saved = pinned[name]
+        if not isinstance(saved, dict) or saved.get("type") != actual["type"]:
+            raise ValueError(f"The build plan has an invalid position type for {name!r}")
+        if decimal_position(saved.get("xyMetres"), name) != decimal_position(actual["xyMetres"], name):
+            moved.append(name)
+    return {"state": "issues" if moved else "matched", "planned": pinned, "compiled": compiled, "movedObjects": moved}
 
 
 def retained_launchpad_files(reader, binding):

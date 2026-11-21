@@ -61,7 +61,7 @@ def inspect_saved(source, project, configuration=None, cpu=None, *, geometry_man
                     module, _ = source.xml(path, "Configuration")
                     if module is not None:
                         motion.add(path, path.suffix.lower()[1:], module)
-                assembly_links, managers = motion.check(geometry_manager, include_layout=include_layout,
+                assembly_links, managers = motion.check((geometry_manager,), include_layout=include_layout,
                                                         recovery_manager=recovery_manager, include_motion=include_motion,
                                                         include_io=include_io)
                 content = package_files(source, Path("Logical/Package.pkg"), "Package", {"content"})

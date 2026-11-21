@@ -132,6 +132,8 @@ def markdown(response):
             lines.append(f"- LaunchPad route for {text(route['manager'])} · Export SHA-256 {route['files']['export']['sha256']}")
             if layout := route.get("layout"):
                 lines.append(f"- LaunchPad layout {text(layout['layoutId'])} · {layout['grid']['count']} segments")
+            if positions := route.get("positions"):
+                lines.append(f"- Pinned LaunchPad route positions · {len(positions)} objects")
     if job := report.get("nativeBuild"):
         lines.extend(["", "## Native job", "",
                       f"- Job {text(job['jobId'])} · {text(job['status'])} at {text(job['directory'])}"])
@@ -383,6 +385,8 @@ def markdown_ruc(response, text):
                      f" · Export SHA-256 {launchpad['files']['export']['sha256']}")
         if layout := launchpad.get("layout"):
             lines.append(f"- Compiled LaunchPad layout {text(layout['state'])} · {text(layout.get('path'))}")
+        if positions := launchpad.get("positions"):
+            lines.append(f"- Compiled LaunchPad route positions {text(positions['state'])}")
     if symbols := review.get("motionSymbols"):
         lines.extend(markdown_motion_symbols(symbols, text))
     if smoke is not None:

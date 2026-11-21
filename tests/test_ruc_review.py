@@ -260,7 +260,7 @@ position-x-mm="0" position-y-mm="0" transform="translate(0 -240)"><g>
         self.assertEqual(self.codes(response), ["ruc_review_input"])
         self.assertFalse(response["result"]["rucReview"]["sourceMatched"])
 
-    def test_compiled_layout_must_preserve_the_planned_segment_grid(self):
+    def test_compiled_route_must_preserve_the_planned_grid_and_positions(self):
         saved = self.project / "Physical/ARsim/PC/mapp6D/FixtureLayout.layout6d"
         segments = b"""<Group ID="Segments">
           <Group ID="Segment[1]"><Property ID="TypeGrid240" Value="0"/>
@@ -272,6 +272,18 @@ position-x-mm="0" position-y-mm="0" transform="translate(0 -240)"><g>
         saved.write_bytes(layout)
         member = f"{DATA}/FixtureLayout.br"
         self.members[member] = b"synthetic BR prefix\0" + layout + b"\0suffix"
+        objects = saved.with_name("DemoObjects.trafficobjectlist")
+        document = ET.fromstring(objects.read_bytes())
+        positions = {}
+        for index, row in enumerate(document.findall("./Element/Selector"), start=1):
+            position = ET.SubElement(row, "Selector", ID="Position", Value="Absolute")
+            ET.SubElement(position, "Property", ID="X", Value=f"0.{index}")
+            ET.SubElement(position, "Property", ID="Y", Value="0.120")
+            name = row.find("./Property[@ID='Name']").get("Value")
+            positions[name] = {"type": row.get("Value"), "xyMetres": [f"0.{index}", "0.12"]}
+        objects.write_bytes(ET.tostring(document, encoding="utf-8", xml_declaration=True))
+        object_member = f"{DATA}/DemoObjects.br"
+        self.members[object_member] = b"synthetic BR prefix\0" + objects.read_bytes() + b"\0suffix"
         evidence = {}
         for name, payload in (("project", "source.lpj"), ("readback", "readback.json"), ("export", "export.x6d")):
             path = self.job / "launchpad" / payload
@@ -287,13 +299,27 @@ position-x-mm="0" position-y-mm="0" transform="translate(0 -240)"><g>
             "layout": {"assembly": "FixtureAssembly", "layoutId": "FixtureLayout", "gridMm": 240,
                        "segmentType": "S3-AS", "grid": {"count": 2, "masterPositionMm": [0, 0],
                                                        "offsetsFromMasterMm": [[0, 0], [240, 0]]}},
+            "positions": positions,
         }
         self.plan["sha256"] = identity(manifest)
         self.write("plan.json", self.plan)
         self.write("job.json", self.package() | {"launchPadRoute": {"manager": "DemoTraffic", "files": evidence}})
         verified = self.review()
         self.assertEqual(verified["status"], "complete", verified["result"]["diagnostics"])
-        self.assertEqual(verified["result"]["rucReview"]["launchPadRoute"]["layout"]["state"], "matched")
+        route = verified["result"]["rucReview"]["launchPadRoute"]
+        self.assertEqual(route["layout"]["state"], "matched")
+        self.assertEqual(route["positions"]["state"], "matched")
+        self.assertIn("Compiled LaunchPad route positions matched", markdown(verified))
+
+        compiled_objects = self.members[object_member]
+        self.members[object_member] = compiled_objects.replace(b'ID="X" Value="0.1"', b'ID="X" Value="0.11"', 1)
+        self.write("job.json", self.package() | {"launchPadRoute": {"manager": "DemoTraffic", "files": evidence}})
+        moved = self.review()
+        self.assertEqual(self.codes(moved), ["ruc_launchpad_positions_mismatch"])
+        route = moved["result"]["rucReview"]["launchPadRoute"]
+        self.assertEqual((route["state"], route["layout"]["state"]), ("matched", "matched"))
+        self.assertEqual(route["positions"]["movedObjects"], ["Load"])
+        self.members[object_member] = compiled_objects
 
         self.members[member] = self.members[member].replace(b'ID="X" Value="1"', b'ID="X" Value="2"')
         self.write("job.json", self.package() | {"launchPadRoute": {"manager": "DemoTraffic", "files": evidence}})

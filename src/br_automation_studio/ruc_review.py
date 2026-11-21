@@ -12,7 +12,9 @@ from zipfile import BadZipFile, ZipFile
 from .file_device import SYSTEM_CONFIG, read_compiled_layout_device
 from .inspection import inspect_project
 from .json_io import invalid_constant, read_json, unique_object
-from .launchpad_build import checked_manager, compiled_launchpad_layout, retained_launchpad_files
+from .launchpad_build import (
+    checked_manager, compiled_launchpad_layout, compiled_launchpad_positions, retained_launchpad_files,
+)
 from .links import MotionLinks, RULE_ROLES
 from .motion_payloads import verify_packaged_motion
 from .motion_symbols import plan_motion_symbols, read_motion_symbols
@@ -118,7 +120,7 @@ def compare_rows(reader, path, label, expected, actual):
                      f"unexpected {list(extra.items())[:5]!r} (count {sum(extra.values())})")
 
 
-def read_motion(archive, saved, reader, geometry_manager=None, *, include_layout=False,
+def read_motion(archive, saved, reader, geometry_managers=(), *, include_layout=False,
                 recovery_manager=None, include_motion=False, include_io=False):
     planned = defaultdict(list)
     for row in saved["motionModules"]:
@@ -148,7 +150,7 @@ def read_motion(archive, saved, reader, geometry_manager=None, *, include_layout
                      [(row["id"], row["type"]) for row in rows],
                      [(item.get("ID"), item.get("Type")) for item in children(root, "Element")])
         motion.add(path, rows[0]["type"], root)
-    links, managers = (motion.check(geometry_manager, include_layout=include_layout,
+    links, managers = (motion.check(geometry_managers, include_layout=include_layout,
                                    recovery_manager=recovery_manager, include_motion=include_motion, include_io=include_io)
                        if ready else ([], []))
     return motion.module_inventory, links, managers, ready
@@ -367,11 +369,18 @@ def review_ruc(path, job_directory, binding=None, *, geometry_manager=None, incl
                     if member is not None:
                         review["compiledLayoutDevice"] = read_compiled_layout_device(archive.read(member))
                 pinned_layout = launchpad is not None and "layout" in launchpad
-                modules, links, managers, ready = read_motion(archive, saved, reader, geometry_manager,
+                pinned_positions = launchpad is not None and "positions" in launchpad
+                pinned_manager = launchpad["manager"] if pinned_positions else None
+                modules, links, managers, ready = read_motion(archive, saved, reader, (geometry_manager, pinned_manager),
                                                               include_layout=include_layout or pinned_layout,
                                                               recovery_manager=recovery_manager, include_motion=include_motion,
                                                               include_io=include_io)
                 review.update(modules=modules, assemblyLinks=links, trafficManagers=managers)
+                if pinned_positions:
+                    review["launchPadRoute"]["positions"] = {"state": "unverified"}
+                    if not ready:
+                        reader.issue("error", "ruc_launchpad_positions_unverified", Path("."),
+                                     "The compiled motion modules could not be read for the planned position comparison")
                 if ready:
                     compare_motion(reader, saved, links, managers)
                     if launchpad is not None:
@@ -388,6 +397,19 @@ def review_ruc(path, job_directory, binding=None, *, geometry_manager=None, incl
                                 if layout["state"] != "matched":
                                     reader.issue("error", "ruc_launchpad_layout_mismatch", Path(layout["path"]),
                                                  "The compiled layout identity or segment grid differs from the build plan")
+                        if pinned_positions:
+                            try:
+                                positions = compiled_launchpad_positions(launchpad, managers)
+                            except ValueError as error:
+                                reader.issue("error", "ruc_launchpad_positions_unverified", Path("."), str(error))
+                            else:
+                                review["launchPadRoute"]["positions"] = positions
+                                for name in positions["movedObjects"]:
+                                    before = positions["planned"][name]["xyMetres"]
+                                    after = positions["compiled"][name]["xyMetres"]
+                                    reader.issue("error", "ruc_launchpad_positions_mismatch",
+                                                 Path(positions["compiled"][name]["path"]),
+                                                 f"{name!r} compiled XY {after} m differs from the planned {before} m")
                 review["widgets"] = read_widgets(archive, saved, reader)
                 if start_widget is not None:
                     start_widget.check(archive, path.parent, manifest, saved["widgets"], review["widgets"],

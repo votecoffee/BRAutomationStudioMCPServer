@@ -20,6 +20,12 @@ With br-studio 0.52.0 or later, add `verifyLaunchPadLayout: true` to both build 
 
 The plan records the imported layout ID, segment count, master grid position and occupied offsets in the selected Automation Studio coordinate frame. RUC review checks that same grid in the compiled layout. Read `rucReview.launchPadRoute.layout` for the planned and compiled values. Use the [coordinate frame review](launchpad-frame-review.md) to check the route positions and common datum.
 
+### Pin the reviewed traffic positions
+
+Run the [coordinate frame review](launchpad-frame-review.md) on the imported geometry first. With br-studio 0.53.0 or later, add `verifyLaunchPadPositions: true` to both build requests with the reviewed route inputs. The plan records the saved Absolute X and Y values in metres for every station and waypoint in the named manager. Set `verifyLaunchPadLayout` as well to pin the segment grid.
+
+[RUC review](ruc-review.md) compares the compiled X and Y numerically for each reviewed object. Equivalent decimal spellings match. Inspect the planned values, compiled values and moved object names under `rucReview.launchPadRoute.positions`. This verifies coordinates in the saved Automation Studio frame. Use the frame review to qualify the LaunchPad axis mapping and datum.
+
 ### Verify MpTraffic in the plan and RUC
 
 Since br-studio 0.35.0, set `verifyMpTrafficEnum` to true in both the plan and execution requests to carry the [MpTraffic definition check](simulation-preflight.md#verify-the-mptraffic-definition-before-building) into the native build. The plan compares the registered project declaration and IA32 binary with the selected AS4 catalog files. The plan SHA-256 covers the saved and installed declaration and payload hashes under `manifest.mpTrafficDefinition`.

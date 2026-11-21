@@ -148,7 +148,7 @@ class MotionLinks:
                 results.append(match)
         return results
 
-    def check(self, geometry_manager=None, *, include_layout=False, recovery_manager=None,
+    def check(self, geometry_managers=(), *, include_layout=False, recovery_manager=None,
               include_motion=False, include_io=False):
         assembly_links = []
         managers = []
@@ -167,7 +167,7 @@ class MotionLinks:
                     assembly["layoutEvidence"] = [segment_layout(file, item) for file, item in layouts]
                 assembly_links.append(assembly)
             if kind == "trafficmanager":
-                managers.append(self.manager(path, node, collect_positions=identity == geometry_manager,
+                managers.append(self.manager(path, node, collect_positions=identity in geometry_managers,
                                              collect_recovery=identity == recovery_manager))
         return assembly_links, managers
 
