@@ -1,7 +1,7 @@
 """Compare retained AS4 Assembly6D SVG geometry with its saved and compiled configuration."""
 
 from collections import Counter
-from math import isfinite
+from math import hypot, isfinite
 from pathlib import Path
 import re
 
@@ -13,6 +13,7 @@ from .ruc_review import review_ruc
 SVG = "{http://www.w3.org/2000/svg}"
 OBJECTS = {"Station": ("station", "rect"), "Waypoint": ("waypoint", "ellipse")}
 TOLERANCE_MM = 0.001
+ARROW_CLEARANCE_MM = 10.0
 
 
 class UnsupportedLayout(ValueError):
@@ -125,7 +126,7 @@ def directed_ids(edges):
     return result
 
 
-def marker_position(group, tag):
+def marker_geometry(group, tag):
     x, y = translation(group)
     shape = one(group, tag, lambda item: True, "traffic marker")
     if "transform" in shape.attrib:
@@ -135,13 +136,49 @@ def marker_position(group, tag):
         dx, dy = point((shape.get("x", "0"), shape.get("y", "0")), 1)
         if min(width, height) <= 0:
             raise ValueError("Expected positive station rectangle dimensions")
-        return point((x + dx + width / 2, -(y + dy + height / 2)), 1)
-    if min(point((shape.get("rx"), shape.get("ry")), 1)) <= 0:
+        return point((x + dx + width / 2, -(y + dy + height / 2)), 1), (width / 2, height / 2)
+    radii = point((shape.get("rx"), shape.get("ry")), 1)
+    if min(radii) <= 0:
         raise ValueError("Expected positive waypoint ellipse radii")
-    return point((x + float(shape.get("cx", "0")), -(y + float(shape.get("cy", "0")))), 1)
+    return point((x + float(shape.get("cx", "0")), -(y + float(shape.get("cy", "0")))), 1), radii
 
 
-def check_traffic(root, manager_id, positions, mappings):
+def boundary_distance(unit, kind, half_size):
+    if min(half_size) <= 0:
+        raise UnsupportedLayout("Expected positive dimensions for mapping endpoint clipping")
+    ratios = tuple(abs(direction) / extent for direction, extent in zip(unit, half_size))
+    return 1 / (max(ratios) if kind == "Station" else hypot(*ratios))
+
+
+def mapping_line_endpoints(group, line, start, end):
+    identity = group.get("id")
+    if "transform" in group.attrib or "transform" in line.attrib:
+        raise UnsupportedLayout(f"Expected an untransformed mapping line for {identity!r}")
+    start_kind, start_xy, start_size = start
+    end_kind, end_xy, end_size = end
+    delta = tuple(after - before for before, after in zip(start_xy, end_xy))
+    span = hypot(*delta)
+    if not isfinite(span) or span == 0:
+        raise UnsupportedLayout(f"Expected separated mapping endpoints for {identity!r}")
+    unit = tuple(axis / span for axis in delta)
+    source_clip = boundary_distance(unit, start_kind, start_size)
+    target_clip = boundary_distance(unit, end_kind, end_size) + ARROW_CLEARANCE_MM
+    if span <= source_clip + target_clip:
+        raise UnsupportedLayout(f"Mapping {identity!r} has insufficient space for the verified line clipping")
+    expected_start = tuple(axis + direction * source_clip for axis, direction in zip(start_xy, unit))
+    expected_end = tuple(axis - direction * target_clip for axis, direction in zip(end_xy, unit))
+    x1, y1 = point((line.get("x1"), line.get("y1")), 1)
+    x2, y2 = point((line.get("x2"), line.get("y2")), 1)
+    actual_start, actual_end = (x1, -y1), (x2, -y2)
+    largest = max(abs(expected - actual)
+                  for expected, actual in zip((*expected_start, *expected_end), (*actual_start, *actual_end)))
+    if not isfinite(largest):
+        raise ValueError(f"Mapping {identity!r} endpoint difference exceeds the numeric range")
+    return {"expectedFromMm": expected_start, "expectedToMm": expected_end, "svgFromMm": actual_start, "svgToMm": actual_end,
+            "maxAxisDeltaMm": round(largest, 9), "withinTolerance": largest <= TOLERANCE_MM}
+
+
+def check_traffic(root, manager_id, positions, mappings, *, verify_mapping_line_endpoints=False):
     overlay = svg_group(root, manager_id, "traffic-manager")
     if "transform" in overlay.attrib:
         raise UnsupportedLayout("The Traffic Manager group must share the SVG coordinate frame")
@@ -151,13 +188,14 @@ def check_traffic(root, manager_id, positions, mappings):
     relevant = [node for node in groups if semantic.intersection(classes(node)) or node.get("id")]
     inventory("Traffic object and mapping IDs", [*expected, *mappings], [node.get("id") for node in relevant])
     by_id = {node.get("id"): node for node in relevant}
-    objects, edges = [], []
+    objects, edges, footprints = [], [], {}
     for identity, (name, kind, xy) in sorted(expected.items()):
         css, tag = OBJECTS[kind]
         group = by_id[identity]
         if css not in classes(group):
             raise ValueError(f"Expected a {css} group for {name!r}")
-        actual = marker_position(group, tag)
+        actual, half_size = marker_geometry(group, tag)
+        footprints[name] = (kind, xy, half_size)
         residual = max(abs(before - after) for before, after in zip(xy, actual))
         if not isfinite(residual):
             raise ValueError(f"Object {name!r} position difference exceeds the numeric range")
@@ -169,16 +207,21 @@ def check_traffic(root, manager_id, positions, mappings):
         direction = {"gray-one-way", "white-one-way", "gray-two-way", "white-two-way"} & css
         if "link" not in css or direction not in ({"gray-one-way"}, {"white-one-way"}):
             raise ValueError(f"Expected a one-way generated link {identity!r}")
-        one(group, "line", lambda item: True, "mapping line")
-        edges.append({"source": start, "destination": end})
+        line = one(group, "line", lambda item: True, "mapping line")
+        edge = {"source": start, "destination": end}
+        if verify_mapping_line_endpoints:
+            edge["lineEndpoints"] = mapping_line_endpoints(group, line, footprints[start], footprints[end])
+        edges.append(edge)
     return objects, edges
 
 
-def layout_svg_review(project, job, manager_id, assembly_svg, traffic_svg):
+def layout_svg_review(project, job, manager_id, assembly_svg, traffic_svg, *, verify_mapping_line_endpoints=False):
     report = review_ruc(project, job, geometry_manager=manager_id, include_layout=True, include_saved_geometry=True)
     ruc = report["rucReview"]
     result = report["layoutSvgReview"] = {"state": "not_checked", "managerId": manager_id,
                                           "positionToleranceMm": TOLERANCE_MM, "assets": {}}
+    if verify_mapping_line_endpoints:
+        result["mappingLineEndpoints"] = {"state": "not_checked", "arrowClearanceMm": ARROW_CLEARANCE_MM}
 
     def issue(code, path, message, severity="error"):
         report["diagnostics"].append({"scope": "layout_svg", "path": path.as_posix(),
@@ -209,11 +252,27 @@ def layout_svg_review(project, job, manager_id, assembly_svg, traffic_svg):
         result["segments"] = check_assembly(root, assembly, layout["layoutId"], grid)
         path = traffic_svg
         root, result["assets"]["trafficManager"] = svg_input(path, manager_id)
-        result["objects"], result["edges"] = check_traffic(root, manager_id, positions, mappings)
+        result["objects"], result["edges"] = check_traffic(
+            root, manager_id, positions, mappings, verify_mapping_line_endpoints=verify_mapping_line_endpoints,
+        )
         for item in result["objects"]:
             if not item["withinTolerance"]:
                 issue("layout_svg_position_mismatch", path,
                       f"{item['name']} differs by {item['maxAxisDeltaMm']} mm on its largest axis")
+        if verify_mapping_line_endpoints:
+            failed = 0
+            edges = result["edges"]
+            for edge in edges:
+                endpoint = edge["lineEndpoints"]
+                if not endpoint["withinTolerance"]:
+                    failed += 1
+                    issue("layout_svg_line_endpoint_mismatch", path,
+                          f"{edge['source']} to {edge['destination']} line endpoints differ by up to "
+                          f"{endpoint['maxAxisDeltaMm']} mm")
+            result["mappingLineEndpoints"].update(
+                state="issues" if failed else "matched", checkedLinks=len(edges), failedLinks=failed,
+                maxAxisDeltaMm=max((edge["lineEndpoints"]["maxAxisDeltaMm"] for edge in edges), default=None),
+            )
     except UnsupportedLayout as error:
         issue("layout_svg_unverified", path, str(error), "warning")
         result["state"] = "unverified"

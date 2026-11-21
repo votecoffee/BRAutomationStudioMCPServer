@@ -527,6 +527,9 @@ def markdown_layout_svg(review, text):
         lines.append(f"- {text(row['path'])} · SHA-256 {row['sha256']}")
     if "segments" in review:
         lines.append(f"- Segments matched {len(review['segments'])}")
+    if endpoints := review.get("mappingLineEndpoints"):
+        lines.append(f"- Mapping line endpoints {text(endpoints['state'])} · Links checked {text(endpoints.get('checkedLinks'))} "
+                     f"· Largest axis difference (mm) {text(endpoints.get('maxAxisDeltaMm'))}")
     if "objects" in review:
         lines.extend([f"- Directed mapping links matched {len(review['edges'])}", "",
                       "| Object | Type | Configured X/Y (mm) | SVG X/Y (mm) | Max axis delta (mm) |",
@@ -761,6 +764,9 @@ def markdown_cycle_hmi(hmi, text):
         lines.append(f"- Layout geometry {text(geometry['state'])} · Layout {text(geometry.get('layoutId'))}")
         for role, asset in geometry["assets"].items():
             lines.append(f"  - {text(role)} · {text(asset['path'])} · SHA-256 {asset['sha256']}")
+        if endpoints := geometry.get("mappingLineEndpoints"):
+            lines.append(f"  - Mapping endpoints matched · Links checked {text(endpoints.get('checkedLinks'))} "
+                         f"· Largest axis difference (mm) {text(endpoints.get('maxAxisDeltaMm'))}")
     for role, row in hmi.get("status", {}).items():
         lines.append(f"- {text(role)} {row['value']} · Widget {text(row['widget'])} · Node {text(row['identifier'])}")
     return lines

@@ -104,3 +104,5 @@ Read `cycleHmiReview.assemblyWidget` for the selected widget, compiled content, 
 With br-studio 0.69.0 or later, enable `captureLayoutAssets` and `requireStartPage` in the status smoke request. Review the two SVGs saved by that run with [`layout_svg_review`](layout-svg-review.md#run-the-comparison) and save the complete JSON response. Pass that response as `hmiLayoutSvgReport` alongside `hmiStatusReport` in the cycle review. This also runs the Assembly6D widget check.
 
 The cycle, status and geometry reports must identify the same build and RUC. The geometry report must match the widget's assembly and manager, and both SVG hashes must match the capture from the status report's owned HTTP listener. Read `cycleHmiReview.layoutGeometry` for the layout ID and the two hashes. Browser observations cover both documents. The geometry review covers the SVG bodies saved by the status probe's HTTP capture.
+
+If the geometry review includes `verifyMappingLineEndpoints`, the paired layout receipt also carries that result. [Check the drawn mapping endpoints](layout-svg-review.md#check-the-drawn-mapping-endpoints)

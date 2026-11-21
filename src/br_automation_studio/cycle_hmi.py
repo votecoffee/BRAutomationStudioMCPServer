@@ -223,6 +223,11 @@ def check_layout_svg_pairing(ruc, smoke, response, result):
         if svg.get("assets", {}).get(role, {}).get("sha256") != digest:
             raise TraceIssue("cycle_hmi_layout_hash", f"The reviewed {role} SVG differs from the SVG captured in the HMI session")
         geometry["assets"][role] = {"path": path, "sha256": digest}
+    if "mappingLineEndpoints" in svg:
+        endpoints = svg["mappingLineEndpoints"]
+        if endpoints.get("state") != "matched":
+            raise TraceIssue("cycle_hmi_layout_review_invalid", "The geometry report's mapping line endpoint review must match")
+        geometry["mappingLineEndpoints"] = endpoints
     geometry.update(state="matched", layoutId=svg["layoutId"], positionToleranceMm=svg["positionToleranceMm"])
 
 

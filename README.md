@@ -130,6 +130,8 @@ Use `requireHmiAssemblyWidget` to pair the cycle with the Assembly6D startup wid
 
 Use `hmiLayoutSvgReport` to match the geometry review to the SVGs captured by that HMI status run. [Cycle layout geometry review](skills/br-automation-studio/references/cycle-trace-review.md#match-the-captured-layout-geometry-to-the-cycle)
 
+Use `verifyMappingLineEndpoints` in the SVG review to check the directed lines drawn between the configured markers. [Mapping endpoint review](skills/br-automation-studio/references/layout-svg-review.md#check-the-drawn-mapping-endpoints)
+
 Use `ruc_binding_review` to trace a selected one-way mapp View status binding through the saved project, compiled widget and OPC UA exposure map. Set `verifyIecType` to compare the compiled node type with the selected CPU task's registered IEC declaration. [Binding readback workflow](skills/br-automation-studio/references/ruc-binding-review.md)
 
 For a private loopback fixture, `arsim_smoke` materializes the reviewed RUC and compares served mapp View assets with their packaged bytes. [ARsim smoke workflow](skills/br-automation-studio/references/arsim-smoke.md)

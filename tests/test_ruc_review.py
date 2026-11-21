@@ -192,7 +192,7 @@ class RucReviewTests(unittest.TestCase):
         source = ET.fromstring(objects.read_bytes())
         for index, row in enumerate(source.findall("./Element/Selector"), start=1):
             position = ET.SubElement(row, "Selector", ID="Position", Value="Absolute")
-            ET.SubElement(position, "Property", ID="X", Value=f"0.0{index}")
+            ET.SubElement(position, "Property", ID="X", Value=f"0.{index}")
             ET.SubElement(position, "Property", ID="Y", Value="0.02")
         objects.write_bytes(ET.tostring(source, encoding="utf-8", xml_declaration=True))
         for path in (layout, objects):
@@ -210,12 +210,12 @@ position-x-mm="0" position-y-mm="0" transform="translate(0 -240)"><g>
 <rect width="240" height="240"/></g></g></g></g></svg>""", encoding="utf-8")
         overlay = """<svg xmlns="http://www.w3.org/2000/svg" id="DemoTraffic-svg">
 <g class="traffic-manager" id="DemoTraffic">
-<g class="station" id="station_Load" transform="translate(-5 -35)"><rect width="30" height="30"/></g>
-<g class="waypoint" id="waypoint_Transit" transform="translate(20 -20)"><ellipse rx="12" ry="12"/></g>
-<g class="station" id="station_Inspect" transform="translate(15 -35)"><rect width="30" height="30"/></g>
-<g class="link gray-one-way" id="mapping_Load_to_Transit"><line/></g>
-<g class="link gray-one-way" id="mapping_Transit_to_Inspect"><line/></g>
-<g class="link gray-one-way" id="mapping_Inspect_to_Load"><line/></g>
+<g class="station" id="station_Load" transform="translate(85 -35)"><rect width="30" height="30"/></g>
+<g class="waypoint" id="waypoint_Transit" transform="translate(200 -20)"><ellipse rx="12" ry="12"/></g>
+<g class="station" id="station_Inspect" transform="translate(285 -35)"><rect width="30" height="30"/></g>
+<g class="link gray-one-way" id="mapping_Load_to_Transit"><line x1="115" y1="-20" x2="178" y2="-20"/></g>
+<g class="link gray-one-way" id="mapping_Transit_to_Inspect"><line x1="212" y1="-20" x2="275" y2="-20"/></g>
+<g class="link gray-one-way" id="mapping_Inspect_to_Load"><line x1="285" y1="-20" x2="125" y2="-20"/></g>
 </g></svg>"""
         request = {"schemaVersion": 1, "workspace": "readback", "operation": "layout_svg_review",
                    "arguments": {"project": "Loop/Loop.apj", "jobDirectory": "retained", "managerId": "DemoTraffic",
@@ -225,11 +225,11 @@ position-x-mm="0" position-y-mm="0" transform="translate(0 -240)"><g>
         self.assertEqual(matched["status"], "complete", matched)
         result = matched["result"]["layoutSvgReview"]
         self.assertEqual(len(result["edges"]), 3)
-        self.assertEqual(result["objects"][0]["svgMm"], (30, 20))
+        self.assertEqual(result["objects"][0]["svgMm"], (300, 20))
         self.assertIn("Segments matched 1", markdown(matched))
 
         failures = (
-            ("translate(20 -20)", "translate(21 -20)", "layout_svg_position_mismatch"),
+            ("translate(200 -20)", "translate(201 -20)", "layout_svg_position_mismatch"),
             ("mapping_Load_to_Transit", "mapping_Transit_to_Load", "layout_svg_mismatch"),
         )
         for original, changed, code in failures:
@@ -238,6 +238,16 @@ position-x-mm="0" position-y-mm="0" transform="translate(0 -240)"><g>
                 response = execute(request, self.root)
                 self.assertEqual(response["status"], "issues")
                 self.assertEqual(self.codes(response), [code])
+
+        request["arguments"]["verifyMappingLineEndpoints"] = True
+        traffic.write_text(overlay, encoding="utf-8")
+        checked = execute(request, self.root)
+        self.assertEqual(checked["status"], "complete", checked)
+        self.assertEqual(checked["result"]["layoutSvgReview"]["mappingLineEndpoints"]["checkedLinks"], 3)
+        traffic.write_text(overlay.replace('x1="115" y1="-20" x2="178"', 'x1="178" y1="-20" x2="115"'), encoding="utf-8")
+        changed_line = execute(request, self.root)
+        self.assertEqual(self.codes(changed_line), ["layout_svg_line_endpoint_mismatch"])
+        self.assertEqual(changed_line["result"]["layoutSvgReview"]["mappingLineEndpoints"]["failedLinks"], 1)
 
         traffic.write_text(overlay, encoding="utf-8")
         member = f"{DATA}/DemoObjects.br"

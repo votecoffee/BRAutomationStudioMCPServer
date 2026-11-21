@@ -219,7 +219,8 @@ def run_layout_device_review(arguments, request_directory):
 def run_layout_svg_review(arguments, request_directory):
     return layout_svg_review(project_path(arguments, request_directory), request_directory / arguments["jobDirectory"],
                              arguments["managerId"], request_directory / arguments["assemblySvg"],
-                             request_directory / arguments["trafficSvg"])
+                             request_directory / arguments["trafficSvg"],
+                             verify_mapping_line_endpoints=arguments.get("verifyMappingLineEndpoints", False))
 
 
 def run_launchpad_export_review(arguments, request_directory):
@@ -564,6 +565,8 @@ LAYOUT_SVG_REVIEW = Operation(
         "managerId": {"type": "string", "minLength": 1, "description": "Selected Traffic Manager element ID."},
         "assemblySvg": {"type": "string", "minLength": 1, "description": "Retained generated assembly SVG file."},
         "trafficSvg": {"type": "string", "minLength": 1, "description": "Retained generated Traffic Manager SVG file."},
+        "verifyMappingLineEndpoints": {"type": "boolean", "default": False,
+                                       "description": "Verify the drawn start and end coordinates of each generated one-way mapping."},
     },
     required=("project", "jobDirectory", "managerId", "assemblySvg", "trafficSvg"),
     handler=run_layout_svg_review,
