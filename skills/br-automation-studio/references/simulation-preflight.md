@@ -65,6 +65,12 @@ Use `br-studio operation-help simulation_preflight` to discover the contract. Se
 
 Run `br-studio run --request <simulation-preflight.json>`. Add `--format markdown` for the readable report.
 
+## Inspect the LaunchPad export structure
+
+With br-studio 0.49.0 or later, set `inspectLaunchPadExport` to true alongside `launchPadExport`. Read `simulationPreflight.launchPadExport.structure` for the XML root, group counts and available IDs and names. The check uses the same bytes identified by the export hash. It recognizes the unqualified top-level `Segments` group and inventories `Stations`, `Waypoints`, `Gates`, `Branches` and `ExclusiveGroups` when present.
+
+The reference is the installed AS4 mapp 6D 2.2 importer. An export outside the observed XML structure produces an `unverified` result with a diagnostic and retains the file identity. Use the selected Automation Studio importer for format acceptance and the [LaunchPad route review](launchpad-route-review.md) for the saved and compiled Traffic Manager mappings. [B&R LaunchPad export workflow](https://www.br-automation.com/en/products/software/acopos-6d-launchpad/)
+
 ## Verify the MpTraffic definition before building
 
 Set `arguments.verifyMpTrafficEnum` to true with br-studio 0.34.0 or later when the project contains its registered MpTraffic library. The comparison reads the project .apj, the selected CPU's library references and the saved library descriptor. It compares the detection enum names and integer values with the exact mapp 6D and MpTraffic versions selected from the installed catalog. It also compares the saved and installed IA32 library binaries by SHA-256.

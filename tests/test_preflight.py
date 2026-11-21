@@ -772,6 +772,48 @@ class BuildPreflightTests(unittest.TestCase):
 
     @patch("br_automation_studio.simulation_preflight.installed_product",
            return_value={"stateCode": 5, "version": "1.25.53"})
+    def test_simulation_can_inventory_export_groups_and_report_unverified_shapes(self, msi):
+        export = self.prepare_simulation()
+        original = b"""<?xml version="1.0"?>
+        <ModeledExport>
+          <Group ID="Segments"><Group ID="Segment[1]">
+            <Property ID="Name" Value="Master"/>
+          </Group></Group>
+          <Group ID="Stations">
+            <Group ID="NbOfStations"/>
+            <Group ID="Station[1]"><Property ID="Name" Value="Load"/></Group>
+          </Group>
+          <Group ID="FutureGroup"/>
+        </ModeledExport>"""
+        export.write_bytes(original)
+        response = self.simulation(inspectLaunchPadExport=True)
+        result = response["result"]["simulationPreflight"]["launchPadExport"]
+        self.assertEqual(response["status"], "complete", response["result"]["diagnostics"])
+        self.assertEqual(result["structure"]["state"], "read")
+        self.assertEqual(result["structure"]["root"], "ModeledExport")
+        self.assertEqual(result["structure"]["otherGroupIds"], ["FutureGroup"])
+        self.assertEqual([(row["id"], row["count"]) for row in result["structure"]["groups"]],
+                         [("Segments", 1), ("Stations", 1)])
+        self.assertEqual(result["structure"]["groups"][1]["entries"], [{"id": "Station[1]", "name": "Load"}])
+        self.assertIn("Stations · Records 1", markdown(response))
+        self.assertEqual(result["sha256"], sha256(original).hexdigest())
+        self.assertEqual(export.read_bytes(), original)
+
+        for invalid in (b"renamed input bytes", b"<Other xmlns='urn:example'><Group ID='Segments'/></Other>",
+                        b"<Other><Group ID='Segments'/><Group ID='Segments'/></Other>"):
+            with self.subTest(invalid=invalid):
+                export.write_bytes(invalid)
+                returned = self.simulation(inspectLaunchPadExport=True)
+                report = returned["result"]["simulationPreflight"]
+                self.assertEqual(report["state"], "review_required")
+                self.assertEqual(report["launchPadExport"]["structure"]["state"], "unverified")
+                self.assertEqual(report["launchPadExport"]["sha256"], sha256(invalid).hexdigest())
+                self.assertIn("launchpad_export_structure_unverified",
+                              [row["code"] for row in returned["result"]["diagnostics"]])
+                self.assertNotIn("structure", self.simulation()["result"]["simulationPreflight"]["launchPadExport"])
+
+    @patch("br_automation_studio.simulation_preflight.installed_product",
+           return_value={"stateCode": 5, "version": "1.25.53"})
     def test_simulation_companion_media_identifies_bytes_under_wrong_role(self, msi):
         self.prepare_simulation()
         firmware = self.root / "Renamed.zip"

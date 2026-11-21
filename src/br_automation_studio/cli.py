@@ -102,6 +102,10 @@ def markdown(response):
         lines.extend(markdown_simulation_prerequisites(simulation, text))
         if export := simulation["launchPadExport"]:
             lines.append(f"- LaunchPad export {text(export['path'])} · SHA-256 {text(export['sha256'])}")
+            if structure := export.get("structure"):
+                lines.append(f"- LaunchPad export structure {text(structure['state'])}")
+                for group in structure.get("groups", ()):
+                    lines.append(f"  - {text(group['id'])} · Records {group['count']}")
     if definition := report.get("mpTrafficDefinition"):
         lines.extend(["", "## MpTraffic build verification", "", *markdown_mptraffic_definition(definition, text)])
     if declarations := report.get("motionDeclarations"):

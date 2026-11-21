@@ -4,6 +4,7 @@ from dataclasses import asdict, dataclass
 from hashlib import file_digest
 from pathlib import Path
 
+from .launchpad_export import inventory_export
 from .mptraffic_definition import check_installed_definition
 from .preflight import PACKAGE_ROOT, RUNTIME_VERSION, build_preflight, engine, numeric_version, selected_package, within
 from .project import SavedFiles
@@ -287,7 +288,8 @@ def simulation_environment(studio, family, simulator_zip=None, *, companion_medi
 
 
 def simulation_preflight(project, studio, runtime_root, configuration, cpu, family, simulator_zip=None, export=None,
-                         *, verify_mptraffic_enum=False, verify_motion_declarations=False, companion_media=None):
+                         *, verify_mptraffic_enum=False, verify_motion_declarations=False, companion_media=None,
+                         inspect_launchpad_export=False):
     pair = simulator_pair(family)
     report = build_preflight(project, studio, runtime_root, configuration, cpu,
                              verify_motion_declarations=verify_motion_declarations)
@@ -300,6 +302,13 @@ def simulation_preflight(project, studio, runtime_root, configuration, cpu, fami
     native_export = file_evidence(reader, export, ".x6d", "launchpad_export_invalid")
     if export is None:
         reader.issue("error", "launchpad_export_missing", Path("."), "Supply the native LaunchPad .x6d for the intended route")
+    if native_export is not None and inspect_launchpad_export:
+        export_path = Path(native_export["path"])
+        try:
+            native_export["structure"] = inventory_export(export_path, native_export["sha256"])
+        except (OSError, ValueError) as error:
+            native_export["structure"] = {"state": "unverified"}
+            reader.issue("warning", "launchpad_export_structure_unverified", export_path, str(error))
 
     report["diagnostics"].extend(dict(item, scope="simulation") for item in reader.diagnostics)
     extra = {}

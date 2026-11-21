@@ -134,6 +134,7 @@ def run_simulation_preflight(arguments, request_directory):
         verify_mptraffic_enum=arguments.get("verifyMpTrafficEnum", False),
         verify_motion_declarations=arguments.get("verifyMotionDeclarations", False),
         companion_media=simulation_companion_media(arguments, request_directory),
+        inspect_launchpad_export=arguments.get("inspectLaunchPadExport", False),
     )
 
 
@@ -385,6 +386,8 @@ SIMULATION_PREFLIGHT = Operation(
         **BUILD_PREFLIGHT.arguments,
         **SIMULATION_ENVIRONMENT.arguments,
         "launchPadExport": {"type": "string", "minLength": 1, "description": "Native LaunchPad .x6d for the intended route."},
+        "inspectLaunchPadExport": {"type": "boolean", "default": False,
+                                  "description": "Inventory XML groups observed in the AS4 2.2 LaunchPad importer."},
         "verifyMpTrafficEnum": {"type": "boolean", "default": False,
                                 "description": "Compare saved MpTraffic detection values and IA32 binary with the installed selection."},
     },
