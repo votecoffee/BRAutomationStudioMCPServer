@@ -43,15 +43,23 @@ def assembly_limits(rows, assembly):
     return next((row["motionLimits"] for row in rows if row["assembly"] == assembly), None)
 
 
+def exit_parameters(objects, renamed):
+    return [{"name": obj["name"], "importedName": renamed[obj["name"]], "type": obj["type"],
+             **obj["modelExit"]} for obj in objects]
+
+
+def missing_exit_parameters(exits):
+    return [row["name"] for row in exits if any(row[key] is None for key in MODEL_EXIT_FIELDS)]
+
+
 def review_motion(assembly, links, saved_links, objects, renamed, readback, project):
     selected = assembly_limits(links, assembly)
     saved = assembly_limits(saved_links, assembly) if saved_links is not None else selected
     compiled = selected if saved_links is not None else None
-    exits = [{"name": obj["name"], "importedName": renamed[obj["name"]], "type": obj["type"],
-              **obj["modelExit"]} for obj in objects]
+    exits = exit_parameters(objects, renamed)
     result = {"assembly": assembly, "limits": {}, "launchPadExitParameters": exits}
     issues = []
-    missing = [row["name"] for row in exits if any(row[key] is None for key in MODEL_EXIT_FIELDS)]
+    missing = missing_exit_parameters(exits)
     if missing:
         issues.append(("launchpad_motion_unverified", readback,
                        f"Missing or unsupported LaunchPad exit values at {', '.join(missing)}", "warning"))

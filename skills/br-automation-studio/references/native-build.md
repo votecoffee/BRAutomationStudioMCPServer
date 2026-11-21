@@ -44,6 +44,12 @@ With br-studio 0.56.0 or later, use `"verifyLaunchPadRecovery": true` in both bu
 
 RUC review compares the compiled mode, eligibility and indexed positions with the plan. Read `rucReview.launchPadRoute.recovery` for the planned and compiled declarations and the stations that changed. Check the target runtime for actual shuttle occupancy after recovery.
 
+### Pin the explicit in-plane motion limits
+
+With br-studio 0.57.0 or later, add `"verifyLaunchPadMotionLimits": true` to both build requests with the reviewed LaunchPad route inputs. Review and explicitly declare positive `InPlaneVelLim` and `InPlaneAccLim` values on the assembly linked by the selected manager. The plan records both values and the raw LaunchPad exit velocity, acceleration and payload weight for each route object. Use [motion readback](launchpad-motion-review.md) to examine the values supplied by a build when a saved field is absent.
+
+RUC review requires the explicit saved limits to survive compilation. Read `rucReview.launchPadRoute.motionLimits` for the plan, compiled fields and per-field comparisons. Capture the actual station release inputs and observed motion in the target simulator.
+
 ### Verify MpTraffic in the plan and RUC
 
 Since br-studio 0.35.0, set `verifyMpTrafficEnum` to true in both the plan and execution requests to carry the [MpTraffic definition check](simulation-preflight.md#verify-the-mptraffic-definition-before-building) into the native build. The plan compares the registered project declaration and IA32 binary with the selected AS4 catalog files. The plan SHA-256 covers the saved and installed declaration and payload hashes under `manifest.mpTrafficDefinition`.

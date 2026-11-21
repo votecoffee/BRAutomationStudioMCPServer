@@ -8,6 +8,8 @@ Use `launchpad_motion_review` with the [LaunchPad route review](launchpad-route-
 - A saved value may be absent. The comparison reports `materialized` if the verified RUC contains the limit and the saved file leaves it absent. This records what the build supplied. An explicit saved limit must be present with the same numeric value in the RUC. Different decimal spellings of the same value compare equal.
 - Unsupported or ambiguous declarations make the result unverified. In a compiled review, a missing or different value for an explicitly declared saved limit is an issue.
 
+Use `verifyLaunchPadMotionLimits` to require explicit positive values in the saved assembly and carry them into the build plan with the model's raw exit values. [Pin the explicit in-plane motion limits](native-build.md#pin-the-explicit-in-plane-motion-limits)
+
 ## Read the model and verify the command
 
 The report preserves the raw LaunchPad exit velocity, acceleration, and payload weight for each source on the matched route. The terminal return marker contributes the final edge, with no separate exit record. Negative values remain raw. Verify their interpretation in the compatible LaunchPad and native import workflow before applying engineering units or defaults.

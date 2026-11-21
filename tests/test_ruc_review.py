@@ -602,6 +602,32 @@ position-x-mm="0" position-y-mm="0" transform="translate(0 -240)"><g>
         self.assertIsNone(result["motionReview"]["launchPadExitParameters"][0]["exit_velocity"])
         self.assertEqual(result["motionReview"]["limits"]["InPlaneVelLim"]["comparison"], "materialized")
 
+    def test_pinned_in_plane_limits_match_numeric_values_and_reject_drift(self):
+        self.supply_motion_values(saved=("0.75", "8.0"), compiled=("0.7500", "8.00"))
+        limits = {
+            "assembly": "FixtureAssembly", "path": "Physical/ARsim/PC/mapp6D/FixtureAssembly.assembly6d",
+            "fields": {"InPlaneVelLim": {"state": "declared", "raw": "0.75", "unit": "m/s"},
+                       "InPlaneAccLim": {"state": "declared", "raw": "8.0", "unit": "m/s²"}},
+        }
+        retained = self.add_launchpad_route(motionLimits={"saved": limits})
+        verified = self.review()
+        self.assertEqual(verified["status"], "complete", verified["result"]["diagnostics"])
+        self.assertIn("Compiled in-plane limits matched", markdown(verified))
+        compiled = self.members[ASSEMBLY]
+        for value, state, code in (
+            (b"0.5", "issues", "ruc_launchpad_motion_limit_mismatch"),
+            (b"NaN", "unverified", "ruc_launchpad_motion_limits_unverified"),
+        ):
+            with self.subTest(value=value):
+                self.members[ASSEMBLY] = compiled.replace(b"0.7500", value)
+                self.write("job.json", self.package() | {"launchPadRoute": retained})
+                rejected = self.review()
+                self.assertEqual(self.codes(rejected), [code])
+                route = rejected["result"]["rucReview"]["launchPadRoute"]
+                self.assertEqual(route["state"], "matched")
+                self.assertEqual(route["motionLimits"]["state"], state)
+                self.assertEqual(route["motionLimits"]["comparisons"]["InPlaneAccLim"], "matched")
+
     def supply_assembly_io(self, *, output_type="Mc6DControllerFBIOType", registered=True, changed_axis=False):
         logical = self.project / "Logical"
         package = logical / "Package.pkg"

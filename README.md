@@ -108,6 +108,8 @@ Use `verifyLaunchPadRules` to carry the selected manager's reviewed exclusivity 
 
 Use `verifyLaunchPadRecovery` to verify station recovery eligibility, mode and indexed points through compilation. [Station recovery check](skills/br-automation-studio/references/native-build.md#pin-the-reviewed-station-recovery)
 
+Use `verifyLaunchPadMotionLimits` to verify the linked assembly's explicit in-plane limits and retain the raw LaunchPad exit values. [Motion limit check](skills/br-automation-studio/references/native-build.md#pin-the-explicit-in-plane-motion-limits)
+
 Use `ruc_binding_review` to trace a selected one-way mapp View status binding through the saved project, compiled widget and OPC UA exposure map. Set `verifyIecType` to compare the compiled node type with the selected CPU task's registered IEC declaration. [Binding readback workflow](skills/br-automation-studio/references/ruc-binding-review.md)
 
 For a private loopback fixture, `arsim_smoke` materializes the reviewed RUC and compares served mapp View assets with their packaged bytes. [ARsim smoke workflow](skills/br-automation-studio/references/arsim-smoke.md)

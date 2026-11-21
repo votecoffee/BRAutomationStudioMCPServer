@@ -155,7 +155,8 @@ def launchpad_build_inputs(arguments, request_directory):
     widget = arguments.get("launchPadWidgetId")
     verify_rules = arguments.get("verifyLaunchPadRules", False)
     verify_recovery = arguments.get("verifyLaunchPadRecovery", False)
-    if not (verify_layout or verify_positions or verify_rules or verify_recovery or widget is not None
+    verify_motion_limits = arguments.get("verifyLaunchPadMotionLimits", False)
+    if not (verify_layout or verify_positions or verify_rules or verify_recovery or verify_motion_limits or widget is not None
             or arguments.keys() & (required | {"nameMap"})):
         return None
     if missing := required - arguments.keys():
@@ -166,7 +167,8 @@ def launchpad_build_inputs(arguments, request_directory):
                                 request_directory / arguments["launchPadExport"], arguments["managerId"],
                                 request_directory / mapping if mapping is not None else None,
                                 verify_layout=verify_layout, verify_positions=verify_positions, widget_id=widget,
-                                verify_rules=verify_rules, verify_recovery=verify_recovery)
+                                verify_rules=verify_rules, verify_recovery=verify_recovery,
+                                verify_motion_limits=verify_motion_limits)
 
 
 def build_plan(arguments, request_directory):
@@ -450,6 +452,8 @@ BUILD_PLAN = Operation(
                                  "description": "Pin the selected manager's linked rule lists and typed exclusivity roles."},
         "verifyLaunchPadRecovery": {"type": "boolean", "default": False,
                                     "description": "Verify and pin the reviewed station eligibility, mode and indexed recovery points."},
+        "verifyLaunchPadMotionLimits": {"type": "boolean", "default": False,
+                                        "description": "Pin the linked assembly's explicit in-plane limits and the raw LaunchPad exit values."},
         "verifyMpTrafficEnum": SIMULATION_PREFLIGHT.arguments["verifyMpTrafficEnum"],
         "verifyMotionPayloads": {"type": "boolean", "default": False,
                                  "description": "Pin the six AS4 SG4/IA32 motion payloads and verify the produced RUC."},

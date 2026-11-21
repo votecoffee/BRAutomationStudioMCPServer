@@ -6,9 +6,10 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from shutil import copyfile
 
-from .launchpad_baseline import compare_cycle, names_for, nonempty, read_launchpad_save
+from .launchpad_baseline import compare_cycle, names_for, nonempty, read_launchpad_save, route_baseline
 from .launchpad_export import review_launchpad_export
 from .launchpad_layout import compare_layout, linked_layout, master_offsets, native_segments
+from .launchpad_motion import LIMIT_UNITS, assembly_limits, compare_limit, exit_parameters, missing_exit_parameters, read_limit
 from .launchpad_recovery import MODES, STARTING_FLAGS, as_declaration, declaration_values, recovery_matches, review_recovery
 from .links import RULE_ROLES, rule_key
 from .project import SavedFiles
@@ -34,6 +35,7 @@ class LaunchPadBuildInputs:
     widget_id: str | None = None
     verify_rules: bool = False
     verify_recovery: bool = False
+    verify_motion_limits: bool = False
 
 
 def selected_manager(manager, managers):
@@ -215,6 +217,46 @@ def compiled_launchpad_recovery(binding, saved_managers, compiled_managers):
     changed = sorted(name for name, record in compiled.items() if not recovery_matches(expected[name], record))
     return {"state": "issues" if changed else "matched", "planned": planned, "compiled": compiled,
             "changedStations": changed}
+
+
+def motion_limit_values(links, assembly):
+    reading = assembly_limits(links, assembly)
+    if reading is None:
+        raise ValueError(f"Cannot read in-plane limits for the reviewed assembly {assembly!r}")
+    return {"assembly": assembly, "path": reading["path"], "fields": {
+        key: read_limit(reading["fields"][key]) | {"unit": unit} for key, unit in LIMIT_UNITS.items()
+    }}
+
+
+def require_explicit_motion_limits(limits):
+    missing = [name for name, field in limits["fields"].items() if field["state"] != "declared"]
+    if missing:
+        raise ValueError(f"Explicit positive limits are required in {limits['path']}: {', '.join(missing)}")
+
+
+def plan_launchpad_motion_limits(inputs, binding, managers, links):
+    assembly = selected_manager(binding["manager"], managers)["assembly"]
+    saved = motion_limit_values(links, assembly)
+    require_explicit_motion_limits(saved)
+    decoded = checked_launchpad_save(inputs, binding)
+    _, objects = route_baseline({}, decoded, False, include_motion=True)
+    renamed = {row["name"]: row["importedName"] for row in binding["objects"]}
+    exits = exit_parameters(objects, renamed)
+    if missing := missing_exit_parameters(exits):
+        raise ValueError(f"Missing or unsupported LaunchPad exit values at {', '.join(missing)}")
+    return {"saved": saved, "launchPadExitParameters": exits}
+
+
+def compiled_launchpad_motion_limits(binding, assembly, saved_links, compiled_links):
+    planned = binding["motionLimits"]
+    saved = motion_limit_values(saved_links, assembly)
+    require_explicit_motion_limits(saved)
+    if not isinstance(planned, dict) or planned.get("saved") != saved:
+        raise ValueError("The pinned in-plane limits differ from the saved assembly")
+    compiled = motion_limit_values(compiled_links, assembly)
+    results = {key: compare_limit(before, compiled["fields"][key]) for key, before in saved["fields"].items()}
+    state = "issues" if "mismatch" in results.values() else "unverified" if "unverified" in results.values() else "matched"
+    return {"state": state, "planned": planned, "compiled": compiled, "comparisons": results}
 
 
 def retained_launchpad_files(reader, binding):

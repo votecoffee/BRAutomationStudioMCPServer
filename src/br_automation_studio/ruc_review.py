@@ -13,8 +13,8 @@ from .file_device import SYSTEM_CONFIG, read_compiled_layout_device
 from .inspection import inspect_project
 from .json_io import invalid_constant, read_json, unique_object
 from .launchpad_build import (
-    checked_manager, compiled_launchpad_layout, compiled_launchpad_positions, compiled_launchpad_recovery,
-    launchpad_rules, retained_launchpad_files, selected_manager,
+    checked_manager, compiled_launchpad_layout, compiled_launchpad_motion_limits, compiled_launchpad_positions,
+    compiled_launchpad_recovery, launchpad_rules, retained_launchpad_files, selected_manager,
 )
 from .links import MotionLinks, rule_key
 from .motion_payloads import verify_packaged_motion
@@ -184,6 +184,22 @@ def compare_launchpad_rules(reader, launchpad, saved, managers):
             "compiled": compiled, "changedLists": changed}
 
 
+def compare_launchpad_motion_limits(reader, launchpad, assembly, saved_links, compiled_links):
+    try:
+        report = compiled_launchpad_motion_limits(launchpad, assembly, saved_links, compiled_links)
+    except ValueError as error:
+        reader.issue("error", "ruc_launchpad_motion_limits_unverified", Path(DATA), str(error))
+        return {"state": "unverified", "planned": launchpad["motionLimits"]}
+    path = Path(report["compiled"]["path"])
+    for key, outcome in report["comparisons"].items():
+        if outcome == "mismatch":
+            reader.issue("error", "ruc_launchpad_motion_limit_mismatch", path,
+                         f"Compiled {key} differs from the explicit limit in the build plan")
+        elif outcome == "unverified":
+            reader.issue("error", "ruc_launchpad_motion_limits_unverified", path, f"Cannot verify compiled {key}")
+    return report
+
+
 def compare_motion(reader, saved, links, managers, pinned_rules_manager=None):
     path = Path(DATA)
     compare_rows(reader, path, "Assembly layouts",
@@ -315,6 +331,8 @@ def review_ruc(path, job_directory, binding=None, *, geometry_manager=None, incl
         if launchpad is not None and not isinstance(launchpad, dict):
             raise ValueError("The build plan has no usable LaunchPad evidence")
         pinned_recovery = launchpad is not None and "recovery" in launchpad
+        pinned_motion_limits = launchpad is not None and "motionLimits" in launchpad
+        include_motion = include_motion or pinned_motion_limits
         recovery_managers = (recovery_manager, launchpad["manager"] if pinned_recovery else None)
 
         if binding is None:
@@ -423,6 +441,11 @@ def review_ruc(path, job_directory, binding=None, *, geometry_manager=None, incl
                     if not ready:
                         reader.issue("error", "ruc_launchpad_recovery_unverified", Path(DATA),
                                      "The compiled motion modules could not be read for the planned station recovery comparison")
+                if pinned_motion_limits:
+                    review["launchPadRoute"]["motionLimits"] = {"state": "unverified", "planned": launchpad["motionLimits"]}
+                    if not ready:
+                        reader.issue("error", "ruc_launchpad_motion_limits_unverified", Path(DATA),
+                                     "The compiled motion modules could not be read for the in-plane limit comparison")
                 if ready:
                     compare_motion(reader, saved, links, managers, launchpad["manager"] if pinned_rules else None)
                     if launchpad is not None:
@@ -430,6 +453,10 @@ def review_ruc(path, job_directory, binding=None, *, geometry_manager=None, incl
                         review["launchPadRoute"].update(state="matched", edges=route["expectedEdges"])
                         if pinned_rules:
                             review["launchPadRoute"]["rules"] = compare_launchpad_rules(reader, launchpad, saved, managers)
+                        if pinned_motion_limits:
+                            review["launchPadRoute"]["motionLimits"] = compare_launchpad_motion_limits(
+                                reader, launchpad, route["assembly"], saved["assemblyLinks"], links,
+                            )
                         if pinned_recovery:
                             try:
                                 recovery = compiled_launchpad_recovery(launchpad, saved["trafficManagers"], managers)
