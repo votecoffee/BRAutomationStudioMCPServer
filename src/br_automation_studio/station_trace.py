@@ -251,10 +251,7 @@ def check_release_motion(report, trace, expected, leg):
     result.update(state="matched", changedFields=[])
 
 
-def check_position_sample(row, shuttle, expected, tolerance_um, witness):
-    scan = row["scan"]
-    values = {key: row.get(key) for key in POSITION_FIELDS}
-    witness["observed"] = values
+def recorded_position(scan, shuttle, values):
     if any(value in (None, "") for value in values.values()) or values["positionValid"] is False:
         raise TraceIssue("station_trace_position_missing", f"Scan {scan} needs a valid captured shuttle position", "warning")
     if (values["positionValid"] is not True or not integer(values["positionSampleScan"])
@@ -265,22 +262,39 @@ def check_position_sample(row, shuttle, expected, tolerance_um, witness):
     if values["positionShuttleId"] != shuttle:
         raise TraceIssue("station_trace_position_shuttle", f"Scan {scan} has a position sample for a different shuttle")
     try:
-        actual = [trace_decimal(values[key]) for key in POSITION_COORDINATES]
+        return [trace_decimal(values[key]) for key in POSITION_COORDINATES]
+    except ValueError as error:
+        raise TraceIssue("station_trace_position_invalid", f"Scan {scan} needs finite decimal X and Y in metres") from error
+
+
+def position_delta_micrometres(actual, reference):
+    with localcontext() as context:
+        context.prec = max(context.prec, *(len(value.as_tuple().digits) + 16 for value in actual + reference))
+        context.traps[Inexact] = True
+        return [(value - target).scaleb(6) for value, target in zip(actual, reference)]
+
+
+def within_position_tolerance(delta, tolerance_um):
+    return all(value.copy_abs() <= tolerance_um for value in delta)
+
+
+def check_position_sample(row, shuttle, expected, tolerance_um, witness):
+    scan = row["scan"]
+    values = {key: row.get(key) for key in POSITION_FIELDS}
+    witness["observed"] = values
+    actual = recorded_position(scan, shuttle, values)
+    try:
         reference = [trace_decimal(value) for value in expected]
-        with localcontext() as context:
-            context.prec = max(context.prec, *(len(value.as_tuple().digits) + 16 for value in actual + reference))
-            context.traps[Inexact] = True
-            delta = [(value - target).scaleb(6) for value, target in zip(actual, reference)]
+        delta = position_delta_micrometres(actual, reference)
     except (DecimalException, ValueError) as error:
         raise TraceIssue("station_trace_position_invalid", f"Scan {scan} needs exactly comparable X and Y in metres") from error
     witness["deltaMicrometres"] = [str(value) for value in delta]
-    if any(value.copy_abs() > tolerance_um for value in delta):
+    if not within_position_tolerance(delta, tolerance_um):
         raise TraceIssue("station_trace_position_mismatch", f"Scan {scan} exceeds the position tolerance at {witness['station']!r}")
     witness["state"] = "matched"
 
 
-def check_station_positions(report, trace, tolerance_um, samples, result):
-    result.update(state="unverified", toleranceMicrometres=tolerance_um, samples={})
+def verified_position_context(report, trace):
     binding = bound_launchpad_evidence(report, trace["managerId"])
     positions, assembly_io = (binding.get(name, {}) for name in ("positions", "assemblyIo"))
     if (positions.get("state") != "matched" or assembly_io.get("state") != "matched"
@@ -288,7 +302,12 @@ def check_station_positions(report, trace, tolerance_um, samples, result):
         raise TraceIssue("station_trace_position_context_unverified",
                          "Use the same LaunchPad inputs and a RUC with verified positions and explicit X and Y read axes",
                          "warning")
-    compiled = positions["compiled"]
+    return positions["compiled"]
+
+
+def check_station_positions(report, trace, tolerance_um, samples, result):
+    result.update(state="unverified", toleranceMicrometres=tolerance_um, samples={})
+    compiled = verified_position_context(report, trace)
     for event, station, sample in samples:
         expected = compiled[station]["xyMetres"]
         witness = result["samples"][event] = {"state": "unverified", "station": station, "scan": sample["scan"],
@@ -310,8 +329,56 @@ def check_leg_positions(report, trace, tolerance_um, leg):
     check_station_positions(report, trace, tolerance_um, samples, leg.setdefault("positionReview", {}))
 
 
+def check_waypoint_positions(report, trace, rows, path, first_scan, last_scan, tolerance_um, leg):
+    expected = path[1:-1]
+    result = leg["waypointReview"] = {"state": "unverified", "toleranceMicrometres": tolerance_um,
+                                     "afterScan": first_scan, "beforeScan": last_scan,
+                                     "expectedWaypoints": expected, "samples": [], "ambiguousSamples": 0,
+                                     "unusablePositionSamples": 0}
+    compiled = verified_position_context(report, trace)
+    centres = {name: [trace_decimal(value) for value in row["xyMetres"]] for name, row in compiled.items()}
+    pending = iter(expected)
+    target = next(pending, None)
+    for row in rows:
+        if target is None:
+            break
+        scan = row["scan"]
+        if not first_scan < scan < last_scan:
+            continue
+        values = {key: row.get(key) for key in POSITION_FIELDS}
+        try:
+            actual = recorded_position(scan, trace["shuttleId"], values)
+        except TraceIssue as error:
+            if error.code == "station_trace_position_invalid":
+                result["state"] = "issues"
+                raise
+            result["unusablePositionSamples"] += 1
+            continue
+        try:
+            delta = position_delta_micrometres(actual, centres[target])
+            if not within_position_tolerance(delta, tolerance_um):
+                continue
+            if any(within_position_tolerance(position_delta_micrometres(actual, centre), tolerance_um)
+                   for name, centre in centres.items() if name != target):
+                result["ambiguousSamples"] += 1
+                continue
+        except DecimalException as error:
+            result["state"] = "issues"
+            raise TraceIssue("station_trace_position_invalid", f"Scan {scan} needs exactly comparable X and Y in metres") from error
+        result["samples"].append({"waypoint": target, "scan": scan, "observed": values,
+                                  "expectedXYMetres": compiled[target]["xyMetres"],
+                                  "deltaMicrometres": [str(value) for value in delta]})
+        target = next(pending, None)
+    if target is not None:
+        result["pendingWaypoints"] = expected[len(result["samples"]):]
+        raise TraceIssue("station_trace_waypoint_incomplete",
+                         f"No unambiguous, ordered position samples for {', '.join(result['pendingWaypoints'])}", "warning")
+    result["state"] = "matched"
+
+
 def station_trace_review(project, configuration, cpu, manager_id, lpj, readback, name_map, job_directory,
-                         source_station, trace_path, *, expected_motion=None, position_tolerance_um=None):
+                         source_station, trace_path, *, expected_motion=None, position_tolerance_um=None,
+                         waypoint_tolerance_um=None):
     report = launchpad_route_review(project, configuration, cpu, manager_id, lpj, readback, name_map, job_directory,
                                     include_stations=True)
     result = report["stationTraceReview"] = {"state": "not_checked", "sourceStation": source_station}
@@ -328,6 +395,9 @@ def station_trace_review(project, configuration, cpu, manager_id, lpj, readback,
             check_release_motion(report, trace, expected_motion, result)
         if position_tolerance_um is not None:
             check_leg_positions(report, trace, position_tolerance_um, result)
+        if waypoint_tolerance_um is not None:
+            check_waypoint_positions(report, trace, trace["scans"], path, result["releaseScans"][0], result["arrival"]["scan"],
+                                     waypoint_tolerance_um, result)
     except (OSError, RuntimeError, ValueError) as error:
         severity = error.severity if isinstance(error, TraceIssue) else "error"
         code = error.code if isinstance(error, TraceIssue) else "station_trace_invalid"

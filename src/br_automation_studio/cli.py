@@ -633,6 +633,15 @@ def markdown_position_review(label, positions, text):
     return lines
 
 
+def markdown_waypoint_review(review, text):
+    lines = [f"- Waypoint positions {text(review['state'])} · Tolerance {review['toleranceMicrometres']} µm per axis"]
+    for witness in review["samples"]:
+        lines.append(f"- Waypoint {text(witness['waypoint'])} · Scan {witness['scan']}")
+    if pending := review.get("pendingWaypoints"):
+        lines.append(f"- Pending waypoint observations {text(', '.join(pending))}")
+    return lines
+
+
 def markdown_station_trace(trace, text):
     lines = ["", "## Inspection leg trace", ""]
     if "state" in trace:
@@ -657,6 +666,8 @@ def markdown_station_trace(trace, text):
                          f"Exit acceleration {text(observed['exitAccelerationMps2'])} m/s²")
     if positions := trace.get("positionReview"):
         lines.extend(markdown_position_review("Station positions", positions, text))
+    if waypoints := trace.get("waypointReview"):
+        lines.extend(markdown_waypoint_review(waypoints, text))
     if fault := trace.get("firstFault"):
         lines.append(f"- First adapter status {fault['statusId']} at scan {fault['scan']}")
     return lines
@@ -685,6 +696,8 @@ def markdown_cycle_trace(cycle, text):
                      f"· Source clear scan {text(returned.get('sourceClearScan'))}")
         if arrival := returned.get("arrival"):
             lines.append(f"- Arrival at {text(arrival['station'])} · Scan {arrival['scan']} · Monitor sequence {arrival['sequence']}")
+        if waypoints := returned.get("waypointReview"):
+            lines.extend(markdown_waypoint_review(waypoints, text))
         if fault := returned.get("firstFault"):
             lines.append(f"- First return status {fault['statusId']} at scan {fault['scan']}")
     if hold := cycle.get("nextHold"):

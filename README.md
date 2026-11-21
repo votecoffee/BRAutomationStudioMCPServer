@@ -116,6 +116,8 @@ Use `station_trace_review` to compare the recorded station motion inputs on the 
 
 Use `positionToleranceMicrometres` to compare the same shuttle's X and Y at outbound Release and arrival with the compiled station positions. Use `returnPositionToleranceMicrometres` in the cycle review to check return source occupancy, return arrival and the next hold. [Outbound positions](skills/br-automation-studio/references/station-trace-review.md#check-position-at-the-two-station-events) · [Return and hold positions](skills/br-automation-studio/references/cycle-trace-review.md#verify-positions-on-return-and-at-the-next-hold)
 
+Use `waypointToleranceMicrometres` to check for ordered, same-shuttle samples near the compiled waypoints. [Waypoint observations](skills/br-automation-studio/references/station-trace-review.md#check-position-near-each-waypoint)
+
 Use `ruc_binding_review` to trace a selected one-way mapp View status binding through the saved project, compiled widget and OPC UA exposure map. Set `verifyIecType` to compare the compiled node type with the selected CPU task's registered IEC declaration. [Binding readback workflow](skills/br-automation-studio/references/ruc-binding-review.md)
 
 For a private loopback fixture, `arsim_smoke` materializes the reviewed RUC and compares served mapp View assets with their packaged bytes. [ARsim smoke workflow](skills/br-automation-studio/references/arsim-smoke.md)

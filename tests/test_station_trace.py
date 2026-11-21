@@ -2,7 +2,7 @@ from copy import deepcopy
 import unittest
 
 from br_automation_studio.station_trace import (
-    ARRIVAL, FLAGS, TraceIssue, check_leg, check_leg_positions, check_release_motion, trace_header,
+    ARRIVAL, FLAGS, TraceIssue, check_leg, check_leg_positions, check_release_motion, check_waypoint_positions, trace_header,
 )
 
 
@@ -139,6 +139,34 @@ class StationTraceTest(unittest.TestCase):
         with self.assertRaises(TraceIssue) as caught:
             check_release_motion(report, self.trace, expected, leg)
         self.assertEqual(caught.exception.code, "station_trace_motion_limits_unverified")
+
+    def test_waypoints_need_distinct_ordered_samples_from_the_same_shuttle(self):
+        centres = {"Inspect": ["0.1", "0.2"], "Gate1": ["0.3", "0.2"],
+                   "Gate2": ["0.5", "0.2"], "Outfeed": ["0.7", "0.2"]}
+        pinned = {"manager": "Traffic", "files": {"project": {"sha256": "a" * 64}, "readback": {"sha256": "c" * 64}},
+                  "positions": {"state": "matched", "compiled": {name: {"xyMetres": xy} for name, xy in centres.items()}},
+                  "assemblyIo": {"state": "matched", "planned": {"requiredReadAxes": ["X", "Y"]}}}
+        report = {"routeReview": {"launchPad": {"sourceSha256": "a" * 64, "readbackSha256": "c" * 64}},
+                  "rucReview": {"launchPadRoute": pinned}}
+        rows = [{"scan": scan, "positionSampleScan": scan, "positionShuttleId": 3, "positionValid": True,
+                 "positionXM": x, "positionYM": "0.2"} for scan, x in ((20, "0.300005"), (21, "0.5"))]
+        checked = {}
+        path = list(centres)
+        check_waypoint_positions(report, self.trace, rows, path, 19, 22, 5, checked)
+        witnesses = checked["waypointReview"]["samples"]
+        self.assertEqual([(item["waypoint"], item["scan"]) for item in witnesses], [("Gate1", 20), ("Gate2", 21)])
+        self.assertEqual(witnesses[0]["deltaMicrometres"][0], "5")
+
+        for scenario, samples, tolerance, missing in (
+            ("reversed", [rows[0] | {"positionXM": "0.5"}, rows[1] | {"positionXM": "0.3"}], 5, ["Gate2"]),
+            ("different shuttle", [rows[0] | {"positionShuttleId": 9}, rows[1]], 5, ["Gate1", "Gate2"]),
+            ("ambiguous", rows, 200005, ["Gate1", "Gate2"]),
+        ):
+            with self.subTest(scenario=scenario), self.assertRaises(TraceIssue) as caught:
+                check_waypoint_positions(report, self.trace, samples, path, 19, 22, tolerance, checked)
+            self.assertEqual((caught.exception.code, caught.exception.severity), ("station_trace_waypoint_incomplete", "warning"))
+            self.assertEqual(checked["waypointReview"]["pendingWaypoints"], missing)
+        self.assertEqual(checked["waypointReview"]["ambiguousSamples"], 2)
 
     def test_position_check_needs_fresh_same_shuttle_samples_and_enforces_the_per_axis_limit(self):
         positions = {"Inspect": {"xyMetres": ["0.66", "0.060"], "path": "Objects.br"},

@@ -63,6 +63,12 @@ On the Release edge and accepted destination-arrival scan, record `positionSampl
 
 Read `stationTraceReview.positionReview.samples` for the two station positions from the compiled RUC, the recorded samples and signed per-axis differences in micrometres. Capture intermediate samples separately to establish trajectory or waypoint traversal.
 
+## Check position near each waypoint
+
+With br-studio 0.63.0 or later, add `waypointToleranceMicrometres` to the request. Set it to the permitted per-axis difference for the reviewed path and sampling interval. Use the same RUC evidence and position fields as the station position check. Keep the synchronized samples strictly between the Release and arrival scans.
+
+The reviewer looks for a distinct same-shuttle sample near each waypoint in the compiled order. A witness must be within tolerance on both axes and outside the tolerance of every other compiled object on the route. Read `stationTraceReview.waypointReview` for the ordered witnesses, pending waypoints and counts of ambiguous or unusable samples. Missing ordered evidence leaves the check incomplete. Use timed position samples for velocity and clearance evaluation.
+
 ## Interpret the result
 
 - `matched` requires one Release edge with the approved request and shuttle, route permission, station clear and inspection busy clear. The same leg needs ReleaseDone and a fresh `mpTRAFFIC_SH_ARRIVAL` at the expected station for that shuttle. Either observation may appear first in the PLC trace after release.

@@ -8,7 +8,8 @@ from .launchpad_route import json_snapshot, launchpad_route_review
 from .mptraffic_events import read_project_events
 from .station_trace import (
     MONITOR_CHECKPOINTS, TRACE_LIMIT, TraceIssue, check_bound_leg, check_detections, check_monitor_checkpoint,
-    check_leg_positions, check_release_motion, check_station_positions, integer, leg_identity, scan_detections, selected_leg,
+    check_leg_positions, check_release_motion, check_station_positions, check_waypoint_positions, integer, leg_identity,
+    scan_detections, selected_leg,
 )
 
 
@@ -129,7 +130,8 @@ def check_return_positions(report, trace, tolerance_um, cycle):
 
 def cycle_trace_review(project, configuration, cpu, manager_id, lpj, readback, name_map, job_directory,
                        source_station, trace_path, *, hmi_status_path=None, scan_csv_path=None, require_session_capture=False,
-                       expected_motion=None, position_tolerance_um=None, return_position_tolerance_um=None):
+                       expected_motion=None, position_tolerance_um=None, return_position_tolerance_um=None,
+                       waypoint_tolerance_um=None):
     report = launchpad_route_review(project, configuration, cpu, manager_id, lpj, readback, name_map, job_directory,
                                     include_stations=True)
     result = report["cycleTraceReview"] = {"state": "not_checked", "sourceStation": source_station}
@@ -166,6 +168,16 @@ def cycle_trace_review(project, configuration, cpu, manager_id, lpj, readback, n
             result["phase"] = "return_position_witnesses"
             evidence_path = scan_csv_path or trace_path
             check_return_positions(report, trace, return_position_tolerance_um, result)
+        if waypoint_tolerance_um is not None:
+            evidence_path = scan_csv_path or trace_path
+            leg, returned = result["outbound"], result["returnLeg"]
+            inspection = trace["inspectionLeg"]
+            result["phase"] = "outbound_waypoints"
+            check_waypoint_positions(report, inspection, inspection["scans"], outbound, leg["releaseScans"][0],
+                                     leg["arrival"]["scan"], waypoint_tolerance_um, leg)
+            result["phase"] = "return_waypoints"
+            check_waypoint_positions(report, inspection, trace["returnLeg"]["scans"], inbound, returned["occupiedScan"],
+                                     returned["arrival"]["scan"], waypoint_tolerance_um, returned)
         result["phase"] = "complete"
     except (CsvError, OSError, RuntimeError, ValueError) as error:
         severity = error.severity if isinstance(error, TraceIssue) else "error"

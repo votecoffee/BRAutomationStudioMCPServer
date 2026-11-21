@@ -18,6 +18,8 @@ With br-studio 0.59.0 or later, include both `expectedExitVelocityMps` and `expe
 
 With br-studio 0.61.0 or later, set `positionToleranceMicrometres` to verify the same shuttle's XY sample on the outbound Release and accepted arrival scans. A requested position check must pass before any HMI pairing. [Sample fields and required RUC evidence](station-trace-review.md#check-position-at-the-two-station-events)
 
+With br-studio 0.63.0 or later, set `waypointToleranceMicrometres` to check for an ordered position sample near each waypoint on both legs. The outbound window lies between Release and arrival. The return window lies between the first occupied source sample and accepted return arrival. Check `cycleTraceReview.outbound.waypointReview` and `cycleTraceReview.returnLeg.waypointReview` for the witnesses. [Waypoint criteria](station-trace-review.md#check-position-near-each-waypoint)
+
 ## Record the return leg
 
 Use the same PLC scan index as the outbound trace. Start while the inspected shuttle occupies the return source station. This may overlap the outbound capture from its accepted arrival onward. A return starting after the outbound interval must begin at the next scan.

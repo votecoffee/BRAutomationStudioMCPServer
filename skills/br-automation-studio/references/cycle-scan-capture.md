@@ -69,6 +69,8 @@ Map the five optional position columns to the recorded PLC sample fields and set
 
 For the return and hold check, map the same five field names under the `return.` and `hold.` prefixes and set `returnPositionToleranceMicrometres`. You can map the same physical column to the same position field across phases. For example, use one captured X column for `inspection.positionXM`, `return.positionXM` and `hold.positionXM`. Keep each different field in its own column. [Return and hold witnesses](cycle-trace-review.md#verify-positions-on-return-and-at-the-next-hold)
 
+For waypoint evidence, keep intermediate position rows in both legs and pass `waypointToleranceMicrometres` in the request. Use the same position columns as for station witnesses. [Check both waypoint sequences](cycle-trace-review.md#run-the-review)
+
 ## Decode events from the saved project and RUC
 
 Use the [enum declaration lookup](build-preflight.md#read-explicit-enumeration-values) to inspect the selected library's event map during preflight. The scan review below verifies the definition against the retained build and RUC.
