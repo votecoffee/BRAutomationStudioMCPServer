@@ -142,6 +142,8 @@ def markdown(response):
                 lines.append(f"- Pinned station recovery · {len(recovery['stations'])} stations")
             if limits := route.get("motionLimits"):
                 lines.append(f"- Pinned in-plane limits for {text(limits['saved']['assembly'])}")
+            if assembly_io := route.get("assemblyIo"):
+                lines.append(f"- Pinned assembly I/O · Required read axes {text(', '.join(assembly_io['requiredReadAxes']))}")
     if job := report.get("nativeBuild"):
         lines.extend(["", "## Native job", "",
                       f"- Job {text(job['jobId'])} · {text(job['status'])} at {text(job['directory'])}"])
@@ -401,6 +403,8 @@ def markdown_ruc(response, text):
             lines.append(f"- Compiled station recovery {text(recovery['state'])}")
         if limits := launchpad.get("motionLimits"):
             lines.append(f"- Compiled in-plane limits {text(limits['state'])}")
+        if assembly_io := launchpad.get("assemblyIo"):
+            lines.append(f"- Compiled assembly I/O {text(assembly_io['state'])}")
     if symbols := review.get("motionSymbols"):
         lines.extend(markdown_motion_symbols(symbols, text))
     if smoke is not None:

@@ -13,8 +13,8 @@ from .file_device import SYSTEM_CONFIG, read_compiled_layout_device
 from .inspection import inspect_project
 from .json_io import invalid_constant, read_json, unique_object
 from .launchpad_build import (
-    checked_manager, compiled_launchpad_layout, compiled_launchpad_motion_limits, compiled_launchpad_positions,
-    compiled_launchpad_recovery, launchpad_rules, retained_launchpad_files, selected_manager,
+    checked_manager, compiled_launchpad_assembly_io, compiled_launchpad_layout, compiled_launchpad_motion_limits,
+    compiled_launchpad_positions, compiled_launchpad_recovery, launchpad_rules, retained_launchpad_files, selected_manager,
 )
 from .links import MotionLinks, rule_key
 from .motion_payloads import verify_packaged_motion
@@ -200,6 +200,22 @@ def compare_launchpad_motion_limits(reader, launchpad, assembly, saved_links, co
     return report
 
 
+def compare_launchpad_assembly_io(reader, launchpad, assembly, saved, compiled_links):
+    try:
+        report = compiled_launchpad_assembly_io(launchpad, assembly, saved, compiled_links)
+    except ValueError as error:
+        reader.issue("error", "ruc_launchpad_io_unverified", Path(DATA), str(error))
+        return {"state": "unverified", "planned": launchpad["assemblyIo"]}
+    path = Path(report["compiled"]["path"])
+    for comparisons in report["comparisons"].values():
+        for name, outcome in comparisons.items():
+            if outcome == "mismatch":
+                reader.issue("error", "ruc_launchpad_io_mismatch", path, f"Compiled {name} differs from the explicit I/O plan")
+            elif outcome == "unverified":
+                reader.issue("error", "ruc_launchpad_io_unverified", path, f"Cannot verify compiled {name}")
+    return report
+
+
 def compare_motion(reader, saved, links, managers, pinned_rules_manager=None):
     path = Path(DATA)
     compare_rows(reader, path, "Assembly layouts",
@@ -332,7 +348,9 @@ def review_ruc(path, job_directory, binding=None, *, geometry_manager=None, incl
             raise ValueError("The build plan has no usable LaunchPad evidence")
         pinned_recovery = launchpad is not None and "recovery" in launchpad
         pinned_motion_limits = launchpad is not None and "motionLimits" in launchpad
+        pinned_assembly_io = launchpad is not None and "assemblyIo" in launchpad
         include_motion = include_motion or pinned_motion_limits
+        include_io = include_io or pinned_assembly_io
         recovery_managers = (recovery_manager, launchpad["manager"] if pinned_recovery else None)
 
         if binding is None:
@@ -446,6 +464,11 @@ def review_ruc(path, job_directory, binding=None, *, geometry_manager=None, incl
                     if not ready:
                         reader.issue("error", "ruc_launchpad_motion_limits_unverified", Path(DATA),
                                      "The compiled motion modules could not be read for the in-plane limit comparison")
+                if pinned_assembly_io:
+                    review["launchPadRoute"]["assemblyIo"] = {"state": "unverified", "planned": launchpad["assemblyIo"]}
+                    if not ready:
+                        reader.issue("error", "ruc_launchpad_io_unverified", Path(DATA),
+                                     "The compiled motion modules could not be read for the assembly I/O comparison")
                 if ready:
                     compare_motion(reader, saved, links, managers, launchpad["manager"] if pinned_rules else None)
                     if launchpad is not None:
@@ -456,6 +479,10 @@ def review_ruc(path, job_directory, binding=None, *, geometry_manager=None, incl
                         if pinned_motion_limits:
                             review["launchPadRoute"]["motionLimits"] = compare_launchpad_motion_limits(
                                 reader, launchpad, route["assembly"], saved["assemblyLinks"], links,
+                            )
+                        if pinned_assembly_io:
+                            review["launchPadRoute"]["assemblyIo"] = compare_launchpad_assembly_io(
+                                reader, launchpad, route["assembly"], saved, links,
                             )
                         if pinned_recovery:
                             try:

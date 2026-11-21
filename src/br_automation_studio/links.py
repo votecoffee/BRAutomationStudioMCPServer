@@ -7,6 +7,7 @@ from .project import children, tag
 
 ASSEMBLY_WIDGET = "widgets.mapp6D.Assembly6D"
 XSI_TYPE = "{http://www.w3.org/2001/XMLSchema-instance}type"
+READ_AXES = ("X", "Y", "Z", "Rx", "Ry", "Rz")
 RULE_ROLES = (
     ("TrafficObjects", "members"),
     ("EntryObjects", "entries"),
@@ -95,7 +96,7 @@ def assembly_io_fields(path, node):
     return {"path": path.as_posix(),
             "references": configuration_values(node, ("IOMapp",), ("Input", "Output")),
             "readAxes": configuration_values(node, ("CyclicChannel6D", "ReadChannel"),
-                                             ("Xaxis", "Yaxis", "Zaxis", "Rxaxis", "Ryaxis", "Rzaxis"))}
+                                             (f"{axis}axis" for axis in READ_AXES))}
 
 
 def segment_layout(path, node):

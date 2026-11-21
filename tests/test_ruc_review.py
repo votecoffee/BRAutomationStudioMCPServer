@@ -10,8 +10,10 @@ import unittest
 from xml.etree import ElementTree as ET
 from zipfile import ZipFile
 
+from br_automation_studio.assembly_io import pinned_assembly_io
 from br_automation_studio.binding_review import NODESETS, SERVER
 from br_automation_studio.cli import markdown
+from br_automation_studio.inspection import inspect_project
 from br_automation_studio.native_build import identity, source_tree
 from br_automation_studio.operations import execute
 from br_automation_studio.ruc_review import CONTENT, DATA, VIEW, WIDGET_SCRIPT
@@ -628,7 +630,8 @@ position-x-mm="0" position-y-mm="0" transform="translate(0 -240)"><g>
                 self.assertEqual(route["motionLimits"]["state"], state)
                 self.assertEqual(route["motionLimits"]["comparisons"]["InPlaneAccLim"], "matched")
 
-    def supply_assembly_io(self, *, output_type="Mc6DControllerFBIOType", registered=True, changed_axis=False):
+    def supply_assembly_io(self, *, output_type="Mc6DControllerFBIOType", registered=True, changed_axis=False,
+                           explicit_xy=False):
         logical = self.project / "Logical"
         package = logical / "Package.pkg"
         if registered:
@@ -647,6 +650,8 @@ END_VAR
         channel = b'<Group ID="CyclicChannel6D"><Group ID="ReadChannel">%s</Group></Group>'
         flag = b'<Property ID="%s" Value="%s"/>'
         saved_axis = flag % (b"Ryaxis", b"false")
+        if explicit_xy:
+            saved_axis += b"".join(flag % (axis, b"TRUE") for axis in (b"Xaxis", b"Yaxis"))
         compiled_axes = b"".join(flag % (axis, b"TRUE" if axis != b"Ryaxis" or changed_axis else b"FALSE")
                                  for axis in (b"Xaxis", b"Yaxis", b"Zaxis", b"Rxaxis", b"Ryaxis", b"Rzaxis"))
         path.write_bytes(original.replace(b"</Element>", mapping + channel % saved_axis + b"</Element>"))
@@ -695,6 +700,30 @@ END_VAR
         self.assertEqual(response["status"], "partial")
         self.assertEqual(set(self.codes(response)), {"assembly_io_declaration_unverified"})
         self.assertNotIn("Logical/Global.var", {row["path"] for row in response["result"]["snapshot"]["files"]})
+
+    def test_pinned_assembly_io_rejects_an_axis_or_reference_change_even_with_matching_route(self):
+        self.supply_assembly_io(explicit_xy=True)
+        saved = inspect_project(self.project / "Loop.apj", "ARsim", "PC", include_io=True)
+        plan = pinned_assembly_io("FixtureAssembly", saved["assemblyLinks"], saved["globalDeclarations"], ["X", "Y"])
+        retained = self.add_launchpad_route(assemblyIo=plan)
+        verified = self.review()
+        self.assertEqual(verified["status"], "complete", verified["result"]["diagnostics"])
+        self.assertIn("Compiled assembly I/O matched", markdown(verified))
+        comparisons = verified["result"]["rucReview"]["launchPadRoute"]["assemblyIo"]["comparisons"]
+        self.assertEqual(comparisons["readAxes"], {"Xaxis": "matched", "Yaxis": "matched", "Ryaxis": "matched"})
+        compiled = self.members[ASSEMBLY]
+        for old, new, kind, field in (
+            (b'ID="Xaxis" Value="TRUE"', b'ID="Xaxis" Value="FALSE"', "readAxes", "Xaxis"),
+            (b'ID="Output" Value="goutput"', b'ID="Output" Value="gInput"', "references", "Output"),
+        ):
+            with self.subTest(field=field):
+                self.members[ASSEMBLY] = compiled.replace(old, new)
+                self.write("job.json", self.package() | {"launchPadRoute": retained})
+                rejected = self.review()
+                self.assertEqual(self.codes(rejected), ["ruc_launchpad_io_mismatch"])
+                route = rejected["result"]["rucReview"]["launchPadRoute"]
+                self.assertEqual(route["state"], "matched")
+                self.assertEqual(route["assemblyIo"]["comparisons"][kind][field], "mismatch")
 
     def review_layout_device(self, saved, compiled):
         hardware = self.project / "Physical/ARsim/Hardware.hw"

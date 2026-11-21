@@ -24,3 +24,5 @@ Run `br-studio run --request assembly-io.json --format markdown`. Include `jobDi
 - For a compiled review, the selected reference is resolved against the hash-bound saved declaration. A changed explicit reference or axis flag is an issue. The topic shows separate Input and Output fields. The six supported flags address X, Y, Z, Rx, Ry and Rz. [B&R AS4 assembly configuration](https://help.br-automation.com/#/en/4/motion/mapp_6d/konfiguration/komponenten/assembly.html)
 - A flag reports `materialized` when the saved configuration leaves it absent and the compiler supplies a readable Boolean. A saved-only review preserves the omission. `FALSE` is a valid explicit state.
 - The review covers the saved IEC declaration and the packaged configuration. Verify the controller channel mapping, communication and live axis values with the target setup.
+
+Use `launchPadReadAxes` when the build must explicitly enable the axes used by a capture. The build plan and RUC review check those flags and preserve the typed I/O references. [Pin assembly I/O and read axes](native-build.md#pin-the-assembly-io-and-read-axes)

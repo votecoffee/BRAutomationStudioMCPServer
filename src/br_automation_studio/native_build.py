@@ -13,8 +13,8 @@ from uuid import uuid4
 from zipfile import BadZipFile, ZipFile
 
 from .launchpad_build import (
-    launchpad_positions, launchpad_rules, plan_launchpad_layout, plan_launchpad_motion_limits, plan_launchpad_recovery,
-    plan_launchpad_route, retain_launchpad_route, selected_manager,
+    launchpad_positions, launchpad_rules, plan_launchpad_assembly_io, plan_launchpad_layout, plan_launchpad_motion_limits,
+    plan_launchpad_recovery, plan_launchpad_route, retain_launchpad_route, selected_manager,
 )
 from .motion_payloads import plan_motion_payloads, verify_packaged_motion
 from .motion_symbols import plan_motion_symbols, read_motion_symbols
@@ -91,11 +91,12 @@ def plan_build(path, studio_root, runtime_root=None, configuration=None, cpu=Non
     verify_positions = launchpad_inputs is not None and launchpad_inputs.verify_positions
     verify_recovery = launchpad_inputs is not None and launchpad_inputs.verify_recovery
     verify_motion_limits = launchpad_inputs is not None and launchpad_inputs.verify_motion_limits
+    verify_assembly_io = launchpad_inputs is not None and launchpad_inputs.read_axes is not None
     report = build_preflight(path, studio_root, runtime_root, configuration, cpu,
                              verify_motion_declarations=verify_motion_declarations, include_layout=verify_layout,
                              geometry_manager=launchpad_inputs.manager if verify_positions else None,
                              recovery_managers=(launchpad_inputs.manager,) if verify_recovery else (),
-                             include_motion=verify_motion_limits)
+                             include_motion=verify_motion_limits, include_io=verify_assembly_io)
     report["buildPlan"] = None
     if blocked(report):
         return report
@@ -221,6 +222,12 @@ def plan_build(path, studio_root, runtime_root=None, configuration=None, cpu=Non
                                                                      report["assemblyLinks"])
             except (OSError, RuntimeError, ValueError) as error:
                 issue(report, "error", "launchpad_build_motion_limits_unverified", str(error))
+                return report
+        if verify_assembly_io:
+            try:
+                route["assemblyIo"] = plan_launchpad_assembly_io(launchpad_inputs, route, report)
+            except ValueError as error:
+                issue(report, "error", "launchpad_build_io_unverified", str(error))
                 return report
     report["buildPlan"] = {"sha256": identity(plan), "manifest": plan}
     return report

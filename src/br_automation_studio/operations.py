@@ -19,6 +19,7 @@ from .launchpad_export import review_launchpad_export
 from .launchpad_frame import launchpad_frame_review
 from .launchpad_geometry import GeometryCriteria
 from .launchpad_route import launchpad_route_review
+from .links import READ_AXES
 from .motion_interfaces import FIELD_PATH, SYMBOL, review_motion_interfaces
 from .native_build import execute_build, plan_build
 from .opcua_smoke import OpcUaProbe
@@ -156,11 +157,14 @@ def launchpad_build_inputs(arguments, request_directory):
     verify_rules = arguments.get("verifyLaunchPadRules", False)
     verify_recovery = arguments.get("verifyLaunchPadRecovery", False)
     verify_motion_limits = arguments.get("verifyLaunchPadMotionLimits", False)
+    read_axes = arguments.get("launchPadReadAxes")
     if not (verify_layout or verify_positions or verify_rules or verify_recovery or verify_motion_limits or widget is not None
-            or arguments.keys() & (required | {"nameMap"})):
+            or read_axes is not None or arguments.keys() & (required | {"nameMap"})):
         return None
     if missing := required - arguments.keys():
         raise InvalidRequest(f"Missing LaunchPad build inputs: {', '.join(sorted(missing))}")
+    if read_axes is not None and (any(axis not in READ_AXES for axis in read_axes) or len(set(read_axes)) != len(read_axes)):
+        raise InvalidRequest("launchPadReadAxes needs distinct axis names from X, Y, Z, Rx, Ry and Rz")
     mapping = arguments.get("nameMap")
     return LaunchPadBuildInputs(request_directory / arguments["launchPadProject"],
                                 request_directory / arguments["launchPadReadback"],
@@ -168,7 +172,7 @@ def launchpad_build_inputs(arguments, request_directory):
                                 request_directory / mapping if mapping is not None else None,
                                 verify_layout=verify_layout, verify_positions=verify_positions, widget_id=widget,
                                 verify_rules=verify_rules, verify_recovery=verify_recovery,
-                                verify_motion_limits=verify_motion_limits)
+                                verify_motion_limits=verify_motion_limits, read_axes=read_axes)
 
 
 def build_plan(arguments, request_directory):
@@ -467,6 +471,9 @@ BUILD_PLAN = Operation(
                                     "description": "Verify and pin the reviewed station eligibility, mode and indexed recovery points."},
         "verifyLaunchPadMotionLimits": {"type": "boolean", "default": False,
                                         "description": "Pin the linked assembly's explicit in-plane limits and the raw LaunchPad exit values."},
+        "launchPadReadAxes": {"type": "array", "minItems": 1, "maxItems": len(READ_AXES), "uniqueItems": True,
+                              "items": {"type": "string", "minLength": 1, "maxLength": 2, "enum": list(READ_AXES)},
+                              "description": "Require these read axes and pin the linked assembly's I/O declarations and explicit flags."},
         "verifyMpTrafficEnum": SIMULATION_PREFLIGHT.arguments["verifyMpTrafficEnum"],
         "verifyMotionPayloads": {"type": "boolean", "default": False,
                                  "description": "Pin the six AS4 SG4/IA32 motion payloads and verify the produced RUC."},

@@ -110,6 +110,8 @@ Use `verifyLaunchPadRecovery` to verify station recovery eligibility, mode and i
 
 Use `verifyLaunchPadMotionLimits` to verify the linked assembly's explicit in-plane limits and retain the raw LaunchPad exit values. [Motion limit check](skills/br-automation-studio/references/native-build.md#pin-the-explicit-in-plane-motion-limits)
 
+Use `launchPadReadAxes` to require explicit read channels and verify the linked assembly's communication references. [Assembly I/O and read axes](skills/br-automation-studio/references/native-build.md#pin-the-assembly-io-and-read-axes)
+
 Use `station_trace_review` to compare the recorded station motion inputs on the Release edge with an expected velocity and acceleration. [Release motion check](skills/br-automation-studio/references/station-trace-review.md#check-the-motion-inputs-on-the-release-edge)
 
 Use `ruc_binding_review` to trace a selected one-way mapp View status binding through the saved project, compiled widget and OPC UA exposure map. Set `verifyIecType` to compare the compiled node type with the selected CPU task's registered IEC declaration. [Binding readback workflow](skills/br-automation-studio/references/ruc-binding-review.md)

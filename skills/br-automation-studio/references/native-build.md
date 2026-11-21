@@ -50,6 +50,12 @@ With br-studio 0.57.0 or later, add `"verifyLaunchPadMotionLimits": true` to bot
 
 RUC review requires the explicit saved limits to survive compilation. Read `rucReview.launchPadRoute.motionLimits` for the plan, compiled fields and per-field comparisons. Capture the actual station release inputs and observed motion in the target simulator.
 
+### Pin the assembly I/O and read axes
+
+With br-studio 0.60.0 or later, add `"launchPadReadAxes": ["X", "Y"]` to both build requests with the reviewed LaunchPad route inputs. Select the axes needed by the capture from X, Y, Z, Rx, Ry and Rz. The assembly linked by the selected manager must explicitly enable each selected read axis. Its Input and Output references must resolve to `Mc6DControllerFBIOType` variables in the registered root `Logical/Global.var`. [Assembly I/O readback](assembly-io-review.md)
+
+The plan records both typed references and the saved read-axis declarations. RUC review compares both I/O references and every explicitly saved flag, including explicit `FALSE` values. Read `rucReview.launchPadRoute.assemblyIo` for planned and compiled fields and their comparisons. Use the target simulator to verify actual channel mapping and live axis values.
+
 ### Verify MpTraffic in the plan and RUC
 
 Since br-studio 0.35.0, set `verifyMpTrafficEnum` to true in both the plan and execution requests to carry the [MpTraffic definition check](simulation-preflight.md#verify-the-mptraffic-definition-before-building) into the native build. The plan compares the registered project declaration and IA32 binary with the selected AS4 catalog files. The plan SHA-256 covers the saved and installed declaration and payload hashes under `manifest.mpTrafficDefinition`.

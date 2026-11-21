@@ -5,7 +5,7 @@ import re
 
 from .global_variables import IDENTIFIER
 from .inspection import inspect_project
-from .ruc_review import review_ruc
+from .links import READ_AXES
 
 IO_TYPE = "Mc6DControllerFBIOType"
 AXIS_FLAGS = {"true": True, "false": False}
@@ -45,12 +45,42 @@ def match_declaration(global_variables, field):
     return dict(declaration, state=state, path=global_variables["path"])
 
 
+def assembly_io_values(assembly, links):
+    raw = next((row["ioFields"] for row in links if row["assembly"] == assembly), None)
+    if raw is None:
+        raise ValueError(f"Cannot read I/O configuration for the reviewed assembly {assembly!r}")
+    return {"assembly": assembly, "path": raw["path"],
+            "references": {key: normalize(field, axis=False) for key, field in raw["references"].items()},
+            "readAxes": {key: normalize(field, axis=True) for key, field in raw["readAxes"].items()}}
+
+
+def pinned_assembly_io(assembly, links, variables, axes):
+    if not isinstance(axes, list) or not axes or any(axis not in READ_AXES for axis in axes) or len(set(axes)) != len(axes):
+        raise ValueError("Select distinct assembly read axes from X, Y, Z, Rx, Ry and Rz")
+    saved = assembly_io_values(assembly, links)
+    for axis in axes:
+        if saved["readAxes"][f"{axis}axis"]["value"] is not True:
+            raise ValueError(f"{axis}axis needs an explicit TRUE in {saved['path']}")
+    for key, field in saved["readAxes"].items():
+        if field["state"] == "unverified":
+            raise ValueError(f"{key} needs a supported Boolean in {saved['path']}")
+    declarations = {}
+    for key, field in saved["references"].items():
+        declaration = match_declaration(variables, field)
+        if declaration["state"] != "matched":
+            raise ValueError(f"{key} needs a reference to one {IO_TYPE} declaration in the registered root Global.var")
+        declarations[key] = declaration
+    return {"saved": saved, "requiredReadAxes": axes, "declarations": declarations}
+
+
 def assembly_io_review(project, configuration, cpu, assembly, job_directory=None):
     if job_directory is None:
         report = inspect_project(project, configuration, cpu, include_io=True)
         phase = report
         saved_links = report["assemblyLinks"]
     else:
+        from .ruc_review import review_ruc
+
         report = review_ruc(project, job_directory, include_io=True)
         phase = report["rucReview"]
         saved_links = phase.get("savedAssemblyLinks", [])

@@ -6,6 +6,7 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from shutil import copyfile
 
+from .assembly_io import assembly_io_values, comparison as io_comparison, pinned_assembly_io
 from .launchpad_baseline import compare_cycle, names_for, nonempty, read_launchpad_save, route_baseline
 from .launchpad_export import review_launchpad_export
 from .launchpad_layout import compare_layout, linked_layout, master_offsets, native_segments
@@ -36,6 +37,7 @@ class LaunchPadBuildInputs:
     verify_rules: bool = False
     verify_recovery: bool = False
     verify_motion_limits: bool = False
+    read_axes: list[str] | None = None
 
 
 def selected_manager(manager, managers):
@@ -257,6 +259,28 @@ def compiled_launchpad_motion_limits(binding, assembly, saved_links, compiled_li
     results = {key: compare_limit(before, compiled["fields"][key]) for key, before in saved["fields"].items()}
     state = "issues" if "mismatch" in results.values() else "unverified" if "unverified" in results.values() else "matched"
     return {"state": state, "planned": planned, "compiled": compiled, "comparisons": results}
+
+
+def plan_launchpad_assembly_io(inputs, binding, report):
+    assembly = selected_manager(binding["manager"], report["trafficManagers"])["assembly"]
+    return pinned_assembly_io(assembly, report["assemblyLinks"], report["globalDeclarations"], inputs.read_axes)
+
+
+def compiled_launchpad_assembly_io(binding, assembly, saved, compiled_links):
+    planned = binding["assemblyIo"]
+    if not isinstance(planned, dict):
+        raise ValueError("The build plan has no usable assembly I/O evidence")
+    evidence = pinned_assembly_io(assembly, saved["assemblyLinks"], saved["globalDeclarations"],
+                                  planned.get("requiredReadAxes"))
+    if planned != evidence:
+        raise ValueError("The pinned assembly I/O differs from the saved assembly and declarations")
+    compiled = assembly_io_values(assembly, compiled_links)
+    comparisons = {group: {key: io_comparison(before, compiled[group][key])
+                           for key, before in evidence["saved"][group].items() if before["state"] == "declared"}
+                   for group in ("references", "readAxes")}
+    outcomes = {state for group in comparisons.values() for state in group.values()}
+    state = "issues" if "mismatch" in outcomes else "unverified" if "unverified" in outcomes else "matched"
+    return {"state": state, "planned": planned, "compiled": compiled, "comparisons": comparisons}
 
 
 def retained_launchpad_files(reader, binding):

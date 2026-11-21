@@ -340,6 +340,14 @@ class BuildPreflightTests(unittest.TestCase):
         self.assertIsNone(missing_limits["buildPlan"])
         self.assertEqual(missing_limits["diagnostics"][-1]["code"], "launchpad_build_motion_limits_unverified")
         self.assertIn("InPlaneVelLim, InPlaneAccLim", missing_limits["diagnostics"][-1]["message"])
+        with self.assertRaisesRegex(InvalidRequest, "Missing LaunchPad build inputs"):
+            self.native_request("build_plan", launchPadReadAxes=["X", "Y"])
+        with self.assertRaisesRegex(InvalidRequest, "distinct axis names"):
+            self.native_request("build_plan", **arguments, launchPadReadAxes=["X", "X"])
+        missing_axes = self.native_request("build_plan", **arguments, launchPadReadAxes=["X", "Y"])["result"]
+        self.assertIsNone(missing_axes["buildPlan"])
+        self.assertEqual(missing_axes["diagnostics"][-1]["code"], "launchpad_build_io_unverified")
+        self.assertIn("Xaxis needs an explicit TRUE", missing_axes["diagnostics"][-1]["message"])
 
         layout_file = self.project / "Physical/ARsim/PC/mapp6D/FixtureLayout.layout6d"
         base_layout = layout_file.read_bytes()
