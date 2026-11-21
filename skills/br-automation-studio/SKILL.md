@@ -31,6 +31,8 @@ Use the [inspection trace workflow](references/station-trace-review.md) to verif
 
 Use the [inspection cycle workflow](references/cycle-trace-review.md) to follow that shuttle through the return and into the next held request.
 
+For a first complete ARsim cycle with the PLC-hosted HMI, use the [one-shuttle rehearsal runbook](references/inspection-cycle-rehearsal.md). It gives the run order and requests for the retained scan, HMI status and SVG geometry.
+
 Use the [LaunchPad recovery workflow](references/launchpad-recovery-review.md) to compare station declarations and the saved and compiled point sequence.
 
 Use the [LaunchPad motion workflow](references/launchpad-motion-review.md) to read raw exit values and check the linked assembly's saved and compiled in-plane limits.

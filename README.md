@@ -146,6 +146,8 @@ Use `arsim_hmi_smoke` with both extras to verify the binding and default visuali
 
 Use `arsim_status_smoke` to verify expected numeric status such as a held request and shuttle in the initial and reopened HMI and in direct OPC UA. [Status reconnect workflow](skills/br-automation-studio/references/arsim-status-smoke.md)
 
+Use the [one-shuttle rehearsal runbook](skills/br-automation-studio/references/inspection-cycle-rehearsal.md) to run the build, scan capture, HMI reopen and SVG review as one evidence set.
+
 ## Chat workflow
 
 The repository includes a skill for selecting saved inputs and interpreting the inspection result. [B&R Automation Studio skill](skills/br-automation-studio/SKILL.md) · [Saved-project workflow](skills/br-automation-studio/references/project-inspection.md)
