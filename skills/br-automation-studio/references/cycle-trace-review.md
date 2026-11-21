@@ -85,6 +85,12 @@ If the status smoke retained a scan file, point `arguments.scanCsv` to that file
 
 Use `cycleHmiReview.state` for the pairing outcome. A failed pairing yields `issues` while preserving an independently matched cycle. Retain both input reports and the raw capture provenance. The joined check establishes consistency across supplied observations. A synthetic trace retains its synthetic capture classification.
 
+## Use the status receipt for scan identity
+
+With br-studio 0.72.0 or later, set `requireSessionScanCapture: true` and supply `scanCsv` and `hmiStatusReport`. You can omit `scanCapture.sha256`, `hmi.sessionId`, or both. Keep the captured scan windows and column mapping, the HMI binding identifiers, and the LaunchPad and RUC hashes in the descriptor.
+
+When either field is omitted, the reviewer checks the status receipt against the selected build and fills the missing fields in memory. It checks the actual scan bytes against the receipt and uses the same status snapshot for HMI pairing. Any hash or session ID supplied in the descriptor must agree with the receipt. Read `cycleTraceReview.sessionScanBinding` for the derived fields, source report hash and exact identities used.
+
 ## Verify the held request through the reopen
 
 With br-studio 0.67.0 or later, record each consecutive PLC scan from the first new hold through the final direct heartbeat after the browser reopen. Use [`scanCapture.holdThroughScan`](cycle-scan-capture.md#keep-recording-the-next-held-request) with a scan file. In a normalized JSON trace, set a top-level `holdContinuation` with `throughScan` and `scans`. Put each subsequent scan, starting at `nextHold.scan + 1`, in that array. Use the same fields as `nextHold`, including `phase`, `releaseTotal` and `heartbeat`.

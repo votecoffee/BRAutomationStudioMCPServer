@@ -699,6 +699,9 @@ def markdown_cycle_trace(cycle, text):
              f"- State **{text(cycle['state'])}** · Phase {text(cycle.get('phase'))}"]
     if trace := cycle.get("trace"):
         lines.append(f"- Trace {text(trace['path'])} · SHA-256 {trace['sha256']}")
+    if binding := cycle.get("sessionScanBinding"):
+        fields = ", ".join(text(field) for field in binding["derivedFields"])
+        lines.append(f"- From HMI receipt {fields} · Session {text(binding['sessionId'])} · Scan SHA-256 {binding['scanSha256']}")
     if capture := cycle.get("scanCapture"):
         lines.append(f"- Scan CSV SHA-256 {capture['sha256']}")
         if "records" in capture:

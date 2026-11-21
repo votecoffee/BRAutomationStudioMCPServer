@@ -1,6 +1,6 @@
 # Rehearse one ACOPOS 6D inspection cycle with its HMI
 
-Use this workflow with br-studio 0.71.0 or later for a saved AS4 PC simulation project, a two-station LaunchPad route and a PLC-hosted mapp View page. Work in one run directory with a reviewed project and build as inputs. Keep installation paths, project identifiers and captures in the local run directory.
+Use this workflow with br-studio 0.72.0 or later for a saved AS4 PC simulation project, a two-station LaunchPad route and a PLC-hosted mapp View page. Work in one run directory with a reviewed project and build as inputs. Keep installation paths, project identifiers and captures in the local run directory.
 
 ## Qualify the project and build
 
@@ -110,7 +110,7 @@ Save as `svg-request.json`. Enable the two optional SVG checks when the captured
 }
 ```
 
-Save as `cycle-trace.json`. The repeated-zero hashes below are placeholders. Use the saved LaunchPad file's SHA-256, the compiled RUC's SHA-256 and the exact retained CSV's SHA-256. Use the recorded monitor baseline sequences, captured request and shuttle IDs, imported station names and actual scan windows. The `captureKind` example applies to a real ARsim acquisition. Keep the original classification when replaying evidence.
+Save as `cycle-trace.json`. Replace the repeated-zero hash placeholders with the saved LaunchPad file's SHA-256 and the compiled RUC's SHA-256. Use the recorded monitor baselines, captured request and shuttle IDs, imported names and actual scan windows. The `captureKind` example applies to a real ARsim acquisition. Keep the original classification when replaying evidence. The strict review below obtains the omitted scan hash and session ID from the HMI receipt and verifies the CSV bytes.
 
 ```json
 {
@@ -134,14 +134,12 @@ Save as `cycle-trace.json`. The repeated-zero hashes below are placeholders. Use
   },
   "scanCapture": {
     "format": "csv",
-    "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
     "inspectionScans": [100, 107],
     "returnScans": [107, 110],
     "nextHoldScan": 111,
     "holdThroughScan": 115
   },
   "hmi": {
-    "sessionId": "<recorded status session ID>",
     "heartbeatIdentifier": "::Status:Heartbeat",
     "bindings": {
       "requestId": "::Status:RequestId",

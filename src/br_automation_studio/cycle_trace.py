@@ -3,7 +3,7 @@
 from csv import Error as CsvError
 
 from .cycle_capture import materialize_cycle
-from .cycle_hmi import review_cycle_hmi
+from .cycle_hmi import bind_session_scan_capture, review_cycle_hmi
 from .launchpad_route import json_snapshot, launchpad_route_review
 from .mptraffic_events import read_project_events
 from .station_trace import (
@@ -196,6 +196,7 @@ def cycle_trace_review(project, configuration, cpu, manager_id, lpj, readback, n
     if report["diagnostics"] or report["stationReview"]["state"] != "read":
         return report
     evidence_path = trace_path
+    status_snapshot = None
     try:
         outbound = selected_leg(report, source_station)
         inbound = selected_leg(report, outbound[-1])
@@ -203,6 +204,14 @@ def cycle_trace_review(project, configuration, cpu, manager_id, lpj, readback, n
             raise TraceIssue("cycle_trace_route", "The compiled route needs two station legs that close the cycle")
         trace, result["trace"] = json_snapshot(trace_path, TRACE_LIMIT)
         if scan_csv_path is not None:
+            if require_session_capture and hmi_status_path is not None and isinstance(trace, dict):
+                scan, hmi = trace.get("scanCapture"), trace.get("hmi")
+                if isinstance(scan, dict) and isinstance(hmi, dict) and ("sha256" not in scan or "sessionId" not in hmi):
+                    result["phase"] = "bind_session_scan"
+                    evidence_path = hmi_status_path
+                    status_snapshot = json_snapshot(hmi_status_path, TRACE_LIMIT)
+                    trace, binding = bind_session_scan_capture(trace, status_snapshot[0], report["rucReview"])
+                    result["sessionScanBinding"] = {**binding, "statusReport": status_snapshot[1]}
             evidence_path = scan_csv_path
             trace = materialize_cycle(
                 trace, scan_csv_path, result.setdefault("scanCapture", {}),
@@ -259,5 +268,6 @@ def cycle_trace_review(project, configuration, cpu, manager_id, lpj, readback, n
         report["evidence"] = "cycle_trace_readback"
         if hmi_status_path is not None:
             review_cycle_hmi(report, trace, hmi_status_path, require_session_capture=require_session_capture,
-                             require_assembly_widget=require_assembly_widget, layout_report_path=hmi_layout_report_path)
+                             require_assembly_widget=require_assembly_widget, layout_report_path=hmi_layout_report_path,
+                             status_snapshot=status_snapshot)
     return report

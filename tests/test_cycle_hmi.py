@@ -1,6 +1,6 @@
 import unittest
 
-from br_automation_studio.cycle_hmi import check_cycle_hmi, check_layout_svg_pairing
+from br_automation_studio.cycle_hmi import bind_session_scan_capture, check_cycle_hmi, check_layout_svg_pairing
 from br_automation_studio.station_trace import TraceIssue
 
 
@@ -155,6 +155,30 @@ class CycleHmiTest(unittest.TestCase):
         with self.assertRaises(TraceIssue) as issue:
             self.check()
         self.assertEqual(issue.exception.code, "cycle_hmi_scan_capture_mismatch")
+
+    def test_bind_session_scan_fills_only_omitted_descriptor_fields(self):
+        digest = "c" * 64
+        self.hmi["scanCapture"] = {"state": "retained", "sha256": digest, "bytes": 128, "path": "scan-capture.csv",
+                                   "ownedListener": self.owner}
+        witness = self.trace["hmi"]
+        session = witness["sessionId"]
+        self.trace["hmi"] = {key: value for key, value in witness.items() if key != "sessionId"}
+        self.trace["scanCapture"] = {"nextHoldScan": 18}
+        bound, receipt = bind_session_scan_capture(self.trace, self.document, self.ruc)
+        self.assertEqual(bound["scanCapture"], {"nextHoldScan": 18, "sha256": digest})
+        self.assertEqual(bound["hmi"], witness)
+        self.assertNotIn("sessionId", self.trace["hmi"])
+        self.assertNotIn("sha256", self.trace["scanCapture"])
+        self.assertEqual(receipt["derivedFields"], ["scanCapture.sha256", "hmi.sessionId"])
+
+        for section, key, value, code in (
+            ("scanCapture", "sha256", "0" * 64, "cycle_hmi_scan_capture_mismatch"),
+            ("hmi", "sessionId", None, "cycle_hmi_session_mismatch"),
+        ):
+            with self.subTest(key=key), self.assertRaises(TraceIssue) as error:
+                altered = self.trace | {section: self.trace[section] | {key: value}}
+                bind_session_scan_capture(altered, self.document, self.ruc)
+            self.assertEqual(error.exception.code, code)
 
     def test_package_is_checked_before_session_and_hold(self):
         self.smoke["packageSha256"] = "c" * 64

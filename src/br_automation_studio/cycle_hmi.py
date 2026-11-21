@@ -24,8 +24,8 @@ def read_only(node):
                for key in ("accessLevel", "userAccessLevel"))
 
 
-def check_run(document, ruc, trace, result):
-    if (type(document.get("schemaVersion")) is not int or document["schemaVersion"] != 1
+def status_run(document, ruc):
+    if (not isinstance(document, dict) or type(document.get("schemaVersion")) is not int or document["schemaVersion"] != 1
             or document.get("operation") != "arsim_status_smoke" or document.get("status") != "complete"):
         raise ValueError("Supply a complete schemaVersion 1 arsim_status_smoke JSON response")
     receipt = document["result"]
@@ -37,7 +37,13 @@ def check_run(document, ruc, trace, result):
             or any(reviewed[key] != ruc[key] for key in ("jobId", "planSha256"))
             or smoke["planSha256"] != ruc["planSha256"] or reviewed["sourceMatched"] is not True):
         raise TraceIssue("cycle_hmi_package_mismatch", "The status report and cycle review identify different builds or RUCs")
+    if smoke["state"] != "complete" or smoke["cleanup"] != "empty" or smoke["hmi"]["state"] != "complete":
+        raise ValueError("The ARsim runtime and HMI check must complete with verified cleanup")
+    return reviewed, smoke
 
+
+def check_run(document, ruc, trace, result):
+    reviewed, smoke = status_run(document, ruc)
     capture = trace["inspectionLeg"]["captureKind"]
     if capture not in ("arsim", "synthetic"):
         raise TraceIssue("cycle_hmi_capture_kind", "Pair a loopback status report with an ARsim or synthetic cycle")
@@ -46,11 +52,8 @@ def check_run(document, ruc, trace, result):
     if (not isinstance(session, str) or not session.strip() or not isinstance(witness, dict)
             or witness.get("sessionId") != session):
         raise TraceIssue("cycle_hmi_session_mismatch", "The cycle and status report need the same ARsim session ID")
-    hmi = smoke["hmi"]
-    if smoke["state"] != "complete" or smoke["cleanup"] != "empty" or hmi["state"] != "complete":
-        raise ValueError("The ARsim runtime and HMI check must complete with verified cleanup")
-    result.update(sessionId=session, captureKind=capture, packageSha256=package)
-    return hmi, witness, reviewed
+    result.update(sessionId=session, captureKind=capture, packageSha256=ruc["archive"]["sha256"])
+    return smoke["hmi"], witness, reviewed
 
 
 def check_heartbeat(hmi, witness, heartbeat, result):
@@ -130,18 +133,53 @@ def check_status_role(hmi, package, role, identifier, expected, widgets):
     return {"identifier": identifier, "widget": widget, "value": expected, "variantType": variant_type}
 
 
-def check_session_capture(hmi, cycle, result, required):
+def retained_scan(hmi, required):
     if "scanCapture" not in hmi:
         if required:
             raise TraceIssue("cycle_hmi_scan_capture_missing", "The HMI session has no retained scan capture")
         return
-    retained, reviewed = hmi["scanCapture"], cycle.get("scanCapture", {})
-    if (retained.get("state") != "retained" or retained.get("path") != CAPTURE_COPY
-            or retained.get("ownedListener") != hmi["opcUaAfter"]["ownedListener"]
-            or not integer(retained.get("bytes"), 1) or retained["bytes"] != reviewed.get("bytes")
-            or retained.get("sha256") != reviewed.get("sha256")):
+    retained = hmi["scanCapture"]
+    owner = hmi["opcUaAfter"]["ownedListener"]
+    if (not isinstance(retained, dict) or retained.get("state") != "retained" or retained.get("path") != CAPTURE_COPY
+            or not isinstance(owner, dict) or retained.get("ownedListener") != owner
+            or not integer(retained.get("bytes"), 1) or not isinstance(retained.get("sha256"), str)
+            or not SHA256.fullmatch(retained["sha256"])):
+        raise TraceIssue("cycle_hmi_scan_capture_mismatch", "The HMI report has an invalid retained scan receipt")
+    return retained
+
+
+def check_session_capture(hmi, cycle, result, required):
+    retained = retained_scan(hmi, required)
+    if retained is None:
+        return
+    reviewed = cycle.get("scanCapture", {})
+    if retained["bytes"] != reviewed.get("bytes") or retained["sha256"] != reviewed.get("sha256"):
         raise TraceIssue("cycle_hmi_scan_capture_mismatch", "The reviewed scan file differs from the one retained by the HMI session")
     result["scanCapture"] = {"state": "matched", "sha256": retained["sha256"], "bytes": retained["bytes"]}
+
+
+def bind_session_scan_capture(trace, document, ruc):
+    try:
+        _, smoke = status_run(document, ruc)
+        retained = retained_scan(smoke["hmi"], required=True)
+    except (AttributeError, KeyError, TypeError) as error:
+        raise ValueError("The status report has missing or malformed session capture fields") from error
+    session = smoke.get("sessionId")
+    if not isinstance(session, str) or not session.strip():
+        raise TraceIssue("cycle_hmi_session_mismatch", "The status report needs its ARsim session ID")
+    scan, hmi = trace["scanCapture"], trace["hmi"]
+    digest = retained["sha256"]
+    if scan.get("sha256", digest) != digest:
+        raise TraceIssue("cycle_hmi_scan_capture_mismatch", "The trace descriptor's scan hash differs from the HMI receipt")
+    if hmi.get("sessionId", session) != session:
+        raise TraceIssue("cycle_hmi_session_mismatch", "The trace descriptor's session ID differs from the HMI receipt")
+    supplied = []
+    if "sha256" not in scan:
+        supplied.append("scanCapture.sha256")
+    if "sessionId" not in hmi:
+        supplied.append("hmi.sessionId")
+    bound = {**trace, "scanCapture": {**scan, "sha256": digest}, "hmi": {**hmi, "sessionId": session}}
+    return bound, {"derivedFields": supplied, "sessionId": session, "scanSha256": digest}
 
 
 def check_assembly_widget(ruc, reviewed, browser, route, result):
@@ -268,11 +306,11 @@ def check_cycle_hmi(cycle, trace, ruc, document, result, *, require_session_capt
 
 
 def review_cycle_hmi(report, trace, path, *, require_session_capture=False, require_assembly_widget=False,
-                     layout_report_path=None):
+                     layout_report_path=None, status_snapshot=None):
     result = report["cycleHmiReview"]
     evidence_path = path
     try:
-        document, result["statusReport"] = json_snapshot(path, TRACE_LIMIT)
+        document, result["statusReport"] = json_snapshot(path, TRACE_LIMIT) if status_snapshot is None else status_snapshot
         assembly_route = report["routeReview"] if require_assembly_widget or layout_report_path is not None else None
         check_cycle_hmi(report["cycleTraceReview"], trace, report["rucReview"], document, result,
                         require_session_capture=require_session_capture, assembly_route=assembly_route)

@@ -21,6 +21,8 @@ Signal timestamps establish alignment. The PLC scan counter establishes continui
 2. Keep the existing `inspectionLeg` and `returnLeg` headers with their captured baseline sequences. Use the original `captureKind`, source .lpj hash and compiled RUC hash from those receipts. Leave out `inspectionLeg.scans`, `returnLeg.scans`, `nextHold` and `holdContinuation` when using a scan file.
 3. Add the `scanCapture` object below to the cycle JSON. Hash the exact file with `(Get-FileHash -LiteralPath <capture.csv> -Algorithm SHA256).Hash.ToLowerInvariant()`. Choose the inclusive inspection and return windows and the hold scan from the original capture.
 
+With br-studio 0.72.0 or later, a [strict same-session review](cycle-trace-review.md#use-the-status-receipt-for-scan-identity) can read the scan hash and HMI session ID from the status receipt when those fields are omitted.
+
 ```json
 {
   "scanCapture": {
