@@ -47,6 +47,14 @@ Keep the raw capture alongside the JSON. Include every scan in the interval, sta
 
 For a trace with sequence snapshots, include `monitorSequenceBeforeScan` and `monitorSequenceAfterScan` on each row. Use the destination monitor's application sequence before and after consuming the recorded detections. The review reports inconsistent sequence evidence as incomplete. [Scan capture checkpoints](cycle-scan-capture.md#check-the-consumed-event-sequence-in-every-scan)
 
+## Check the motion inputs on the Release edge
+
+With br-studio 0.58.0 or later, supply both `expectedExitVelocityMps` and `expectedExitAccelerationMps2` in the request as finite decimal strings. Use the intended station command values in m/s and m/s² from the reviewed test. Build with `verifyLaunchPadMotionLimits` and reuse the same LaunchPad save, decoded readback and name map. [Pin the assembly limits](native-build.md#pin-the-explicit-in-plane-motion-limits)
+
+Capture the actual function block inputs as `exitVelocityMps` and `exitAccelerationMps2` on the scan that raises Release. Store each as a decimal string in the same units. For example, a trace row can include `"exitVelocityMps": "0.6000"` and `"exitAccelerationMps2": "6.0"`. Equivalent decimal spellings compare equal. Values from a later scan do not fill a gap on the Release edge.
+
+Read `stationTraceReview.releaseMotion` for the Release scan, expected and recorded inputs, and the compiled limits. A missing witness leaves the motion check incomplete and a different value fails it. The expected inputs verify the recorded command. Use separate measured position or velocity evidence to assess the actual movement.
+
 ## Interpret the result
 
 - `matched` requires one Release edge with the approved request and shuttle, route permission, station clear and inspection busy clear. The same leg needs ReleaseDone and a fresh `mpTRAFFIC_SH_ARRIVAL` at the expected station for that shuttle. Either observation may appear first in the PLC trace after release.

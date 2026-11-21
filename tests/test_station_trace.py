@@ -1,7 +1,7 @@
 from copy import deepcopy
 import unittest
 
-from br_automation_studio.station_trace import ARRIVAL, FLAGS, TraceIssue, check_leg, trace_header
+from br_automation_studio.station_trace import ARRIVAL, FLAGS, TraceIssue, check_leg, check_release_motion, trace_header
 
 
 class StationTraceTest(unittest.TestCase):
@@ -104,3 +104,36 @@ class StationTraceTest(unittest.TestCase):
             with self.subTest(key=key), self.assertRaises(TraceIssue) as caught:
                 self.check(dict(self.trace, **{key: "different"}))
             self.assertEqual(caught.exception.code, "station_trace_identity")
+
+    def test_release_motion_uses_the_edge_scan_and_the_same_pinned_ruc_context(self):
+        expected = {"exitVelocityMps": "0.6", "exitAccelerationMps2": "6.00"}
+        compiled = {"assembly": "Planar", "fields": {"InPlaneVelLim": {"raw": "0.75"}}}
+        route = {"launchPad": {"sourceSha256": "a" * 64, "readbackSha256": "c" * 64}}
+        pinned = {"manager": "Traffic", "motionLimits": {"state": "matched", "compiled": compiled},
+                  "files": {"project": {"sha256": "a" * 64}, "readback": {"sha256": "c" * 64}}}
+        report = {"routeReview": route, "rucReview": {"launchPadRoute": pinned}}
+        self.trace["scans"][2].update(exitVelocityMps="0.6000", exitAccelerationMps2="6")
+        leg = self.check(self.trace)
+        check_release_motion(report, self.trace, expected, leg)
+        recorded = leg["releaseMotion"]
+        self.assertEqual((recorded["state"], recorded["scan"], recorded["compiledLimits"]),
+                         ("matched", 19, compiled))
+
+        self.trace["scans"][3].update(expected)
+        for observed, code, severity in (
+            ("0.7", "station_trace_release_motion_mismatch", "error"),
+            ("NaN", "station_trace_release_motion_invalid", "error"),
+            (None, "station_trace_release_motion_missing", "warning"),
+        ):
+            with self.subTest(observed=observed):
+                self.trace["scans"][2]["exitVelocityMps"] = observed
+                with self.assertRaises(TraceIssue) as caught:
+                    check_release_motion(report, self.trace, expected, leg)
+                self.assertEqual((caught.exception.code, caught.exception.severity), (code, severity))
+                self.assertEqual(leg["releaseMotion"]["scan"], 19)
+                self.assertEqual(leg["arrival"]["scan"], 20)
+
+        pinned["files"]["readback"]["sha256"] = "d" * 64
+        with self.assertRaises(TraceIssue) as caught:
+            check_release_motion(report, self.trace, expected, leg)
+        self.assertEqual(caught.exception.code, "station_trace_motion_limits_unverified")

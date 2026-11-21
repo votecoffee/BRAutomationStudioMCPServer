@@ -27,7 +27,7 @@ from .ruc_review import review_ruc
 from .runtime_capture import RuntimeScanCapture
 from .simulation_preflight import COMPANION_MEDIA_27, PAIRS, simulation_environment, simulation_preflight
 from .start_page import StartPageWidget
-from .station_trace import station_trace_review
+from .station_trace import release_motion_value, station_trace_review
 from .widget_packages import widget_package_review
 
 SCHEMA_VERSION = 1
@@ -246,8 +246,17 @@ def run_launchpad_station_review(arguments, request_directory):
 
 
 def run_station_trace_review(arguments, request_directory):
+    fields = {"expectedExitVelocityMps": "exitVelocityMps", "expectedExitAccelerationMps2": "exitAccelerationMps2"}
+    expected = {name: arguments[key] for key, name in fields.items() if key in arguments}
+    if expected and len(expected) != len(fields):
+        raise InvalidRequest("Supply both expectedExitVelocityMps and expectedExitAccelerationMps2")
+    for value in expected.values():
+        try:
+            release_motion_value(value)
+        except ValueError as error:
+            raise InvalidRequest(str(error)) from error
     return station_trace_review(*launchpad_inputs(arguments, request_directory), arguments["sourceStation"],
-                                request_directory / arguments["trace"])
+                                request_directory / arguments["trace"], expected_motion=expected or None)
 
 
 def run_cycle_trace_review(arguments, request_directory):
@@ -550,13 +559,20 @@ LAUNCHPAD_STATION_REVIEW = Operation(
     required=LAUNCHPAD_ROUTE_REVIEW.required,
     handler=run_launchpad_station_review,
 )
+STATION_TRACE_INPUTS = {
+    **LAUNCHPAD_ROUTE_REVIEW.arguments,
+    "sourceStation": {"type": "string", "minLength": 1, "description": "Imported name of the inspected source station."},
+    "trace": {"type": "string", "minLength": 1, "description": "File containing the normalized scan trace."},
+}
 STATION_TRACE_REVIEW = Operation(
     name="station_trace_review",
     summary="Compare saved inspection release and arrival evidence with a verified compiled station leg.",
     arguments={
-        **LAUNCHPAD_ROUTE_REVIEW.arguments,
-        "sourceStation": {"type": "string", "minLength": 1, "description": "Imported name of the inspected source station."},
-        "trace": {"type": "string", "minLength": 1, "description": "File containing the normalized scan trace."},
+        **STATION_TRACE_INPUTS,
+        "expectedExitVelocityMps": {"type": "string", "minLength": 1,
+                                    "description": "Expected ExitVelocity on the Release edge as a decimal string in m/s."},
+        "expectedExitAccelerationMps2": {"type": "string", "minLength": 1,
+                                         "description": "Expected ExitAcceleration on the Release edge as a decimal string in m/s²."},
     },
     required=(*LAUNCHPAD_ROUTE_REVIEW.required, "jobDirectory", "sourceStation", "trace"),
     handler=run_station_trace_review,
@@ -565,7 +581,7 @@ CYCLE_TRACE_REVIEW = Operation(
     name="cycle_trace_review",
     summary="Check a recorded two-station inspection cycle including return and the next held request.",
     arguments={
-        **STATION_TRACE_REVIEW.arguments,
+        **STATION_TRACE_INPUTS,
         "trace": {"type": "string", "minLength": 1,
                   "description": "Normalized cycle trace or cycle trace descriptor for CSV samples."},
         "scanCsv": {"type": "string", "minLength": 1,

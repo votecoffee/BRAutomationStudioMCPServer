@@ -637,6 +637,11 @@ def markdown_station_trace(trace, text):
         lines.append(f"- Ignored results {trace['ignoredResults']} · Ignored detections {trace['ignoredDetections']}")
     if arrival := trace.get("arrival"):
         lines.append(f"- Arrival at {text(arrival['station'])} · Scan {arrival['scan']} · Monitor sequence {arrival['sequence']}")
+    if motion := trace.get("releaseMotion"):
+        lines.append(f"- Release motion {text(motion['state'])} · Scan {motion['scan']}")
+        if observed := motion.get("observed"):
+            lines.append(f"- Exit velocity {text(observed['exitVelocityMps'])} m/s · "
+                         f"Exit acceleration {text(observed['exitAccelerationMps2'])} m/s²")
     if fault := trace.get("firstFault"):
         lines.append(f"- First adapter status {fault['statusId']} at scan {fault['scan']}")
     return lines
