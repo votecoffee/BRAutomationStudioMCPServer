@@ -1,6 +1,6 @@
 # Rehearse one ACOPOS 6D inspection cycle with its HMI
 
-Use this workflow with br-studio 0.73.0 or later for a saved AS4 PC simulation project, a two-station LaunchPad route and a PLC-hosted mapp View page. Work in one run directory with a reviewed project and build as inputs. Keep installation paths, project identifiers and captures in the local run directory.
+Use this workflow with br-studio 0.74.0 or later for a saved AS4 PC simulation project, a two-station LaunchPad route and a PLC-hosted mapp View page. Work in one run directory with a reviewed project and build as inputs. Keep installation paths, project identifiers and captures in the local run directory.
 
 ## Qualify the project and build
 
@@ -11,7 +11,7 @@ Use this workflow with br-studio 0.73.0 or later for a saved AS4 PC simulation p
 
 ## Keep one directory for the run
 
-Copy the JSON examples into the names shown. Replace the example paths, IDs, status integers, scan numbers and hashes with values from the selected project and run. Relative paths resolve from each request file. Keep `session/` outside `project/` and `build/`. That session directory must be new when the status command starts.
+Copy the JSON examples into the names shown. Replace the example paths, IDs, status integers and scan numbers with values from the selected project and run. Relative paths resolve from each request file. Keep `session/` outside `project/` and `build/`. That session directory must be new when the status command starts.
 
 ```text
 run/
@@ -110,7 +110,7 @@ Save as `svg-request.json`. Enable the two optional SVG checks when the captured
 }
 ```
 
-Save as `cycle-trace.json`. Replace the repeated-zero hash placeholders with the saved LaunchPad file's SHA-256 and the compiled RUC's SHA-256. Use the recorded monitor baselines, captured request and shuttle IDs, imported names and actual scan windows. The `captureKind` example applies to a real ARsim acquisition. Keep the original classification when replaying evidence. The strict review below obtains the omitted scan hash, session ID and HMI bindings from the role-labeled status receipt and verifies the CSV bytes. [Supply a binding map for an older receipt](cycle-trace-review.md#match-the-hmi-reopen-to-that-hold)
+Save as `cycle-trace.json`. Use the recorded monitor baselines, captured request and shuttle IDs, imported names and actual scan windows. The `captureKind` example applies to a real ARsim acquisition. Keep the original classification when replaying evidence. The strict review takes the LaunchPad and RUC hashes from the matched pinned build. It obtains the scan hash, session ID, heartbeat and status bindings from the role-labeled status receipt and verifies the CSV bytes. [Pinned input checks](cycle-trace-review.md#use-the-pinned-build-for-inspection-hashes) · [Supply a binding map for an older receipt](cycle-trace-review.md#match-the-hmi-reopen-to-that-hold)
 
 ```json
 {
@@ -123,8 +123,6 @@ Save as `cycle-trace.json`. Replace the repeated-zero hash placeholders with the
     "destinationStation": "Outfeed",
     "requestId": 17,
     "shuttleId": 7,
-    "launchPadSha256": "0000000000000000000000000000000000000000000000000000000000000000",
-    "rucSha256": "0000000000000000000000000000000000000000000000000000000000000000",
     "monitorSequenceBeforeRelease": 51
   },
   "returnLeg": {
@@ -193,7 +191,7 @@ $LASTEXITCODE
 | Build and RUC | Native job status and warnings, package SHA-256, matched route and pinned inputs |
 | Status | `result.arsimSmoke.sessionId`, retained scan SHA-256, both browser documents and cleanup |
 | Geometry | `result.layoutSvgReview.state`, assembly and manager, both SVG hashes, requested line and label results |
-| Cycle | `result.cycleTraceReview.state` and phase, accepted arrival and next hold scans, requested motion checks |
+| Cycle | `result.cycleTraceReview.state` and phase, derived hashes in `buildBinding`, accepted arrival and next hold scans, requested motion checks |
 | Same-run HMI | `result.cycleHmiReview.state`, `scanCapture`, `holdCoverage`, `assemblyWidget` and `layoutGeometry` |
 
 Record an incomplete scan window or unsupported SVG format with its diagnostic and the last accepted evidence. Keep the JSON receipts alongside the exact files they reference. The first rehearsal handoff covers the saved project, compiled build and observed simulation. Record hardware observations separately if they are later collected.

@@ -639,7 +639,7 @@ CYCLE_TRACE_REVIEW = Operation(
         "hmiStatusReport": {"type": "string", "minLength": 1,
                             "description": "Completed arsim_status_smoke JSON for the same cycle RUC and session."},
         "requireSessionScanCapture": {"type": "boolean", "default": False,
-                                      "description": "Require the session's retained scan file and derive omitted scan or HMI identities from the receipt."},
+                                      "description": "Require the session's retained scan file. Bind omitted scan or HMI identities to the status receipt and omitted inspection hashes to the matched pinned build."},
         "requireHmiAssemblyWidget": {"type": "boolean", "default": False,
                                      "description": "Require the cycle's Assembly6D widget and both layout SVGs in both HMI documents."},
         "hmiLayoutSvgReport": {"type": "string", "minLength": 1,

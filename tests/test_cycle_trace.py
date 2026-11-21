@@ -8,7 +8,7 @@ from tempfile import TemporaryDirectory
 import unittest
 
 from br_automation_studio.cycle_capture import FIELDS, HOLD_HMI, materialize_cycle
-from br_automation_studio.cycle_trace import check_cycle, check_position_time_handoff, check_return_positions
+from br_automation_studio.cycle_trace import bind_cycle_build, check_cycle, check_position_time_handoff, check_return_positions
 from br_automation_studio.station_trace import ARRIVAL, FLAGS, MONITOR_CHECKPOINTS, TraceIssue
 
 
@@ -72,6 +72,38 @@ class CycleTraceTest(unittest.TestCase):
         ]
         second = self.run_cycle(self.trace)
         self.assertTrue(second["returnLeg"]["arrivalObservedBeforeSourceClear"])
+
+    def test_derive_omitted_build_hashes_only_from_matching_pinned_inputs(self):
+        proof = {"sourceSha256": self.identity["launchPadSha256"], "readbackSha256": "c" * 64}
+        files = {"project": {"sha256": proof["sourceSha256"]}, "readback": {"sha256": proof["readbackSha256"]}}
+        pinned = {"manager": "Traffic", "state": "matched", "files": files}
+        report = {"routeReview": {"launchPad": proof},
+                  "rucReview": {"launchPadRoute": pinned, "jobId": "job", "planSha256": "d" * 64}}
+        for missing in (("launchPadSha256",), ("rucSha256",), ("launchPadSha256", "rucSha256")):
+            with self.subTest(missing=missing):
+                trace = deepcopy(self.trace)
+                for key in missing:
+                    trace["inspectionLeg"].pop(key)
+                result = {}
+                bound = bind_cycle_build(trace, report, self.identity, missing, result)
+                self.assertEqual(bound, self.trace)
+                self.assertTrue(all(key not in trace["inspectionLeg"] for key in missing))
+                self.assertEqual(result["buildBinding"]["derivedFields"], [f"inspectionLeg.{key}" for key in missing])
+                self.assertEqual(result["buildBinding"]["planSha256"], "d" * 64)
+                self.assertEqual(self.run_cycle(bound)["phase"], "complete")
+        trace["inspectionLeg"]["rucSha256"] = None
+        bound = bind_cycle_build(trace, report, self.identity, ("launchPadSha256",), {})
+        with self.assertRaises(TraceIssue) as caught:
+            self.run_cycle(bound)
+        self.assertEqual(caught.exception.code, "station_trace_identity")
+        for change in ({"state": "inputs_verified"}, {"manager": "Other"}, {
+            "files": files | {"readback": {"sha256": "e" * 64}},
+        }):
+            with self.subTest(change=change):
+                report["rucReview"]["launchPadRoute"] = pinned | change
+                with self.assertRaises(TraceIssue) as caught:
+                    bind_cycle_build(trace, report, self.identity, ("launchPadSha256",), {})
+                self.assertEqual(caught.exception.code, "cycle_trace_build_binding")
 
     def test_position_time_handoff_needs_equality_on_shared_scan_and_progress_on_later_scan(self):
         outbound = {"sampledSpeedReview": {"lastSampleScan": 13, "lastSampleTimeMicroseconds": 3000}}

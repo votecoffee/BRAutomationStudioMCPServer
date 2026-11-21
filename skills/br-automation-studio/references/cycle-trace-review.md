@@ -93,6 +93,12 @@ When either field is omitted, the reviewer checks the status receipt against the
 
 With br-studio 0.73.0 or later, the same strict review can also derive `hmi.heartbeatIdentifier` and `hmi.bindings`. To omit the entire `hmi` object, use an HMI receipt with one binding explicitly labeled for each held-status role. The reviewer takes the heartbeat identifier from the reviewed counter binding. If the descriptor supplies a binding map, each recorded role must agree with it. [Status binding roles](arsim-status-smoke.md#select-the-expected-status)
 
+## Use the pinned build for inspection hashes
+
+With br-studio 0.74.0 or later, the strict review can also fill omitted `inspectionLeg.launchPadSha256` and `inspectionLeg.rucSha256`. Supply the completed status receipt and original retained scan with `requireSessionScanCapture: true`. Select the Traffic Manager and use the same LaunchPad save, decoded readback and name map that were pinned and verified in the build. The reviewer checks that the completed status receipt identifies that same build and RUC.
+
+Read `cycleTraceReview.buildBinding` for the job ID, plan hash, both inspection hashes and which fields were derived. The reviewer fills missing fields in memory. Explicit hashes, including fields whose value is `null`, must match the reviewed inputs. Use explicit hashes for normalized traces and scan reviews that lack the matching pinned inputs and same-session receipt. [Complete rehearsal example](inspection-cycle-rehearsal.md#review-the-saved-svgs-and-plc-scans)
+
 ## Verify the held request through the reopen
 
 With br-studio 0.67.0 or later, record each consecutive PLC scan from the first new hold through the final direct heartbeat after the browser reopen. Use [`scanCapture.holdThroughScan`](cycle-scan-capture.md#keep-recording-the-next-held-request) with a scan file. In a normalized JSON trace, set a top-level `holdContinuation` with `throughScan` and `scans`. Put each subsequent scan, starting at `nextHold.scan + 1`, in that array. Use the same fields as `nextHold`, including `phase`, `releaseTotal` and `heartbeat`.

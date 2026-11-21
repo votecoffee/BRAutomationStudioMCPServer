@@ -7,12 +7,13 @@ from .cycle_hmi import bind_session_scan_capture, review_cycle_hmi
 from .launchpad_route import json_snapshot, launchpad_route_review
 from .mptraffic_events import read_project_events
 from .station_trace import (
-    MONITOR_CHECKPOINTS, TRACE_LIMIT, TraceIssue, check_bound_leg, check_detections, check_monitor_checkpoint,
-    check_leg_positions, check_release_motion, check_sampled_speed, check_station_positions, check_waypoint_positions,
-    integer, leg_identity, scan_detections, selected_leg,
+    MONITOR_CHECKPOINTS, TRACE_LIMIT, TraceIssue, bound_launchpad_evidence, check_bound_leg, check_detections,
+    check_leg_positions, check_monitor_checkpoint, check_release_motion, check_sampled_speed, check_station_positions,
+    check_waypoint_positions, integer, leg_identity, scan_detections, selected_leg,
 )
 
 HOLD_FIELDS = ("station", "requestId", "shuttleId", "held", "release", "resultAccepted")
+BUILD_HASH_FIELDS = ("launchPadSha256", "rucSha256")
 
 
 def check_return(trace, outbound, inbound, result):
@@ -183,6 +184,19 @@ def check_position_time_handoff(cycle):
     result["state"] = "matched"
 
 
+def bind_cycle_build(trace, report, identity, missing, result):
+    if bound_launchpad_evidence(report, identity["managerId"]).get("state") != "matched":
+        raise TraceIssue("cycle_trace_build_binding",
+                         "To omit an inspection build hash, supply the LaunchPad inputs pinned by the matched build")
+    ruc = report["rucReview"]
+    result["buildBinding"] = {
+        "derivedFields": [f"inspectionLeg.{key}" for key in missing],
+        "jobId": ruc["jobId"], "planSha256": ruc["planSha256"],
+        **{key: identity[key] for key in BUILD_HASH_FIELDS},
+    }
+    return {**trace, "inspectionLeg": trace["inspectionLeg"] | {key: identity[key] for key in missing}}
+
+
 def cycle_trace_review(project, configuration, cpu, manager_id, lpj, readback, name_map, job_directory,
                        source_station, trace_path, *, hmi_status_path=None, scan_csv_path=None, require_session_capture=False,
                        expected_motion=None, position_tolerance_um=None, return_position_tolerance_um=None,
@@ -202,17 +216,26 @@ def cycle_trace_review(project, configuration, cpu, manager_id, lpj, readback, n
         inbound = selected_leg(report, outbound[-1])
         if len(report["stationReview"]["legs"]) != 2 or inbound[-1] != source_station:
             raise TraceIssue("cycle_trace_route", "The compiled route needs two station legs that close the cycle")
+        identity = leg_identity(report, manager_id, outbound)
         trace, result["trace"] = json_snapshot(trace_path, TRACE_LIMIT)
         if scan_csv_path is not None:
             if require_session_capture and hmi_status_path is not None and isinstance(trace, dict):
                 scan, hmi = trace.get("scanCapture"), trace.get("hmi", {})
+                inspection = trace.get("inspectionLeg")
+                missing = (
+                    [key for key in BUILD_HASH_FIELDS if key not in inspection] if isinstance(inspection, dict) else []
+                )
                 if (isinstance(scan, dict) and isinstance(hmi, dict)
-                        and ("sha256" not in scan or not {"sessionId", "heartbeatIdentifier", "bindings"} <= hmi.keys())):
+                        and (missing or "sha256" not in scan or not {"sessionId", "heartbeatIdentifier", "bindings"} <= hmi.keys())):
                     result["phase"] = "bind_session_scan"
                     evidence_path = hmi_status_path
                     status_snapshot = json_snapshot(hmi_status_path, TRACE_LIMIT)
                     trace, binding = bind_session_scan_capture(trace, status_snapshot[0], report["rucReview"])
                     result["sessionScanBinding"] = {**binding, "statusReport": status_snapshot[1]}
+                    if missing:
+                        result["phase"] = "bind_build"
+                        evidence_path = trace_path
+                        trace = bind_cycle_build(trace, report, identity, missing, result)
             evidence_path = scan_csv_path
             trace = materialize_cycle(
                 trace, scan_csv_path, result.setdefault("scanCapture", {}),
@@ -221,7 +244,7 @@ def cycle_trace_review(project, configuration, cpu, manager_id, lpj, readback, n
             evidence_path = trace_path
         elif isinstance(trace, dict) and "scanCapture" in trace:
             raise ValueError("Supply scanCsv for a cycle trace with scanCapture")
-        check_cycle(trace, leg_identity(report, manager_id, outbound), outbound, inbound, result)
+        check_cycle(trace, identity, outbound, inbound, result)
         if expected_motion is not None:
             result["phase"] = "release_motion"
             evidence_path = scan_csv_path or trace_path

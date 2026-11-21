@@ -701,7 +701,11 @@ def markdown_cycle_trace(cycle, text):
         lines.append(f"- Trace {text(trace['path'])} · SHA-256 {trace['sha256']}")
     if binding := cycle.get("sessionScanBinding"):
         fields = ", ".join(text(field) for field in binding["derivedFields"])
-        lines.append(f"- From HMI receipt {fields} · Session {text(binding['sessionId'])} · Scan SHA-256 {binding['scanSha256']}")
+        source = f"From HMI receipt {fields}" if fields else "Checked HMI receipt"
+        lines.append(f"- {source} · Session {text(binding['sessionId'])} · Scan SHA-256 {binding['scanSha256']}")
+    if build := cycle.get("buildBinding"):
+        fields = ", ".join(text(field) for field in build["derivedFields"])
+        lines.append(f"- From pinned build {fields} · LaunchPad SHA-256 {build['launchPadSha256']} · RUC SHA-256 {build['rucSha256']}")
     if capture := cycle.get("scanCapture"):
         lines.append(f"- Scan CSV SHA-256 {capture['sha256']}")
         if "records" in capture:
