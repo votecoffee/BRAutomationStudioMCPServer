@@ -14,6 +14,11 @@ RULE_ROLES = (
 )
 
 
+def rule_key(rule):
+    roles = [tuple(sorted((item["name"], item["type"]) for item in rule[role])) for _, role in RULE_ROLES]
+    return rule["name"], rule["type"], *roles
+
+
 def fields(node, name, field="Property"):
     return [child for child in children(node, field)
             if (child.get("ID") or "").split("[", 1)[0] == name]
@@ -183,6 +188,11 @@ class MotionLinks:
         object_lists = self.targets(path, node, "TrafficObjects", "TrafficObjectListRef", "trafficobjectlist")
         mapping_lists = self.targets(path, node, "TrafficMapping", "TrafficMappingListRef", "trafficmappinglist")
         rule_lists = self.targets(path, node, "TrafficRules", "TrafficRuleListRef", "trafficrulelist", required=False)
+        rule_groups = fields(node, "TrafficRules", "Group")
+        rule_link_count = sum(len(fields(group, "TrafficRuleListRef")) for group in rule_groups)
+        rule_links_verified = (len(rule_groups) == sum(
+            (item.get("ID") or "").split("[", 1)[0] == "TrafficRules" for item in node
+        ) and rule_link_count == sum(map(len, rule_groups)) == len(rule_lists))
         objects = {}
         positions = []
         recovery = []
@@ -212,6 +222,7 @@ class MotionLinks:
             "objectLists": [item.get("ID") for _, item in object_lists],
             "mappingLists": [item.get("ID") for _, item in mapping_lists],
             "ruleLists": [item.get("ID") for _, item in rule_lists],
+            "ruleLinksVerified": rule_links_verified,
             "ruleEvidence": [self.rules(file, item, objects) for file, item in rule_lists],
             "objects": [{"name": name, "type": kind} for name, kind in objects.items()],
             "edges": edges,
@@ -285,6 +296,7 @@ class MotionLinks:
                 self.source.issue("error", "invalid_rule_endpoint", path,
                                   f"Exclusivity group {name!r} {group} expects {kind} {target!r}, "
                                   f"found {objects.get(target)!r} in this manager")
+                verified = False
         return refs, verified
 
     def selector_type(self, path, selector):

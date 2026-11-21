@@ -314,6 +314,18 @@ class BuildPreflightTests(unittest.TestCase):
         no_page = self.native_request("build_plan", **arguments, launchPadWidgetId="DemoOverview_LoopOverview")["result"]
         self.assertIsNone(no_page["buildPlan"])
         self.assertEqual(no_page["diagnostics"][-1]["code"], "launchpad_build_widget_unverified")
+        with self.assertRaisesRegex(InvalidRequest, "Missing LaunchPad build inputs"):
+            self.native_request("build_plan", verifyLaunchPadRules=True)
+        rules = self.native_request("build_plan", **arguments, verifyLaunchPadRules=True)["result"]["buildPlan"]
+        self.assertEqual(rules["manifest"]["launchPadRoute"]["rules"], {"DemoRules": []})
+        rule_file = self.project / "Physical/ARsim/PC/mapp6D/DemoRules.trafficrulelist"
+        before = rule_file.read_bytes()
+        unsupported = b'<Selector ID="TrafficRule[1]" Value="OtherRule"/>'
+        rule_file.write_bytes(before.replace(b"</Element>", unsupported + b"</Element>"))
+        unverified = self.native_request("build_plan", **arguments, verifyLaunchPadRules=True)["result"]
+        self.assertIsNone(unverified["buildPlan"])
+        self.assertEqual(unverified["diagnostics"][-1]["code"], "launchpad_build_rules_unverified")
+        rule_file.write_bytes(before)
         no_positions = self.native_request("build_plan", **arguments, verifyLaunchPadPositions=True)["result"]
         self.assertIsNone(no_positions["buildPlan"])
         self.assertEqual(no_positions["diagnostics"][-1]["code"], "launchpad_build_positions_unverified")

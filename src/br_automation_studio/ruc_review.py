@@ -13,9 +13,10 @@ from .file_device import SYSTEM_CONFIG, read_compiled_layout_device
 from .inspection import inspect_project
 from .json_io import invalid_constant, read_json, unique_object
 from .launchpad_build import (
-    checked_manager, compiled_launchpad_layout, compiled_launchpad_positions, retained_launchpad_files, selected_manager,
+    checked_manager, compiled_launchpad_layout, compiled_launchpad_positions, launchpad_rules, retained_launchpad_files,
+    selected_manager,
 )
-from .links import MotionLinks, RULE_ROLES
+from .links import MotionLinks, rule_key
 from .motion_payloads import verify_packaged_motion
 from .motion_symbols import plan_motion_symbols, read_motion_symbols
 from .native_build import identity, source_tree
@@ -156,11 +157,6 @@ def read_motion(archive, saved, reader, geometry_managers=(), *, include_layout=
     return motion.module_inventory, links, managers, ready
 
 
-def rule_key(rule):
-    roles = [tuple(sorted((item["name"], item["type"]) for item in rule[role])) for _, role in RULE_ROLES]
-    return rule["name"], rule["type"], *roles
-
-
 def compare_rules(reader, path, name, expected, actual):
     before = {row["id"]: row for row in expected}
     after = {row["id"]: row for row in actual}
@@ -171,7 +167,24 @@ def compare_rules(reader, path, name, expected, actual):
                          map(rule_key, saved["rules"]), map(rule_key, compiled["rules"]))
 
 
-def compare_motion(reader, saved, links, managers):
+def compare_launchpad_rules(reader, launchpad, saved, managers):
+    planned = launchpad["rules"]
+    try:
+        if planned != launchpad_rules(launchpad, saved["trafficManagers"]):
+            raise ValueError("The pinned rule lists differ from the saved manager")
+        compiled = launchpad_rules(launchpad, managers)
+    except ValueError as error:
+        reader.issue("error", "ruc_launchpad_rules_unverified", Path(DATA), str(error))
+        return {"state": "unverified", "planned": planned}
+    changed = sorted(name for name in planned.keys() | compiled.keys() if planned.get(name) != compiled.get(name))
+    if changed:
+        reader.issue("error", "ruc_launchpad_rules_mismatch", Path(DATA),
+                     f"Compiled rule lists differ from the build plan: {', '.join(changed)}")
+    return {"state": "issues" if changed else "matched", "planned": planned,
+            "compiled": compiled, "changedLists": changed}
+
+
+def compare_motion(reader, saved, links, managers, pinned_rules_manager=None):
     path = Path(DATA)
     compare_rows(reader, path, "Assembly layouts",
                  [(row["assembly"], tuple(row["layouts"])) for row in saved["assemblyLinks"]],
@@ -182,12 +195,14 @@ def compare_motion(reader, saved, links, managers):
     for name in sorted(expected.keys() & actual.keys()):
         before, after = expected[name], actual[name]
         compare_rows(reader, path, f"{name} assembly", [before["assembly"]], [after["assembly"]])
-        for field in ("objectLists", "mappingLists", "ruleLists"):
+        for field in ("objectLists", "mappingLists"):
             compare_rows(reader, path, f"{name} {field}", before[field], after[field])
         compare_rows(reader, path, f"{name} typed objects",
                      [(item["name"], item["type"]) for item in before["objects"]],
                      [(item["name"], item["type"]) for item in after["objects"]])
-        compare_rules(reader, path, name, before["ruleEvidence"], after["ruleEvidence"])
+        if name != pinned_rules_manager:
+            compare_rows(reader, path, f"{name} ruleLists", before["ruleLists"], after["ruleLists"])
+            compare_rules(reader, path, name, before["ruleEvidence"], after["ruleEvidence"])
         edge_fields = ("source", "sourceType", "destination", "destinationType")
         compare_rows(reader, path, f"{name} directed edges",
                      [tuple(item[field] for field in edge_fields) for item in before["edges"]],
@@ -382,6 +397,7 @@ def review_ruc(path, job_directory, binding=None, *, geometry_manager=None, incl
                         review["compiledLayoutDevice"] = read_compiled_layout_device(archive.read(member))
                 pinned_layout = launchpad is not None and "layout" in launchpad
                 pinned_positions = launchpad is not None and "positions" in launchpad
+                pinned_rules = launchpad is not None and "rules" in launchpad
                 pinned_manager = launchpad["manager"] if pinned_positions else None
                 modules, links, managers, ready = read_motion(archive, saved, reader, (geometry_manager, pinned_manager),
                                                               include_layout=include_layout or pinned_layout,
@@ -393,11 +409,18 @@ def review_ruc(path, job_directory, binding=None, *, geometry_manager=None, incl
                     if not ready:
                         reader.issue("error", "ruc_launchpad_positions_unverified", Path("."),
                                      "The compiled motion modules could not be read for the planned position comparison")
+                if pinned_rules:
+                    review["launchPadRoute"]["rules"] = {"state": "unverified", "planned": launchpad["rules"]}
+                    if not ready:
+                        reader.issue("error", "ruc_launchpad_rules_unverified", Path(DATA),
+                                     "The compiled motion modules could not be read for the planned rule-list comparison")
                 if ready:
-                    compare_motion(reader, saved, links, managers)
+                    compare_motion(reader, saved, links, managers, launchpad["manager"] if pinned_rules else None)
                     if launchpad is not None:
                         route = checked_manager(launchpad, managers)
                         review["launchPadRoute"].update(state="matched", edges=route["expectedEdges"])
+                        if pinned_rules:
+                            review["launchPadRoute"]["rules"] = compare_launchpad_rules(reader, launchpad, saved, managers)
                         if pinned_layout:
                             try:
                                 layout = compiled_launchpad_layout(launchpad["layout"], route["assembly"], links)

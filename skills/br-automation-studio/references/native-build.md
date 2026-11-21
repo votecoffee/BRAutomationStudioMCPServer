@@ -32,6 +32,12 @@ With br-studio 0.54.0 or later, add `"launchPadWidgetId": "Overview_PlanarDispla
 
 [RUC review](ruc-review.md#verify-the-default-page-placement-of-assembly6d) reads the compiled links, client map, and rendered content for the pinned widget automatically. The [browser rehearsal](arsim-hmi-smoke.md) uses the pinned widget and checks the served client map in both browser documents. Enable `captureLayoutAssets` and run [SVG review](layout-svg-review.md) to compare the served geometry.
 
+### Pin the reviewed traffic rules
+
+Review the saved manager's linked rule lists and typed member, entry and exit objects. With br-studio 0.55.0 or later, add `"verifyLaunchPadRules": true` to both build requests with the reviewed route inputs. The plan records the selected manager's readable lists and exclusivity groups. An empty list is recorded with zero groups. An unresolved link or unsupported rule format prevents planning. [Traffic rule review](traffic-rule-review.md)
+
+RUC review checks the same lists and role assignments. Read `rucReview.launchPadRoute.rules` for the planned and compiled groups and changed list IDs. Review the target simulator's booking and release sequence with the intended routes and shuttles.
+
 ### Verify MpTraffic in the plan and RUC
 
 Since br-studio 0.35.0, set `verifyMpTrafficEnum` to true in both the plan and execution requests to carry the [MpTraffic definition check](simulation-preflight.md#verify-the-mptraffic-definition-before-building) into the native build. The plan compares the registered project declaration and IA32 binary with the selected AS4 catalog files. The plan SHA-256 covers the saved and installed declaration and payload hashes under `manifest.mpTrafficDefinition`.

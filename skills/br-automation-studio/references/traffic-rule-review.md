@@ -16,6 +16,8 @@ The parser reads `TrafficRule` selectors of type `ExclusivityGroup` and resolves
 
 A linked, readable list can be empty. An unsupported rule type or shape receives an `unsupported_rule` warning and makes that list `unverified`. An unresolved or mistyped endpoint receives `invalid_rule_endpoint`. An on-disk rule list outside the selected manager's links is outside its rule evidence.
 
+Use `verifyLaunchPadRules` when planning a build from a reviewed LaunchPad route. The selected manager's readable rule lists become part of the plan. A changed or unreadable compiled list fails that RUC check. [Pin the reviewed traffic rules](native-build.md#pin-the-reviewed-traffic-rules)
+
 ## Check motion behavior separately
 
 The schema comes from the AS4 mapp 6D 2.2.0 catalog under `AS/TechnologyPackages/mapp6D/2.2.0/Editors/` in `TrafficRuleList.xml` and `ExclusivityGroupObjectList.xml`. The installed Help topic `konzept/traffic_manager/exclusivity.html` describes booking at main objects and along routes involving entry and exit objects. Confirm the intended group boundaries and booking and release sequence in the version-matched simulation. Preserve the selected recipe and observed shuttle route when documenting that check.

@@ -434,6 +434,33 @@ position-x-mm="0" position-y-mm="0" transform="translate(0 -240)"><g>
         self.assertEqual(self.codes(response), ["ruc_content_mismatch"])
         self.assertIn("DemoRules contents", response["result"]["diagnostics"][0]["message"])
 
+    def test_pinned_rule_lists_reject_role_changes_and_unreadable_rules(self):
+        original = self.configure_exclusivity()
+        planned = {"DemoRules": [{"name": "InspectionZone", "type": "ExclusivityGroup",
+                                  "members": [{"name": "Inspect", "type": "Station"},
+                                              {"name": "Transit", "type": "Waypoint"}],
+                                  "entries": [{"name": "Load", "type": "Station"}], "exits": []}]}
+        retained = self.add_launchpad_route(rules=planned)
+        verified = self.review()
+        self.assertEqual(verified["status"], "complete", verified["result"]["diagnostics"])
+        route = verified["result"]["rucReview"]["launchPadRoute"]
+        self.assertEqual(route["rules"]["compiled"], planned)
+        self.assertIn("Compiled Traffic Manager rule lists matched", markdown(verified))
+
+        for source, replacement, code in (
+            (b'ID="EntryObjects"', b'ID="ExitObjects"', "ruc_launchpad_rules_mismatch"),
+            (b'Value="ExclusivityGroup"', b'Value="OtherRule"', "ruc_launchpad_rules_unverified"),
+        ):
+            with self.subTest(code=code):
+                self.members[RULES] = original.replace(source, replacement)
+                self.write("job.json", self.package() | {"launchPadRoute": retained})
+                result = self.review()
+                self.assertEqual(result["status"], "issues")
+                self.assertIn(code, self.codes(result))
+                route = result["result"]["rucReview"]["launchPadRoute"]
+                self.assertEqual(route["state"], "matched")
+                self.assertNotEqual(route["rules"]["state"], "matched")
+
     def test_compiled_rule_rejects_wrong_type_in_selected_manager(self):
         self.members[RULES] = self.configure_exclusivity().replace(b'Value="Inspect"', b'Value="Transit"')
         self.package()

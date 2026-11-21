@@ -9,6 +9,7 @@ from shutil import copyfile
 from .launchpad_baseline import compare_cycle, names_for, nonempty, read_launchpad_save
 from .launchpad_export import review_launchpad_export
 from .launchpad_layout import compare_layout, linked_layout, master_offsets, native_segments
+from .links import RULE_ROLES, rule_key
 from .project import SavedFiles
 
 
@@ -30,6 +31,7 @@ class LaunchPadBuildInputs:
     verify_layout: bool = False
     verify_positions: bool = False
     widget_id: str | None = None
+    verify_rules: bool = False
 
 
 def selected_manager(manager, managers):
@@ -148,6 +150,22 @@ def compiled_launchpad_positions(binding, managers):
         if decimal_position(saved.get("xyMetres"), name) != decimal_position(actual["xyMetres"], name):
             moved.append(name)
     return {"state": "issues" if moved else "matched", "planned": pinned, "compiled": compiled, "movedObjects": moved}
+
+
+def launchpad_rules(binding, managers):
+    manager = selected_manager(binding["manager"], managers)
+    if not manager["ruleLinksVerified"] or len(set(manager["ruleLists"])) != len(manager["ruleLists"]):
+        raise ValueError(f"Expected readable, unique rule-list links for Traffic Manager {binding['manager']!r}")
+    lists = {}
+    for row in manager["ruleEvidence"]:
+        if row["state"] != "read":
+            raise ValueError(f"Rule list {row['id']!r} could not be verified in {row['path']}")
+        lists[row["id"]] = [
+            {"name": rule["name"], "type": rule["type"], **{
+                role: sorted(rule[role], key=lambda item: (item["name"], item["type"])) for _, role in RULE_ROLES
+            }} for rule in sorted(row["rules"], key=rule_key)
+        ]
+    return lists
 
 
 def retained_launchpad_files(reader, binding):
