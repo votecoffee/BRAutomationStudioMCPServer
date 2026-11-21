@@ -180,6 +180,33 @@ class CycleHmiTest(unittest.TestCase):
                 bind_session_scan_capture(altered, self.document, self.ruc)
             self.assertEqual(error.exception.code, code)
 
+    def test_bind_session_scan_can_take_the_full_explicit_binding_map(self):
+        wanted = self.trace.pop("hmi")
+        self.trace["scanCapture"] = {}
+        self.hmi["scanCapture"] = {"state": "retained", "sha256": "c" * 64, "bytes": 128, "path": "scan-capture.csv",
+                                   "ownedListener": self.owner}
+        reviews = self.hmi["statusBindingReviews"]
+        for row, (role, identifier) in zip(reviews, wanted["bindings"].items(), strict=True):
+            self.assertEqual(row["bindingReview"]["stringIdentifier"], identifier)
+            row["role"] = role
+        bound, receipt = bind_session_scan_capture(self.trace, self.document, self.ruc)
+        self.assertEqual(bound["hmi"], wanted)
+        self.assertEqual(receipt["derivedFields"], [
+            "scanCapture.sha256", "hmi.sessionId", "hmi.heartbeatIdentifier", "hmi.bindings",
+        ])
+        reviews[0].pop("role")
+        with self.assertRaises(TraceIssue) as error:
+            bind_session_scan_capture(self.trace, self.document, self.ruc)
+        self.assertEqual(error.exception.code, "cycle_hmi_status_roles")
+
+        self.cycle["scanCapture"] = {"sha256": "c" * 64, "bytes": 128}
+        self.trace["hmi"] = wanted
+        roles = self.trace["hmi"]["bindings"]
+        roles["phase"], roles["releaseTotal"] = roles["releaseTotal"], roles["phase"]
+        with self.assertRaises(TraceIssue) as error:
+            self.check()
+        self.assertEqual(error.exception.code, "cycle_hmi_status_roles")
+
     def test_package_is_checked_before_session_and_hold(self):
         self.smoke["packageSha256"] = "c" * 64
         del self.trace["hmi"]

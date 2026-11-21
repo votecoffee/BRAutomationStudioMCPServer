@@ -1,6 +1,8 @@
 import unittest
+from unittest.mock import patch
 
-from br_automation_studio.hmi_smoke import HmiProbe, check_samples
+from br_automation_studio.binding_review import BindingTarget
+from br_automation_studio.hmi_smoke import HmiProbe, arsim_hmi_smoke, check_samples, read_status_bindings
 
 
 class HmiSmokeTest(unittest.TestCase):
@@ -35,6 +37,36 @@ class HmiSmokeTest(unittest.TestCase):
         probe = HmiProbe({"rucReview": review}, None, 20)
         with self.assertRaisesRegex(ValueError, "same completed build and RUC"):
             probe.prepare(review | {"archive": {"sha256": "other"}}, {}, {})
+
+    def test_status_smoke_keeps_an_explicit_role_with_its_reviewed_binding(self):
+        target = BindingTarget("Default", "Main", "Heartbeat", "::Status:Heartbeat")
+        first = {"widgetId": "Request", "stringIdentifier": "::Status:Request", "expectedValue": 7, "role": "requestId"}
+        extra = {"widgetId": "Extra", "stringIdentifier": "::Status:Extra", "expectedValue": 7}
+        document = {"schemaVersion": 1, "bindings": [first, extra]}
+        with patch("br_automation_studio.hmi_smoke.read_json", return_value=document):
+            bindings = read_status_bindings(None, target)
+        self.assertEqual([binding.role for binding in bindings], ["requestId", None])
+
+        def review(project, job, binding):
+            return {"evidence": "ruc_binding_readback", "rucReview": {"archive": {"sha256": "a" * 64}}, "snapshot": {},
+                    "bindingReview": {"domId": binding.dom_id, "stringIdentifier": binding.identifier}}
+
+        def smoke(project, job, pvi, session, timeout, probe, **keywords):
+            first, second = probe.status_bindings
+            self.assertEqual((first["role"], first["bindingReview"]["stringIdentifier"]), ("requestId", "::Status:Request"))
+            self.assertNotIn("role", second)
+            return {}
+
+        with (patch("br_automation_studio.hmi_smoke.review_ruc", side_effect=review),
+              patch("br_automation_studio.hmi_smoke.arsim_smoke", side_effect=smoke)):
+            arsim_hmi_smoke(None, None, None, None, 30, target, None, None, 30, 20, status_bindings=bindings)
+
+        for rejected in ("requestId", "station", None):
+            with self.subTest(role=rejected):
+                document["bindings"][1] = extra | {"role": rejected}
+                with (patch("br_automation_studio.hmi_smoke.read_json", return_value=document),
+                      self.assertRaisesRegex(ValueError, "held-status role")):
+                    read_status_bindings(None, target)
 
 
 if __name__ == "__main__":

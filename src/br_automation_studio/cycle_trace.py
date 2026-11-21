@@ -205,8 +205,9 @@ def cycle_trace_review(project, configuration, cpu, manager_id, lpj, readback, n
         trace, result["trace"] = json_snapshot(trace_path, TRACE_LIMIT)
         if scan_csv_path is not None:
             if require_session_capture and hmi_status_path is not None and isinstance(trace, dict):
-                scan, hmi = trace.get("scanCapture"), trace.get("hmi")
-                if isinstance(scan, dict) and isinstance(hmi, dict) and ("sha256" not in scan or "sessionId" not in hmi):
+                scan, hmi = trace.get("scanCapture"), trace.get("hmi", {})
+                if (isinstance(scan, dict) and isinstance(hmi, dict)
+                        and ("sha256" not in scan or not {"sessionId", "heartbeatIdentifier", "bindings"} <= hmi.keys())):
                     result["phase"] = "bind_session_scan"
                     evidence_path = hmi_status_path
                     status_snapshot = json_snapshot(hmi_status_path, TRACE_LIMIT)

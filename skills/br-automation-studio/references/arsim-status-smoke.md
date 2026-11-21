@@ -20,6 +20,8 @@ Start with a [combined HMI request](arsim-hmi-smoke.md#select-the-hmi-witness) f
 
 Use separate widget IDs and node identifiers for the heartbeat and each status. Select a held condition that persists across both read windows. Status values use scalar integers and one-way default OPC UA bindings on the same loopback endpoint. Choose distinguishable display values so that the expected fields can be seen after the widget loads.
 
+With br-studio 0.73.0 or later, add an optional `role` to the binding entries for `requestId`, `shuttleId`, `phase` and `releaseTotal`. Use each role at most once. The status response records the role alongside its compiled binding review. With all four roles present, strict same-session cycle review can take the HMI binding map from the response. [Role-labeled request example](inspection-cycle-rehearsal.md#capture-the-hmi-and-cycle-together)
+
 Set `verifyIecType` to true to check the saved IEC declaration against the compiled node for the heartbeat and each configured status. A mismatch stops the check before ARsim starts. [IEC declaration workflow](ruc-binding-review.md#verify-the-saved-iec-type)
 
 Install the `browser` and `opcua` extras. Run `br-studio operation-help arsim_status_smoke` to see the request fields, then run `br-studio run --request <request.json>`. Use a fresh session directory for each run.

@@ -4,14 +4,13 @@ import re
 
 from .arsim_smoke import HOST
 from .browser_smoke import ASSEMBLY_WIDGET, http_status, layout_asset_paths, numeric_text
-from .hmi_smoke import check_samples
+from .hmi_smoke import HELD_STATUS_ROLES, check_samples
 from .launchpad_route import json_snapshot
 from .opcua_smoke import CURRENT_READ, INTEGER_NODE_TYPES
 from .runtime_capture import CAPTURE_COPY
 from .station_trace import TRACE_LIMIT, TraceIssue, integer
 
 
-ROLES = ("requestId", "shuttleId", "phase", "releaseTotal")
 SHA256 = re.compile(r"[a-f0-9]{64}")
 
 
@@ -158,28 +157,49 @@ def check_session_capture(hmi, cycle, result, required):
     result["scanCapture"] = {"state": "matched", "sha256": retained["sha256"], "bytes": retained["bytes"]}
 
 
+def recorded_status_roles(hmi):
+    roles = {}
+    for row in hmi.get("statusBindingReviews", ()):
+        if "role" not in row:
+            continue
+        role = row["role"]
+        identifier = row["bindingReview"]["stringIdentifier"]
+        if (role not in HELD_STATUS_ROLES or role in roles or not isinstance(identifier, str)
+                or not identifier.strip() or identifier in roles.values()):
+            raise TraceIssue("cycle_hmi_status_roles", "The HMI receipt needs unique held-status roles and identifiers")
+        roles[role] = identifier
+    return roles
+
+
 def bind_session_scan_capture(trace, document, ruc):
     try:
         _, smoke = status_run(document, ruc)
-        retained = retained_scan(smoke["hmi"], required=True)
+        status = smoke["hmi"]
+        retained = retained_scan(status, required=True)
+        roles = recorded_status_roles(status)
+        heartbeat = status["bindingReview"]["stringIdentifier"]
     except (AttributeError, KeyError, TypeError) as error:
         raise ValueError("The status report has missing or malformed session capture fields") from error
     session = smoke.get("sessionId")
     if not isinstance(session, str) or not session.strip():
         raise TraceIssue("cycle_hmi_session_mismatch", "The status report needs its ARsim session ID")
-    scan, hmi = trace["scanCapture"], trace["hmi"]
+    scan, hmi = trace["scanCapture"], trace.get("hmi", {})
     digest = retained["sha256"]
     if scan.get("sha256", digest) != digest:
         raise TraceIssue("cycle_hmi_scan_capture_mismatch", "The trace descriptor's scan hash differs from the HMI receipt")
     if hmi.get("sessionId", session) != session:
         raise TraceIssue("cycle_hmi_session_mismatch", "The trace descriptor's session ID differs from the HMI receipt")
-    supplied = []
-    if "sha256" not in scan:
-        supplied.append("scanCapture.sha256")
-    if "sessionId" not in hmi:
-        supplied.append("hmi.sessionId")
-    bound = {**trace, "scanCapture": {**scan, "sha256": digest}, "hmi": {**hmi, "sessionId": session}}
-    return bound, {"derivedFields": supplied, "sessionId": session, "scanSha256": digest}
+    if hmi.get("heartbeatIdentifier", heartbeat) != heartbeat:
+        raise TraceIssue("cycle_hmi_binding_mismatch", "The descriptor's heartbeat identifier differs from the HMI receipt")
+    if "bindings" not in hmi and set(roles) != set(HELD_STATUS_ROLES):
+        raise TraceIssue("cycle_hmi_status_roles", "Supply hmi.bindings or all four held-status roles in the HMI receipt")
+    if "heartbeatIdentifier" not in hmi and (not isinstance(heartbeat, str) or not heartbeat.strip()):
+        raise TraceIssue("cycle_hmi_binding_mismatch", "The HMI receipt needs a reviewed heartbeat identifier")
+    defaults = {"sessionId": session, "heartbeatIdentifier": heartbeat, "bindings": roles}
+    derived = ["scanCapture.sha256"] if "sha256" not in scan else []
+    derived.extend(f"hmi.{key}" for key in defaults if key not in hmi)
+    bound = {**trace, "scanCapture": {**scan, "sha256": digest}, "hmi": defaults | hmi}
+    return bound, {"derivedFields": derived, "sessionId": session, "scanSha256": digest}
 
 
 def check_assembly_widget(ruc, reviewed, browser, route, result):
@@ -278,10 +298,12 @@ def check_cycle_hmi(cycle, trace, ruc, document, result, *, require_session_capt
     hmi, witness, reviewed = check_run(document, ruc, trace, result)
     check_session_capture(hmi, cycle, result, require_session_capture)
     identifiers = witness["bindings"]
-    if (set(identifiers) != set(ROLES)
+    if (set(identifiers) != set(HELD_STATUS_ROLES)
             or not all(isinstance(value, str) and value.strip() for value in identifiers.values())
-            or len(set(identifiers.values()) | {witness["heartbeatIdentifier"]}) != len(ROLES) + 1):
+            or len(set(identifiers.values()) | {witness["heartbeatIdentifier"]}) != len(HELD_STATUS_ROLES) + 1):
         raise ValueError("Select four distinct status identifiers, separate from the heartbeat")
+    if any(identifiers[role] != identifier for role, identifier in recorded_status_roles(hmi).items()):
+        raise TraceIssue("cycle_hmi_status_roles", "The cycle binding identifiers disagree with the HMI receipt's held-status roles")
     hold = trace["nextHold"]
     if type(hold.get("phase")) is not int or not integer(hold.get("releaseTotal")):
         raise ValueError("The next hold needs integer phase and nonnegative releaseTotal values")
@@ -299,7 +321,7 @@ def check_cycle_hmi(cycle, trace, ruc, document, result, *, require_session_capt
     expected = {**cycle["nextHold"], "phase": hold["phase"], "releaseTotal": hold["releaseTotal"]}
     widgets = {hmi["bindingReview"]["domId"]}
     result["status"] = checked = {}
-    for role in ROLES:
+    for role in HELD_STATUS_ROLES:
         checked[role] = check_status_role(hmi, result["packageSha256"], role, identifiers[role], expected[role], widgets)
     if assembly_route is not None:
         check_assembly_widget(ruc, reviewed, hmi["browser"], assembly_route, result)

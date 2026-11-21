@@ -12,6 +12,8 @@ from .ruc_review import review_ruc
 from .start_page import StartPageWidget
 from .runtime_capture import RuntimeScanCapture
 
+HELD_STATUS_ROLES = ("requestId", "shuttleId", "phase", "releaseTotal")
+
 
 def check_samples(before, browser, after, expected_type, comparison):
     if any(before[key] != after[key] for key in ("ownedListener", "nodeId")):
@@ -32,6 +34,7 @@ class StatusBinding:
     widget: str
     identifier: str
     expected: int
+    role: str | None = None
 
 
 def read_status_bindings(path, counter):
@@ -43,9 +46,11 @@ def read_status_bindings(path, counter):
     if not isinstance(bindings, list) or not bindings:
         raise ValueError("Supply a nonempty list of expected status bindings")
     widgets, identifiers = {counter.widget}, {counter.identifier}
+    roles = set()
+    fields = {"widgetId", "stringIdentifier", "expectedValue"}
     result = []
     for row in bindings:
-        if not isinstance(row, dict) or set(row) != {"widgetId", "stringIdentifier", "expectedValue"}:
+        if not isinstance(row, dict) or not fields <= row.keys() <= fields | {"role"}:
             raise ValueError("Each status binding needs widgetId, stringIdentifier and expectedValue")
         widget, identifier, expected = (row[key] for key in ("widgetId", "stringIdentifier", "expectedValue"))
         if not all(isinstance(value, str) and value.strip() and "\0" not in value for value in (widget, identifier)):
@@ -54,9 +59,14 @@ def read_status_bindings(path, counter):
             raise ValueError("Expected a status integer within the browser's exact integer range")
         if widget in widgets or identifier in identifiers:
             raise ValueError("Select distinct status widgets and OPC UA identifiers, separate from the counter")
+        role = row.get("role")
+        if "role" in row:
+            if role not in HELD_STATUS_ROLES or role in roles:
+                raise ValueError(f"Each specified held-status role must be unique and one of {', '.join(HELD_STATUS_ROLES)}")
+            roles.add(role)
         widgets.add(widget)
         identifiers.add(identifier)
-        result.append(StatusBinding(widget, identifier, expected))
+        result.append(StatusBinding(widget, identifier, expected, role))
     return tuple(result)
 
 
@@ -149,8 +159,11 @@ def arsim_hmi_smoke(project, job_dir, pvi, session_dir, timeout, target, chrome,
         if status["evidence"] != "ruc_binding_readback":
             status["arsimSmoke"] = {"state": "not_started", "packageSha256": None, "assets": [], "cleanup": None}
             return status
-        statuses.append({"bindingReview": status["bindingReview"], "snapshot": status["snapshot"],
-                         "archive": status["rucReview"]["archive"], "expectedValue": binding.expected})
+        row = {"bindingReview": status["bindingReview"], "snapshot": status["snapshot"],
+               "archive": status["rucReview"]["archive"], "expectedValue": binding.expected}
+        if binding.role is not None:
+            row["role"] = binding.role
+        statuses.append(row)
     expected_status = tuple((item["bindingReview"]["domId"], item["expectedValue"]) for item in statuses)
     check_assembly = (not statuses or assembly_widget is not None or require_layout
                       or capture_layout or require_widget_bundle or require_start_page)

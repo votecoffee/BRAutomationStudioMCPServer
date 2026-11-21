@@ -1,6 +1,6 @@
 # Rehearse one ACOPOS 6D inspection cycle with its HMI
 
-Use this workflow with br-studio 0.72.0 or later for a saved AS4 PC simulation project, a two-station LaunchPad route and a PLC-hosted mapp View page. Work in one run directory with a reviewed project and build as inputs. Keep installation paths, project identifiers and captures in the local run directory.
+Use this workflow with br-studio 0.73.0 or later for a saved AS4 PC simulation project, a two-station LaunchPad route and a PLC-hosted mapp View page. Work in one run directory with a reviewed project and build as inputs. Keep installation paths, project identifiers and captures in the local run directory.
 
 ## Qualify the project and build
 
@@ -42,10 +42,10 @@ Save as `status-bindings.json`.
 {
   "schemaVersion": 1,
   "bindings": [
-    {"widgetId": "RequestValue", "stringIdentifier": "::Status:RequestId", "expectedValue": 18},
-    {"widgetId": "ShuttleValue", "stringIdentifier": "::Status:ShuttleId", "expectedValue": 7},
-    {"widgetId": "PhaseValue", "stringIdentifier": "::Status:Phase", "expectedValue": 10},
-    {"widgetId": "ReleaseValue", "stringIdentifier": "::Status:ReleaseTotal", "expectedValue": 4}
+    {"widgetId": "RequestValue", "stringIdentifier": "::Status:RequestId", "expectedValue": 18, "role": "requestId"},
+    {"widgetId": "ShuttleValue", "stringIdentifier": "::Status:ShuttleId", "expectedValue": 7, "role": "shuttleId"},
+    {"widgetId": "PhaseValue", "stringIdentifier": "::Status:Phase", "expectedValue": 10, "role": "phase"},
+    {"widgetId": "ReleaseValue", "stringIdentifier": "::Status:ReleaseTotal", "expectedValue": 4, "role": "releaseTotal"}
   ]
 }
 ```
@@ -110,7 +110,7 @@ Save as `svg-request.json`. Enable the two optional SVG checks when the captured
 }
 ```
 
-Save as `cycle-trace.json`. Replace the repeated-zero hash placeholders with the saved LaunchPad file's SHA-256 and the compiled RUC's SHA-256. Use the recorded monitor baselines, captured request and shuttle IDs, imported names and actual scan windows. The `captureKind` example applies to a real ARsim acquisition. Keep the original classification when replaying evidence. The strict review below obtains the omitted scan hash and session ID from the HMI receipt and verifies the CSV bytes.
+Save as `cycle-trace.json`. Replace the repeated-zero hash placeholders with the saved LaunchPad file's SHA-256 and the compiled RUC's SHA-256. Use the recorded monitor baselines, captured request and shuttle IDs, imported names and actual scan windows. The `captureKind` example applies to a real ARsim acquisition. Keep the original classification when replaying evidence. The strict review below obtains the omitted scan hash, session ID and HMI bindings from the role-labeled status receipt and verifies the CSV bytes. [Supply a binding map for an older receipt](cycle-trace-review.md#match-the-hmi-reopen-to-that-hold)
 
 ```json
 {
@@ -138,15 +138,6 @@ Save as `cycle-trace.json`. Replace the repeated-zero hash placeholders with the
     "returnScans": [107, 110],
     "nextHoldScan": 111,
     "holdThroughScan": 115
-  },
-  "hmi": {
-    "heartbeatIdentifier": "::Status:Heartbeat",
-    "bindings": {
-      "requestId": "::Status:RequestId",
-      "shuttleId": "::Status:ShuttleId",
-      "phase": "::Status:Phase",
-      "releaseTotal": "::Status:ReleaseTotal"
-    }
   }
 }
 ```

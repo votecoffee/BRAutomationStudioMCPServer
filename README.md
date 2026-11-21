@@ -92,7 +92,7 @@ Use `station_trace_review` to compare a saved inspection release and arrival tra
 
 Use `cycle_trace_review` to check the release, return and next held request for the same shuttle on a compiled two-station loop. The review can verify the station motion inputs on the Release edge and compare the next hold with the HMI reopen from the same build and runtime session. For projects that export scans during simulation, the status smoke can retain the exact scan file before ARsim shuts down. [Inspection cycle workflow](skills/br-automation-studio/references/cycle-trace-review.md) · [Saved scan files](skills/br-automation-studio/references/cycle-scan-capture.md)
 
-Use strict same-session scan review to take the missing scan hash and session ID from the status receipt. [Status receipt binding](skills/br-automation-studio/references/cycle-trace-review.md#use-the-status-receipt-for-scan-identity)
+Use strict same-session scan review to take omitted scan and HMI identities from the status receipt. The configured held-status roles can also supply the binding map. [Status receipt binding](skills/br-automation-studio/references/cycle-trace-review.md#use-the-status-receipt-for-scan-identity)
 
 Use `launchpad_recovery_review` to compare station recovery declarations and check the saved-to-compiled AS4 point sequence. [Recovery declaration workflow](skills/br-automation-studio/references/launchpad-recovery-review.md)
 
