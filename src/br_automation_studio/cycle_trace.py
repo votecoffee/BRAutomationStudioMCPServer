@@ -12,6 +12,8 @@ from .station_trace import (
     integer, leg_identity, scan_detections, selected_leg,
 )
 
+HOLD_FIELDS = ("station", "requestId", "shuttleId", "held", "release", "resultAccepted")
+
 
 def check_return(trace, outbound, inbound, result):
     if trace is None:
@@ -101,7 +103,41 @@ def next_hold(sample, outbound, returned, station):
         raise TraceIssue("cycle_trace_hold_identity", "The next hold needs a distinct request for the same shuttle at the inspection station")
     if not sample["held"] or sample["release"] or sample["resultAccepted"]:
         raise TraceIssue("cycle_trace_hold_state", "The next request is not held with release and accepted result clear")
-    return {key: sample[key] for key in ("scan", "station", "requestId", "shuttleId", "held", "release", "resultAccepted")}
+    return {key: sample[key] for key in ("scan", *HOLD_FIELDS)}
+
+
+def check_hold_continuation(hold, window, cycle):
+    start = hold["scan"]
+    if (not isinstance(window, dict) or not integer(window.get("throughScan"), start + 1)
+            or not isinstance(window.get("scans"), list)):
+        raise ValueError("holdContinuation needs a throughScan after the first hold and an array of subsequent scans")
+    if type(hold.get("phase")) is not int or not all(integer(hold.get(key)) for key in ("releaseTotal", "heartbeat")):
+        raise ValueError("The extended hold needs integer phase, nonnegative releaseTotal and heartbeat on the first hold")
+    through = window["throughScan"]
+    expected = {key: hold[key] for key in (*HOLD_FIELDS, "phase", "releaseTotal")}
+    result = cycle["holdContinuation"] = {
+        "state": "incomplete", "firstScan": start, "throughScan": through, "lastScan": start,
+        "checkedScans": 1, "lastHeartbeat": hold["heartbeat"],
+    }
+    for row in window["scans"]:
+        scan = row.get("scan") if isinstance(row, dict) else None
+        if not integer(scan, result["lastScan"] + 1) or scan > through:
+            result["state"] = "issues"
+            raise TraceIssue("cycle_trace_hold_scan_order", "Hold scans must increase within the selected window")
+        if scan != result["lastScan"] + 1:
+            raise TraceIssue("cycle_trace_hold_gap", f"Expected held scan {result['lastScan'] + 1}, found {scan}", "warning")
+        changed = [key for key, value in expected.items() if type(row.get(key)) is not type(value) or row[key] != value]
+        if changed:
+            result.update(state="issues", firstChangedScan=scan, changedFields=changed)
+            raise TraceIssue("cycle_trace_hold_changed", f"Hold changed at scan {scan}: {', '.join(changed)}")
+        heartbeat = row.get("heartbeat")
+        if not integer(heartbeat, result["lastHeartbeat"]):
+            result["state"] = "issues"
+            raise TraceIssue("cycle_trace_hold_heartbeat", f"Held heartbeat is invalid or moved backwards at scan {scan}")
+        result.update(lastScan=scan, lastHeartbeat=heartbeat, checkedScans=result["checkedScans"] + 1)
+    if result["lastScan"] != through:
+        raise TraceIssue("cycle_trace_hold_gap", f"Hold capture ended before scan {through}", "warning")
+    result["state"] = "matched"
 
 
 def check_cycle(trace, identity, outbound_path, inbound_path, result):
@@ -115,6 +151,9 @@ def check_cycle(trace, identity, outbound_path, inbound_path, result):
     check_return(trace.get("returnLeg"), outbound, inbound_path, returned)
     result["phase"] = "next_hold"
     result["nextHold"] = next_hold(trace.get("nextHold"), outbound, returned, outbound_path[0])
+    if "holdContinuation" in trace:
+        result["phase"] = "hold_continuation"
+        check_hold_continuation(trace["nextHold"], trace["holdContinuation"], result)
     result["phase"] = "complete"
 
 

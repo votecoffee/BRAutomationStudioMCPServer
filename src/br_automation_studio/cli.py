@@ -727,6 +727,9 @@ def markdown_cycle_trace(cycle, text):
         lines.extend(["", "## Next inspection hold", "",
                       f"- Station {text(hold['station'])} · Shuttle {hold['shuttleId']} "
                       f"· New request {hold['requestId']} · Scan {hold['scan']}"])
+    if continuation := cycle.get("holdContinuation"):
+        lines.append(f"- Hold continuity {text(continuation['state'])} · Checked through scan {continuation['lastScan']} "
+                     f"of {continuation['throughScan']} · Last held heartbeat {continuation['lastHeartbeat']}")
     if positions := cycle.get("returnPositionReview"):
         lines.extend(["", "## Return and hold positions", ""])
         lines.extend(markdown_position_review("Return and hold positions", positions, text))
@@ -744,6 +747,9 @@ def markdown_cycle_hmi(hmi, text):
     if heartbeat := hmi.get("heartbeat"):
         lines.append(f"- Heartbeat at hold {text(heartbeat['atHold'])} "
                      f"· Last direct sample before browser {text(heartbeat.get('directBeforeLast'))}")
+    if coverage := hmi.get("holdCoverage"):
+        lines.append(f"- Hold coverage {text(coverage['state'])} · Final held heartbeat {coverage['lastHoldHeartbeat']} "
+                     f"· Last direct sample after browser {coverage['directAfterLast']}")
     for role, row in hmi.get("status", {}).items():
         lines.append(f"- {text(role)} {row['value']} · Widget {text(row['widget'])} · Node {text(row['identifier'])}")
     return lines

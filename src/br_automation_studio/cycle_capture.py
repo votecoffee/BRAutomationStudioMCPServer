@@ -203,13 +203,17 @@ def materialize_cycle(trace, path, summary, *, read_project_events=None):
         raise ValueError("A CSV input needs a scanCapture object in the cycle trace")
     leg, returned = trace.get("inspectionLeg"), trace.get("returnLeg")
     if (not isinstance(leg, dict) or not isinstance(returned, dict)
-            or "scans" in leg or "scans" in returned or "nextHold" in trace):
-        raise ValueError("Select CSV rows or JSON scan arrays and next hold, using only one source")
+            or "scans" in leg or "scans" in returned or "nextHold" in trace or "holdContinuation" in trace):
+        raise ValueError("Select scan-file rows or JSON scan arrays and hold observations, using only one source")
     start, end = interval(capture, "inspectionScans")
     return_start, return_end = interval(capture, "returnScans")
     hold_scan = capture.get("nextHoldScan")
     if not integer(hold_scan):
         raise ValueError("scanCapture.nextHoldScan needs the observed PLC scan index")
+    hold_end = capture.get("holdThroughScan", hold_scan)
+    extended_hold = "holdThroughScan" in capture
+    if extended_hold and not integer(hold_end, hold_scan + 1):
+        raise ValueError("scanCapture.holdThroughScan must be an integer after nextHoldScan")
     format_name = capture.get("format", "csv")
     delimiter = capture.get("delimiter", ",")
     if format_name not in ("csv", "as-chart"):
@@ -260,7 +264,7 @@ def materialize_cycle(trace, path, summary, *, read_project_events=None):
     required.update(motion_columns)
     fields = {columns.get(role, role) for role in required}
     hmi_fields = {columns.get(role, role) for role in HOLD_HMI}
-    include_hmi = bool(hmi_fields.intersection(header))
+    include_hmi = extended_hold or bool(hmi_fields.intersection(header))
     wanted = fields | (hmi_fields if include_hmi else set())
     if (len(fields) != len(required) or (include_hmi and len(wanted) != len(required) + len(HOLD_HMI))):
         raise ValueError("Each scan field needs a distinct CSV column")
@@ -279,7 +283,8 @@ def materialize_cycle(trace, path, summary, *, read_project_events=None):
         summary["positionColumns"] = position_columns
 
     outbound_rows, return_rows, hold = [], [], None
-    boundaries = {start, end, return_start, return_end, hold_scan}
+    held_rows = []
+    boundaries = {start, end, return_start, return_end, hold_scan, hold_end}
     previous, records = -1, 0
     for record, cells in enumerate(reader, 1):
         if len(cells) != len(header):
@@ -307,6 +312,8 @@ def materialize_cycle(trace, path, summary, *, read_project_events=None):
         if scan == hold_scan:
             hold = row.hold(scan, stations, include_hmi)
             hold.update(row.position("hold", position_columns))
+        elif hold_scan < scan <= hold_end:
+            held_rows.append(row.hold(scan, stations, include_hmi))
     summary.update(records=records, inspectionScans=[start, end], returnScans=[return_start, return_end],
                    nextHoldScan=hold_scan)
     if boundaries:
@@ -317,4 +324,8 @@ def materialize_cycle(trace, path, summary, *, read_project_events=None):
         leg, inspection_sequence = anchored_monitor_window(leg, outbound_rows, "monitorSequenceBeforeRelease")
         returned, return_sequence = anchored_monitor_window(returned, return_rows, "monitorSequenceAtStart")
         summary["monitorSequences"] = {"inspection": inspection_sequence, "return": return_sequence}
-    return {**trace, "inspectionLeg": leg, "returnLeg": returned, "nextHold": hold}
+    normalized = {**trace, "inspectionLeg": leg, "returnLeg": returned, "nextHold": hold}
+    if extended_hold:
+        summary["holdThroughScan"] = hold_end
+        normalized["holdContinuation"] = {"throughScan": hold_end, "scans": held_rows}
+    return normalized

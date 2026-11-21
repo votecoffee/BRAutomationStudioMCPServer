@@ -18,7 +18,7 @@ Signal timestamps establish alignment. The PLC scan counter establishes continui
 ## Bind the scan file
 
 1. Add `arguments.scanCsv` to the `cycle_trace_review` request and point it to the capture. Paths resolve from the request directory. Keep `arguments.trace` pointing to the cycle JSON.
-2. Keep the existing `inspectionLeg` and `returnLeg` headers with their captured baseline sequences. Use the original `captureKind`, source .lpj hash and compiled RUC hash from those receipts. Leave out `inspectionLeg.scans`, `returnLeg.scans` and `nextHold` when using a scan file.
+2. Keep the existing `inspectionLeg` and `returnLeg` headers with their captured baseline sequences. Use the original `captureKind`, source .lpj hash and compiled RUC hash from those receipts. Leave out `inspectionLeg.scans`, `returnLeg.scans`, `nextHold` and `holdContinuation` when using a scan file.
 3. Add the `scanCapture` object below to the cycle JSON. Hash the exact file with `(Get-FileHash -LiteralPath <capture.csv> -Algorithm SHA256).Hash.ToLowerInvariant()`. Choose the inclusive inspection and return windows and the hold scan from the original capture.
 
 ```json
@@ -57,6 +57,10 @@ The first monitor slot uses `.detection`. For multiple consumed events in one sc
 Use `0` for the absent selected or occupying shuttle and for a slot with no observed monitor event. Boolean cells accept `TRUE`, `FALSE` or numeric 0/1. On an observed event, use the sequence, station, shuttle and enum preserved by the capture. For numeric station codes, add `stationNames` to `scanCapture` with exact raw text keys and the imported station names as values. For numeric detection codes, use the project declaration below or supply a reviewed `eventNames` map with the exact capture cell text as keys. For example, `{"1.0000": "Inspect"}` maps a recorded station code once the capture defines that correspondence.
 
 Read only the window-specific columns for each selected phase. A fault needs its raw `statusId`. The result details are read when `resultPresent` is true. The detection details are read when the event sequence is positive. All columns still need headers so missing signal definitions surface before review.
+
+## Keep recording the next held request
+
+With br-studio 0.67.0 or later, set `scanCapture.holdThroughScan` to the inclusive end of the hold window, later than `nextHoldScan`. Record every PLC scan from the first hold through that end, with all six next-hold fields and the three HMI fields in the table. Use the same heartbeat exposed by the HMI and capture a window within one nondecreasing span of that counter. [Hold and HMI review criteria](cycle-trace-review.md#verify-the-held-request-through-the-reopen)
 
 ## Verify the motion inputs in the saved scan file
 

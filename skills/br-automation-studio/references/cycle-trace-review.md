@@ -84,3 +84,11 @@ Set the optional `arguments.hmiStatusReport` to the completed `arsim_status_smok
 If the status smoke retained a scan file, point `arguments.scanCsv` to that file and use its SHA-256 in the scan descriptor. The paired review checks its bytes against the same session's receipt. Set `requireSessionScanCapture` to true when this acquisition is part of acceptance. [Retain a scan file during the HMI status smoke](arsim-status-smoke.md#retain-a-scan-file-from-the-same-runtime)
 
 Use `cycleHmiReview.state` for the pairing outcome. A failed pairing yields `issues` while preserving an independently matched cycle. Retain both input reports and the raw capture provenance. The joined check establishes consistency across supplied observations. A synthetic trace retains its synthetic capture classification.
+
+## Verify the held request through the reopen
+
+With br-studio 0.67.0 or later, record each consecutive PLC scan from the first new hold through the final direct heartbeat after the browser reopen. Use [`scanCapture.holdThroughScan`](cycle-scan-capture.md#keep-recording-the-next-held-request) with a scan file. In a normalized JSON trace, set a top-level `holdContinuation` with `throughScan` and `scans`. Put each subsequent scan, starting at `nextHold.scan + 1`, in that array. Use the same fields as `nextHold`, including `phase`, `releaseTotal` and `heartbeat`.
+
+The held request, station, shuttle, phase and release total must agree on all scans. Hold stays active and release and result acceptance stay clear. The heartbeat is nondecreasing. Read `cycleTraceReview.holdContinuation` for the checked range. Missing scans leave the review incomplete. A recorded state change fails it before HMI pairing.
+
+With a supplied HMI report, the last held heartbeat must reach the final direct OPC UA heartbeat after the reopen. Read `cycleHmiReview.holdCoverage` for both values. Use `requireSessionScanCapture` with the raw scan file retained by the HMI session when the original file is part of acceptance.

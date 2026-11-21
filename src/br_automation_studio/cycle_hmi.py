@@ -153,6 +153,16 @@ def check_cycle_hmi(cycle, trace, ruc, document, result, *, require_session_capt
     if type(hold.get("phase")) is not int or not integer(hold.get("releaseTotal")):
         raise ValueError("The next hold needs integer phase and nonnegative releaseTotal values")
     check_heartbeat(hmi, witness, hold.get("heartbeat"), result)
+    if continuation := cycle.get("holdContinuation"):
+        after_last = hmi["opcUaAfter"]["samples"][-1]["value"]
+        end_heartbeat = continuation["lastHeartbeat"]
+        coverage = result["holdCoverage"] = {
+            "state": "issues", "lastHoldScan": continuation["lastScan"],
+            "lastHoldHeartbeat": end_heartbeat, "directAfterLast": after_last,
+        }
+        if end_heartbeat < after_last:
+            raise TraceIssue("cycle_hmi_hold_coverage", "The held scan window ends before the final direct sample after reopen")
+        coverage["state"] = "matched"
     expected = {**cycle["nextHold"], "phase": hold["phase"], "releaseTotal": hold["releaseTotal"]}
     widgets = {hmi["bindingReview"]["domId"]}
     result["status"] = checked = {}

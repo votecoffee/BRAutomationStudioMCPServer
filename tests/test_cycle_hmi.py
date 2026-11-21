@@ -64,6 +64,15 @@ class CycleHmiTest(unittest.TestCase):
             self.check(require_capture=True)
         self.assertEqual(issue.exception.code, "cycle_hmi_scan_capture_missing")
 
+    def test_extended_hold_reaches_last_direct_heartbeat_after_reopen(self):
+        continuation = self.cycle["holdContinuation"] = {"state": "matched", "lastScan": 25, "lastHeartbeat": 15}
+        coverage = self.check()["holdCoverage"]
+        self.assertEqual((coverage["state"], coverage["lastHoldScan"], coverage["directAfterLast"]), ("matched", 25, 15))
+        continuation["lastHeartbeat"] = 14
+        with self.assertRaises(TraceIssue) as issue:
+            self.check()
+        self.assertEqual(issue.exception.code, "cycle_hmi_hold_coverage")
+
     def test_retained_scan_must_match_reviewed_bytes_and_listener(self):
         digest, size = "c" * 64, 128
         self.cycle["scanCapture"] = {"sha256": digest, "bytes": size}

@@ -217,6 +217,34 @@ class CycleTraceTest(unittest.TestCase):
             self.materialize(trace, csv_bytes + b"\r\n", update_digest=False)
         self.assertEqual(error.exception.code, "cycle_capture_hash_mismatch")
 
+    def test_saved_hold_window_checks_intervening_scans_and_transient_release(self):
+        trace, columns, rows = self.scan_csv()
+        trace["scanCapture"]["holdThroughScan"] = 20
+        rows.extend([rows[-1] | {"scan": 19}, rows[-1] | {"scan": 20, "hold.heartbeat": 25}])
+        for control, expected in (("held", None), ("released", "cycle_trace_hold_changed"), ("gap", "cycle_trace_hold_gap"),
+                                  ("heartbeat", "cycle_trace_hold_heartbeat")):
+            with self.subTest(control=control):
+                selected = deepcopy(rows)
+                if control == "released":
+                    selected[-2]["hold.release"] = True
+                elif control == "gap":
+                    del selected[-2]
+                elif control == "heartbeat":
+                    selected[-2]["hold.heartbeat"] = 22
+                text = StringIO(newline="")
+                writer = csv.DictWriter(text, fieldnames=columns)
+                writer.writeheader()
+                writer.writerows(selected)
+                normalized, capture = self.materialize(trace, text.getvalue().encode("utf-8"))
+                self.assertEqual(capture["holdThroughScan"], 20)
+                if expected:
+                    with self.assertRaises(TraceIssue) as error:
+                        self.run_cycle(normalized)
+                    self.assertEqual(error.exception.code, expected)
+                else:
+                    receipt = self.run_cycle(normalized)["holdContinuation"]
+                    self.assertEqual((receipt["checkedScans"], receipt["lastScan"], receipt["lastHeartbeat"]), (3, 20, 25))
+
     def test_capture_scan_order_boundaries_and_intervening_gaps(self):
         for replaced, removed, expected, severity in (
             (11, 12, "cycle_capture_scan_order", "error"),
