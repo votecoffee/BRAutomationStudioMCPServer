@@ -194,8 +194,37 @@ class CycleTraceTest(unittest.TestCase):
                     self.run_cycle(normalized)
                 self.assertEqual((error.exception.code, error.exception.severity), (expected, severity))
 
+    def test_optional_release_motion_columns_keep_the_original_decimal_text(self):
+        trace, columns, rows = self.scan_csv()
+        velocity = "inspection.exitVelocityMps"
+        acceleration = "inspection.exitAccelerationMps2"
+        alias = "Recorded Exit Velocity"
+        columns.extend((alias, acceleration))
+        trace["scanCapture"]["columns"] = {velocity: alias}
+        rows[2].update({alias: "6.000E-1", acceleration: "6.00"})
+        output = StringIO(newline="")
+        writer = csv.DictWriter(output, fieldnames=columns, lineterminator="\r\n")
+        writer.writeheader()
+        writer.writerows(rows)
+        data = output.getvalue().encode("utf-8-sig")
+        normalized, capture = self.materialize(trace, data)
+        self.assertEqual(capture["releaseMotionColumns"], {velocity: alias, acceleration: acceleration})
+        scans = normalized["inspectionLeg"]["scans"]
+        self.assertEqual((scans[2]["exitVelocityMps"], scans[2]["exitAccelerationMps2"]), ("6.000E-1", "6.00"))
+        self.assertEqual(scans[0]["exitVelocityMps"], "")
+        self.assertEqual(self.run_cycle(normalized)["phase"], "complete")
+
+        trace["scanCapture"]["columns"][acceleration] = alias
+        with self.assertRaisesRegex(ValueError, "distinct CSV column"):
+            self.materialize(trace, data)
+
     def test_as_chart_needs_aligned_signals_and_preserves_the_sample_count(self):
         trace, columns, rows = self.scan_csv()
+        motion = {"inspection.exitVelocityMps": "0.6000", "inspection.exitAccelerationMps2": "6.000"}
+        columns.extend(motion)
+        for row in rows:
+            row.update(dict.fromkeys(motion, ""))
+        rows[2].update(motion)
         for key in ("sequence", "station", "shuttleId", "event"):
             columns.append(f"inspection.detection2.{key}")
         for row in rows:
@@ -228,6 +257,8 @@ class CycleTraceTest(unittest.TestCase):
         self.assertEqual(capture["format"], "as-chart")
         self.assertEqual(self.run_cycle(normalized), self.run_cycle(self.trace))
         self.assertEqual(normalized["nextHold"]["releaseTotal"], 1)
+        release = normalized["inspectionLeg"]["scans"][2]
+        self.assertEqual((release["exitVelocityMps"], release["exitAccelerationMps2"]), ("0.6000", "6.000"))
         for malformed, code in (
             (text[:end_of_header] + text[end_of_header:].replace("1.0100", "1.0101", 1),
              "cycle_capture_time_alignment"),

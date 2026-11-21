@@ -245,7 +245,7 @@ def run_launchpad_station_review(arguments, request_directory):
     return launchpad_route_review(*launchpad_inputs(arguments, request_directory), include_stations=True)
 
 
-def run_station_trace_review(arguments, request_directory):
+def expected_release_motion(arguments):
     fields = {"expectedExitVelocityMps": "exitVelocityMps", "expectedExitAccelerationMps2": "exitAccelerationMps2"}
     expected = {name: arguments[key] for key, name in fields.items() if key in arguments}
     if expected and len(expected) != len(fields):
@@ -255,8 +255,12 @@ def run_station_trace_review(arguments, request_directory):
             release_motion_value(value)
         except ValueError as error:
             raise InvalidRequest(str(error)) from error
+    return expected or None
+
+
+def run_station_trace_review(arguments, request_directory):
     return station_trace_review(*launchpad_inputs(arguments, request_directory), arguments["sourceStation"],
-                                request_directory / arguments["trace"], expected_motion=expected or None)
+                                request_directory / arguments["trace"], expected_motion=expected_release_motion(arguments))
 
 
 def run_cycle_trace_review(arguments, request_directory):
@@ -269,7 +273,7 @@ def run_cycle_trace_review(arguments, request_directory):
                               request_directory / arguments["trace"],
                               hmi_status_path=request_directory / status_report if status_report else None,
                               scan_csv_path=request_directory / scan_csv if scan_csv else None,
-                              require_session_capture=require_capture)
+                              require_session_capture=require_capture, expected_motion=expected_release_motion(arguments))
 
 
 def run_launchpad_motion_review(arguments, request_directory):
@@ -563,17 +567,15 @@ STATION_TRACE_INPUTS = {
     **LAUNCHPAD_ROUTE_REVIEW.arguments,
     "sourceStation": {"type": "string", "minLength": 1, "description": "Imported name of the inspected source station."},
     "trace": {"type": "string", "minLength": 1, "description": "File containing the normalized scan trace."},
+    "expectedExitVelocityMps": {"type": "string", "minLength": 1,
+                                "description": "Expected ExitVelocity on the Release edge as a decimal string in m/s."},
+    "expectedExitAccelerationMps2": {"type": "string", "minLength": 1,
+                                     "description": "Expected ExitAcceleration on the Release edge as a decimal string in m/s²."},
 }
 STATION_TRACE_REVIEW = Operation(
     name="station_trace_review",
     summary="Compare saved inspection release and arrival evidence with a verified compiled station leg.",
-    arguments={
-        **STATION_TRACE_INPUTS,
-        "expectedExitVelocityMps": {"type": "string", "minLength": 1,
-                                    "description": "Expected ExitVelocity on the Release edge as a decimal string in m/s."},
-        "expectedExitAccelerationMps2": {"type": "string", "minLength": 1,
-                                         "description": "Expected ExitAcceleration on the Release edge as a decimal string in m/s²."},
-    },
+    arguments=STATION_TRACE_INPUTS,
     required=(*LAUNCHPAD_ROUTE_REVIEW.required, "jobDirectory", "sourceStation", "trace"),
     handler=run_station_trace_review,
 )

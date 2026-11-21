@@ -44,6 +44,7 @@ The field names below are the default column names. In `columns`, map every fiel
 | PLC scan | `scan` |
 | Outbound station | `inspection.requestId`, `inspection.selectedShuttleId`, `inspection.inspectionBusy`, `inspection.routePermitted`, `inspection.stationClear`, `inspection.release`, `inspection.releaseBuffered`, `inspection.releaseDone`, `inspection.releaseAborted`, `inspection.error`, `inspection.monitorHealthy`, `inspection.statusId` |
 | Inspection result | `inspection.resultPresent`, `inspection.result.requestId`, `inspection.result.shuttleId`, `inspection.result.acknowledged`, `inspection.result.approved` |
+| Optional release motion | `inspection.exitVelocityMps` and `inspection.exitAccelerationMps2` |
 | Return source | `return.sourceHealthy`, `return.occupyingShuttleId`, `return.monitorHealthy`, `return.error`, `return.statusId` |
 | Destination monitors | Each of `inspection.detection` and `return.detection` needs `.sequence`, `.station`, `.shuttleId`, `.event`. |
 | Next held request | `hold.station`, `hold.requestId`, `hold.shuttleId`, `hold.held`, `hold.release`, `hold.resultAccepted` |
@@ -54,6 +55,12 @@ The first monitor slot uses `.detection`. For multiple consumed events in one sc
 Use `0` for the absent selected or occupying shuttle and for a slot with no observed monitor event. Boolean cells accept `TRUE`, `FALSE` or numeric 0/1. On an observed event, use the sequence, station, shuttle and enum preserved by the capture. For numeric station codes, add `stationNames` to `scanCapture` with exact raw text keys and the imported station names as values. For numeric detection codes, use the project declaration below or supply a reviewed `eventNames` map with the exact capture cell text as keys. For example, `{"1.0000": "Inspect"}` maps a recorded station code once the capture defines that correspondence.
 
 Read only the window-specific columns for each selected phase. A fault needs its raw `statusId`. The result details are read when `resultPresent` is true. The detection details are read when the event sequence is positive. All columns still need headers so missing signal definitions surface before review.
+
+## Verify the motion inputs in the saved scan file
+
+With br-studio 0.59.0 or later, record the outbound station's `ExitVelocity` and `ExitAcceleration` in the same PLC task sample as Release. The optional default column names are `inspection.exitVelocityMps` and `inspection.exitAccelerationMps2`. Map other CSV headers or AS chart titles under `scanCapture.columns`. Preserve the original decimal strings including exponent notation and trailing zeros. Use m/s and m/s².
+
+Pass both expected inputs as decimal strings to `cycle_trace_review` and use the RUC and LaunchPad files from a build with `verifyLaunchPadMotionLimits`. The check uses the exact Release-edge row. A blank cell or an absent observation on that scan leaves the motion check incomplete. Read `cycleTraceReview.scanCapture.releaseMotionColumns` for the source columns and `cycleTraceReview.outbound.releaseMotion` for the comparison. [Expected inputs](station-trace-review.md#check-the-motion-inputs-on-the-release-edge)
 
 ## Decode events from the saved project and RUC
 

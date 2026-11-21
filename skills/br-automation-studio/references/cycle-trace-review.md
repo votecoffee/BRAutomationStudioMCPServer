@@ -14,6 +14,8 @@ The cycle JSON has `schemaVersion` set to 1 and three objects. To supply the sca
 | `returnLeg` | Return source and destination identifiers, starting monitor sequence and consecutive scan observations. |
 | `nextHold` | The first captured hold for a distinct request at the original station after return, with the same shuttle. |
 
+With br-studio 0.59.0 or later, include both `expectedExitVelocityMps` and `expectedExitAccelerationMps2` to compare the outbound Release-edge inputs with the intended command. Use the same LaunchPad inputs as the RUC built with `verifyLaunchPadMotionLimits`. The cycle uses the values from the normalized `inspectionLeg.scans` or the [mapped scan capture](cycle-scan-capture.md#verify-the-motion-inputs-in-the-saved-scan-file). Read `cycleTraceReview.outbound.releaseMotion` for the result. If this check is requested, a supplied HMI pairing is evaluated after the motion check passes.
+
 ## Record the return leg
 
 Use the same PLC scan index as the outbound trace. Start while the inspected shuttle occupies the return source station. This may overlap the outbound capture from its accepted arrival onward. A return starting after the outbound interval must begin at the next scan.

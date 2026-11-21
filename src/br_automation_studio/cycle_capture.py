@@ -7,10 +7,11 @@ from io import StringIO
 import re
 
 from .mptraffic_definition import NONE
-from .station_trace import FLAGS, MONITOR_CHECKPOINTS, TRACE_LIMIT, TraceIssue, integer
+from .station_trace import FLAGS, MONITOR_CHECKPOINTS, RELEASE_MOTION_FIELDS, TRACE_LIMIT, TraceIssue, integer
 
 
 HOLD_HMI = ("hold.phase", "hold.releaseTotal", "hold.heartbeat")
+INSPECTION_MOTION = tuple(f"inspection.{field}" for field in RELEASE_MOTION_FIELDS)
 RESULT = ("requestId", "shuttleId", "acknowledged", "approved")
 DETECTION = ("sequence", "station", "shuttleId", "event")
 FIELDS = {
@@ -238,8 +239,10 @@ def materialize_cycle(trace, path, summary, *, read_project_events=None):
         raise ValueError("scanCapture.monitorCheckpoints must be a Boolean")
     if checkpoints:
         required.update(f"{phase}.{field}" for phase in ("inspection", "return") for field in MONITOR_CHECKPOINTS)
-    if set(columns) - (required | set(HOLD_HMI)):
+    if set(columns) - (required | set(HOLD_HMI) | set(INSPECTION_MOTION)):
         raise ValueError("scanCapture.columns refers to an unknown scan field")
+    motion_columns = {role: columns.get(role, role) for role in INSPECTION_MOTION if role in columns or role in header}
+    required.update(motion_columns)
     fields = {columns.get(role, role) for role in required}
     hmi_fields = {columns.get(role, role) for role in HOLD_HMI}
     include_hmi = bool(hmi_fields.intersection(header))
@@ -250,6 +253,8 @@ def materialize_cycle(trace, path, summary, *, read_project_events=None):
         raise ValueError("The CSV header needs distinct nonempty column names")
     if missing := wanted.difference(header):
         raise ValueError(f"Missing CSV columns: {', '.join(sorted(missing))}")
+    if motion_columns:
+        summary["releaseMotionColumns"] = motion_columns
 
     outbound_rows, return_rows, hold = [], [], None
     boundaries = {start, end, return_start, return_end, hold_scan}
@@ -266,6 +271,7 @@ def materialize_cycle(trace, path, summary, *, read_project_events=None):
         boundaries.discard(scan)
         if start <= scan <= end:
             outbound = row.inspection(scan, slots.get("inspection", 1), stations, events)
+            outbound.update({role.partition(".")[2]: row.get(role) for role in motion_columns})
             if checkpoints:
                 outbound.update({field: row.number(f"inspection.{field}") for field in MONITOR_CHECKPOINTS})
             outbound_rows.append(outbound)

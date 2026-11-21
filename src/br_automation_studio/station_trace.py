@@ -226,7 +226,7 @@ def check_release_motion(report, trace, expected, leg):
     result["compiledLimits"] = limits["compiled"]
     row = next(item for item in trace["scans"] if item["scan"] == scan)
     observed = result["observed"] = {key: row.get(key) for key in RELEASE_MOTION_FIELDS}
-    missing = [key for key, value in observed.items() if value is None]
+    missing = [key for key, value in observed.items() if value in (None, "")]
     if missing:
         raise TraceIssue("station_trace_release_motion_missing",
                          f"Release scan {scan} is missing {', '.join(missing)}", "warning")
