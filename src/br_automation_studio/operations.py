@@ -14,6 +14,7 @@ from .hmi_smoke import arsim_hmi_smoke, read_status_bindings
 from .inspection import inspect_project
 from .layout_device import layout_device_review
 from .layout_svg import layout_svg_review
+from .launchpad_build import LaunchPadBuildInputs
 from .launchpad_export import review_launchpad_export
 from .launchpad_frame import launchpad_frame_review
 from .launchpad_geometry import GeometryCriteria
@@ -139,12 +140,34 @@ def run_simulation_preflight(arguments, request_directory):
     )
 
 
+LAUNCHPAD_ROUTE_INPUTS = {
+    "launchPadProject": {"type": "string", "minLength": 1, "description": "Original saved LaunchPad .lpj."},
+    "launchPadReadback": {"type": "string", "minLength": 1, "description": "JSON readback written by the local LaunchPad decoder."},
+    "managerId": {"type": "string", "minLength": 1, "description": "Selected Traffic Manager element ID."},
+    "nameMap": {"type": "string", "minLength": 1, "description": "Optional JSON mapping of saved names to renamed manager objects."},
+}
+
+
+def launchpad_build_inputs(arguments, request_directory):
+    required = {"launchPadProject", "launchPadReadback", "launchPadExport", "managerId"}
+    if not arguments.keys() & (required | {"nameMap"}):
+        return None
+    if missing := required - arguments.keys():
+        raise InvalidRequest(f"Missing LaunchPad build inputs: {', '.join(sorted(missing))}")
+    mapping = arguments.get("nameMap")
+    return LaunchPadBuildInputs(request_directory / arguments["launchPadProject"],
+                                request_directory / arguments["launchPadReadback"],
+                                request_directory / arguments["launchPadExport"], arguments["managerId"],
+                                request_directory / mapping if mapping is not None else None)
+
+
 def build_plan(arguments, request_directory):
     return plan_build(*build_inputs(arguments, request_directory),
                       verify_mptraffic_enum=arguments.get("verifyMpTrafficEnum", False),
                       verify_motion_payloads=arguments.get("verifyMotionPayloads", False),
                       verify_motion_declarations=arguments.get("verifyMotionDeclarations", False),
-                      verify_motion_symbols=arguments.get("verifyMotionSymbols", False))
+                      verify_motion_symbols=arguments.get("verifyMotionSymbols", False),
+                      launchpad_inputs=launchpad_build_inputs(arguments, request_directory))
 
 
 def build_execute(arguments, request_directory):
@@ -155,6 +178,7 @@ def build_execute(arguments, request_directory):
         verify_motion_payloads=arguments.get("verifyMotionPayloads", False),
         verify_motion_declarations=arguments.get("verifyMotionDeclarations", False),
         verify_motion_symbols=arguments.get("verifyMotionSymbols", False),
+        launchpad_inputs=launchpad_build_inputs(arguments, request_directory),
     )
 
 
@@ -406,6 +430,8 @@ BUILD_PLAN = Operation(
     summary="Pin an offline AS4 PC_any simulation build to the source and installation read sets.",
     arguments={
         **BUILD_PREFLIGHT.arguments,
+        **LAUNCHPAD_ROUTE_INPUTS,
+        "launchPadExport": SIMULATION_PREFLIGHT.arguments["launchPadExport"],
         "verifyMpTrafficEnum": SIMULATION_PREFLIGHT.arguments["verifyMpTrafficEnum"],
         "verifyMotionPayloads": {"type": "boolean", "default": False,
                                  "description": "Pin the six AS4 SG4/IA32 motion payloads and verify the produced RUC."},
@@ -478,10 +504,7 @@ LAUNCHPAD_ROUTE_REVIEW = Operation(
     summary="Compare one saved LaunchPad cycle with the typed route of a selected saved or compiled Traffic Manager.",
     arguments={
         **PROJECT_INSPECT.arguments,
-        "managerId": {"type": "string", "minLength": 1, "description": "Selected Traffic Manager element ID."},
-        "launchPadProject": {"type": "string", "minLength": 1, "description": "Original saved LaunchPad .lpj."},
-        "launchPadReadback": {"type": "string", "minLength": 1, "description": "JSON readback written by the local LaunchPad decoder."},
-        "nameMap": {"type": "string", "minLength": 1, "description": "Optional JSON mapping of saved names to renamed manager objects."},
+        **LAUNCHPAD_ROUTE_INPUTS,
         "jobDirectory": RUC_REVIEW.arguments["jobDirectory"],
     },
     required=("project", "managerId", "launchPadProject", "launchPadReadback"),

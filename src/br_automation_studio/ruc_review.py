@@ -12,6 +12,7 @@ from zipfile import BadZipFile, ZipFile
 from .file_device import SYSTEM_CONFIG, read_compiled_layout_device
 from .inspection import inspect_project
 from .json_io import invalid_constant, read_json, unique_object
+from .launchpad_build import checked_manager, retained_launchpad_files
 from .links import MotionLinks, RULE_ROLES
 from .motion_payloads import verify_packaged_motion
 from .motion_symbols import plan_motion_symbols, read_motion_symbols
@@ -344,6 +345,13 @@ def review_ruc(path, job_directory, binding=None, *, geometry_manager=None, incl
                     if generated != job.get("motionSymbols"):
                         raise ValueError("The generated motion declarations differ from the job receipt")
                     review["motionSymbols"] = generated
+                launchpad = manifest.get("launchPadRoute")
+                if launchpad is not None:
+                    files = retained_launchpad_files(reader, launchpad)
+                    retained = {"manager": launchpad["manager"], "files": files}
+                    if retained != job.get("launchPadRoute"):
+                        raise ValueError("The LaunchPad inputs differ from the job receipt")
+                    review["launchPadRoute"] = {**retained, "state": "inputs_verified"}
                 if binding is not None:
                     source = SavedFiles(path.parent)
                     binding_report = result["bindingReview"]
@@ -365,6 +373,9 @@ def review_ruc(path, job_directory, binding=None, *, geometry_manager=None, incl
                 review.update(modules=modules, assemblyLinks=links, trafficManagers=managers)
                 if ready:
                     compare_motion(reader, saved, links, managers)
+                    if launchpad is not None:
+                        route = checked_manager(launchpad, managers)
+                        review["launchPadRoute"].update(state="matched", edges=route["expectedEdges"])
                 review["widgets"] = read_widgets(archive, saved, reader)
                 if start_widget is not None:
                     start_widget.check(archive, path.parent, manifest, saved["widgets"], review["widgets"],

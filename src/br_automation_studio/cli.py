@@ -128,6 +128,8 @@ def markdown(response):
                       f"- Staged files **{len(plan['manifest']['inputs']['files'])}**"])
         if symbols := plan["manifest"].get("motionSymbols"):
             lines.append(f"- Expected generated motion globals {sum(map(len, symbols.values()))}")
+        if route := plan["manifest"].get("launchPadRoute"):
+            lines.append(f"- LaunchPad route for {text(route['manager'])} · Export SHA-256 {route['files']['export']['sha256']}")
     if job := report.get("nativeBuild"):
         lines.extend(["", "## Native job", "",
                       f"- Job {text(job['jobId'])} · {text(job['status'])} at {text(job['directory'])}"])
@@ -374,6 +376,9 @@ def markdown_ruc(response, text):
             lines.append(f"- 6D module elements read {len(review['modules'])} · Rendered widgets read {len(review['widgets'])}")
     if summary := review["buildSummary"]:
         lines.append(f"- Builder errors {text(summary['errors'])} · Builder warnings {text(summary['warnings'])}")
+    if launchpad := review.get("launchPadRoute"):
+        lines.append(f"- LaunchPad route {text(launchpad['state'])} · Manager {text(launchpad['manager'])}"
+                     f" · Export SHA-256 {launchpad['files']['export']['sha256']}")
     if symbols := review.get("motionSymbols"):
         lines.extend(markdown_motion_symbols(symbols, text))
     if smoke is not None:

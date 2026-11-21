@@ -12,6 +12,7 @@ import stat
 from uuid import uuid4
 from zipfile import BadZipFile, ZipFile
 
+from .launchpad_build import plan_launchpad_route, retain_launchpad_route
 from .motion_payloads import plan_motion_payloads, verify_packaged_motion
 from .motion_symbols import plan_motion_symbols, read_motion_symbols
 from .mptraffic_definition import check_installed_definition, verify_packaged_mptraffic
@@ -81,7 +82,7 @@ def source_tree(root):
 
 def plan_build(path, studio_root, runtime_root=None, configuration=None, cpu=None, *,
                verify_mptraffic_enum=False, verify_motion_payloads=False, verify_motion_declarations=False,
-               verify_motion_symbols=False):
+               verify_motion_symbols=False, launchpad_inputs=None):
     report = build_preflight(path, studio_root, runtime_root, configuration, cpu,
                              verify_motion_declarations=verify_motion_declarations)
     report["buildPlan"] = None
@@ -160,6 +161,12 @@ def plan_build(path, studio_root, runtime_root=None, configuration=None, cpu=Non
         except ValueError as error:
             issue(report, "error", "motion_symbols_unverified", str(error))
             return report
+    if launchpad_inputs is not None:
+        try:
+            plan["launchPadRoute"] = plan_launchpad_route(launchpad_inputs, report["trafficManagers"])
+        except (OSError, RuntimeError, ValueError) as error:
+            issue(report, "error", "launchpad_build_route_unverified", str(error))
+            return report
     report["buildPlan"] = {"sha256": identity(plan), "manifest": plan}
     return report
 
@@ -214,11 +221,11 @@ def package_evidence(path, job_dir, *, mptraffic=None, motion=None):
 
 def execute_build(path, studio_root, runtime_root, configuration, cpu, plan_sha256, job_directory,
                   timeout_seconds=180, *, verify_mptraffic_enum=False, verify_motion_payloads=False,
-                  verify_motion_declarations=False, verify_motion_symbols=False):
+                  verify_motion_declarations=False, verify_motion_symbols=False, launchpad_inputs=None):
     report = plan_build(path, studio_root, runtime_root, configuration, cpu,
                         verify_mptraffic_enum=verify_mptraffic_enum, verify_motion_payloads=verify_motion_payloads,
                         verify_motion_declarations=verify_motion_declarations,
-                        verify_motion_symbols=verify_motion_symbols)
+                        verify_motion_symbols=verify_motion_symbols, launchpad_inputs=launchpad_inputs)
     plan = report["buildPlan"]
     if plan is None:
         return report
@@ -263,6 +270,9 @@ def execute_build(path, studio_root, runtime_root, configuration, cpu, plan_sha2
 
     try:
         stage_inputs(manifest, staged)
+        if route := manifest.get("launchPadRoute"):
+            files = retain_launchpad_route(job_dir, route)
+            job["launchPadRoute"] = {"manager": route["manager"], "files": files}
         catalog = report["preflight"]
         checks = [(Path(catalog[f"{name}Root"]), catalog[f"{name}Snapshot"]) for name in ("studio", "runtime")]
         definition = manifest.get("mpTrafficDefinition")

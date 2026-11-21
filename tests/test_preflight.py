@@ -257,6 +257,62 @@ class BuildPreflightTests(unittest.TestCase):
         self.assertEqual(bad["nativeBuild"]["status"], "artifact_failed")
         self.assertEqual(bad["diagnostics"][-1]["code"], "motion_symbols_unverified")
 
+    def test_launchpad_build_retains_verified_inputs_and_rejects_late_export_change(self):
+        lpj = self.root / "Source.lpj"
+        lpj.write_bytes(b"synthetic LaunchPad save")
+        readback = {
+            "schemaVersion": 1, "codec": {"name": "zipson", "version": "0.2.12"},
+            "source": {"fileName": lpj.name, "sha256": sha256(lpj.read_bytes()).hexdigest()},
+            "decoded": {"launchpad_version": "1.4", "segments": [{"id": "master"}],
+                        "workstations": [{"id": "a", "name": "OriginalLoad"}, {"id": "c", "name": "Inspect"}],
+                        "gates": [{"id": "b", "name": "Transit"}], "recipe_nodes": [
+                            {"recipe_id": "a", "id": "a", "type_name": "workstation", "targets": ["b"]},
+                            {"recipe_id": "b", "id": "b", "type_name": "gate", "targets": ["c"]},
+                            {"recipe_id": "c", "id": "c", "type_name": "workstation", "targets": ["end"]},
+                            {"recipe_id": "end", "id": "a", "type_name": "workstation", "targets": [],
+                             "name": "recipe_loop_merge_node"},
+                        ]},
+        }
+        self.put(self.root / "Readback.json", json.dumps(readback))
+        self.put(self.root / "Rename.json", '{"OriginalLoad":"Load"}')
+        export = self.root / "Modeled.x6d"
+        raw = b"""<Model>
+          <Group ID="Segments"><Group ID="A"/></Group>
+          <Group ID="Stations">
+            <Group ID="a"><Property ID="Name" Value="OriginalLoad"/>
+              <Group ID="NextGates"><Property Value="b"/></Group></Group>
+            <Group ID="c"><Property ID="Name" Value="Inspect"/>
+              <Group ID="NextStations"><Property Value="a"/></Group></Group>
+          </Group>
+          <Group ID="Gates"><Group ID="b"><Property ID="Name" Value="Transit"/>
+            <Group ID="NextStations"><Property Value="c"/></Group></Group></Group>
+        </Model>"""
+        export.write_bytes(raw)
+        arguments = {"launchPadProject": lpj.name, "launchPadReadback": "Readback.json",
+                     "launchPadExport": export.name, "managerId": "DemoTraffic", "nameMap": "Rename.json"}
+        with self.assertRaisesRegex(InvalidRequest, "Missing LaunchPad build inputs"):
+            self.native_request("build_plan", launchPadProject=lpj.name)
+        self.local_core("5.29.1")
+        wrong = self.native_request("build_plan", **(arguments | {"managerId": "Other"}))["result"]
+        self.assertIsNone(wrong["buildPlan"])
+        self.assertEqual(wrong["diagnostics"][-1]["code"], "launchpad_build_route_unverified")
+        plan = self.native_request("build_plan", **arguments)["result"]["buildPlan"]
+        binding = plan["manifest"]["launchPadRoute"]
+        self.assertEqual(binding["objects"][0]["importedName"], "Load")
+        self.assertEqual(binding["files"]["export"]["sha256"], sha256(raw).hexdigest())
+
+        def stage_and_change(manifest, destination):
+            stage_inputs(manifest, destination)
+            export.write_bytes(raw + b"<!-- changed after planning -->")
+
+        with (patch("br_automation_studio.native_build.stage_inputs", side_effect=stage_and_change),
+              patch("br_automation_studio.native_build.run_build") as native):
+            late = self.native_request("build_execute", **arguments, planSha256=plan["sha256"],
+                                       jobDirectory="changed")["result"]
+            native.assert_not_called()
+        self.assertEqual(late["nativeBuild"]["status"], "not_dispatched")
+        self.assertIn("missing or changed at launchpad/export.x6d", late["diagnostics"][-1]["message"])
+
     def test_mptraffic_read_set_is_part_of_the_native_plan_identity(self):
         _, catalog, enum = self.prepare_mptraffic_definition()
         plan = self.native_request("build_plan", verifyMpTrafficEnum=True)["result"]["buildPlan"]

@@ -8,6 +8,12 @@ Create the same request as for [build preflight](build-preflight.md) with `opera
 
 Review the selected project, configuration, builder and diagnostics. Planning is read-only. It stops on preflight errors and can return a plan with warnings. Use a self-contained project copy whose dependencies and build behavior you trust. The worker invokes the vendor build, including any build behavior configured in the project.
 
+### Bind the reviewed LaunchPad export to the build
+
+With br-studio 0.51.0 or later, use the same `launchPadProject`, `launchPadReadback` and `launchPadExport` inputs from [export review](launchpad-route-review.md#compare-the-export-before-import) and add the imported `managerId` to both build requests. Supply `nameMap` if the imported objects were renamed. The plan checks that the export matches its save and that the selected saved manager has the same named, typed objects and directed edges. The reviewed input hashes become part of the build plan SHA-256.
+
+Before dispatch, execution retains and rehashes the exact evidence under the job directory's `launchpad/` subdirectory. Keep that directory with the plan, job receipt and RUC. The [RUC review](ruc-review.md) rehashes the retained files and checks the compiled manager's route. Automation Studio's native import and the saved geometry, process and runtime checks have their own review steps.
+
 ### Verify MpTraffic in the plan and RUC
 
 Since br-studio 0.35.0, set `verifyMpTrafficEnum` to true in both the plan and execution requests to carry the [MpTraffic definition check](simulation-preflight.md#verify-the-mptraffic-definition-before-building) into the native build. The plan compares the registered project declaration and IA32 binary with the selected AS4 catalog files. The plan SHA-256 covers the saved and installed declaration and payload hashes under `manifest.mpTrafficDefinition`.
