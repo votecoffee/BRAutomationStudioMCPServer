@@ -1,6 +1,6 @@
 import unittest
 
-from br_automation_studio.cycle_hmi import check_cycle_hmi
+from br_automation_studio.cycle_hmi import check_cycle_hmi, check_layout_svg_pairing
 from br_automation_studio.station_trace import TraceIssue
 
 
@@ -105,6 +105,38 @@ class CycleHmiTest(unittest.TestCase):
         with self.assertRaises(TraceIssue) as issue:
             self.check(assembly_route=route)
         self.assertEqual(issue.exception.code, "cycle_hmi_assembly_layout")
+
+    def test_layout_svg_review_matches_the_owned_capture_and_both_hashes(self):
+        paths = {"assembly": "/FileDevice:6DData/Planar.svg", "trafficManager": "/FileDevice:6DData/Traffic.svg"}
+        owner = {"protocol": "tcp", "address": "127.0.0.1", "port": 18081, "pid": 20}
+        self.smoke["ownedEndpoints"].append(owner)
+        assets = {role: {"path": path, "sha256": digit * 64, "status": 200, "bytes": 512}
+                  for (role, path), digit in zip(paths.items(), "de", strict=True)}
+        self.hmi["browser"].update(url="http://127.0.0.1:18081/",
+                                   layoutCapture={"state": "complete", "assets": assets, "ownedListener": owner})
+        layout = {"state": "matched", "layoutId": "Grid", "assemblyId": "Planar", "managerId": "Traffic",
+                  "assets": {role: {"sha256": row["sha256"]} for role, row in assets.items()}, "positionToleranceMm": 0.001}
+        response = {"schemaVersion": 1, "operation": "layout_svg_review", "status": "complete",
+                    "result": {"rucReview": self.ruc, "evidence": "layout_svg_readback", "diagnostics": [],
+                               "layoutSvgReview": layout}}
+        result = {"assemblyWidget": {"assembly": "Planar", "manager": "Traffic", "layoutPaths": paths}}
+        check_layout_svg_pairing(self.ruc, self.smoke, response, result)
+        self.assertEqual(result["layoutGeometry"]["state"], "matched")
+        self.assertEqual(result["layoutGeometry"]["assets"]["trafficManager"]["sha256"], "e" * 64)
+        for fields, key, change, code in (
+            (layout["assets"]["trafficManager"], "sha256", "f" * 64, "cycle_hmi_layout_hash"),
+            (self.hmi["browser"]["layoutCapture"], "ownedListener", owner | {"pid": 21}, "cycle_hmi_layout_capture"),
+            (layout, "managerId", "OtherTraffic", "cycle_hmi_layout_route"),
+        ):
+            with self.subTest(key=key):
+                original = fields[key]
+                fields[key] = change
+                try:
+                    with self.assertRaises(TraceIssue) as error:
+                        check_layout_svg_pairing(self.ruc, self.smoke, response, result)
+                    self.assertEqual(error.exception.code, code)
+                finally:
+                    fields[key] = original
 
     def test_retained_scan_must_match_reviewed_bytes_and_listener(self):
         digest, size = "c" * 64, 128

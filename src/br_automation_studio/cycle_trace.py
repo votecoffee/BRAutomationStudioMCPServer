@@ -187,7 +187,7 @@ def cycle_trace_review(project, configuration, cpu, manager_id, lpj, readback, n
                        source_station, trace_path, *, hmi_status_path=None, scan_csv_path=None, require_session_capture=False,
                        expected_motion=None, position_tolerance_um=None, return_position_tolerance_um=None,
                        waypoint_tolerance_um=None, verify_sampled_speed=False, max_sample_interval_us=None,
-                       verify_position_time_handoff=False, require_assembly_widget=False):
+                       verify_position_time_handoff=False, require_assembly_widget=False, hmi_layout_report_path=None):
     report = launchpad_route_review(project, configuration, cpu, manager_id, lpj, readback, name_map, job_directory,
                                     include_stations=True)
     result = report["cycleTraceReview"] = {"state": "not_checked", "sourceStation": source_station}
@@ -259,5 +259,5 @@ def cycle_trace_review(project, configuration, cpu, manager_id, lpj, readback, n
         report["evidence"] = "cycle_trace_readback"
         if hmi_status_path is not None:
             review_cycle_hmi(report, trace, hmi_status_path, require_session_capture=require_session_capture,
-                             require_assembly_widget=require_assembly_widget)
+                             require_assembly_widget=require_assembly_widget, layout_report_path=hmi_layout_report_path)
     return report

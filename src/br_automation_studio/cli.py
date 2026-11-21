@@ -757,6 +757,10 @@ def markdown_cycle_hmi(hmi, text):
             layout = observed["layoutStatuses"]
             lines.append(f"  - {text(phase.title())} · Start page map HTTP {observed['startPageMapStatus']} "
                          f"· Assembly SVG HTTP {layout['assembly']} · Manager SVG HTTP {layout['trafficManager']}")
+    if geometry := hmi.get("layoutGeometry"):
+        lines.append(f"- Layout geometry {text(geometry['state'])} · Layout {text(geometry.get('layoutId'))}")
+        for role, asset in geometry["assets"].items():
+            lines.append(f"  - {text(role)} · {text(asset['path'])} · SHA-256 {asset['sha256']}")
     for role, row in hmi.get("status", {}).items():
         lines.append(f"- {text(role)} {row['value']} · Widget {text(row['widget'])} · Node {text(row['identifier'])}")
     return lines

@@ -1,5 +1,7 @@
 """Correlate a selected cycle's next hold with a completed loopback status report."""
 
+import re
+
 from .arsim_smoke import HOST
 from .browser_smoke import ASSEMBLY_WIDGET, http_status, layout_asset_paths, numeric_text
 from .hmi_smoke import check_samples
@@ -10,6 +12,7 @@ from .station_trace import TRACE_LIMIT, TraceIssue, integer
 
 
 ROLES = ("requestId", "shuttleId", "phase", "releaseTotal")
+SHA256 = re.compile(r"[a-f0-9]{64}")
 
 
 def good_status(code):
@@ -189,6 +192,40 @@ def check_assembly_widget(ruc, reviewed, browser, route, result):
     widget_result["state"] = "matched"
 
 
+def check_layout_svg_pairing(ruc, smoke, response, result):
+    geometry = result["layoutGeometry"] = {"state": "issues", "assets": {}}
+    if (type(response.get("schemaVersion")) is not int or response["schemaVersion"] != 1
+            or response.get("operation") != "layout_svg_review" or response.get("status") != "complete"):
+        raise TraceIssue("cycle_hmi_layout_review_invalid", "Supply a completed layout_svg_review JSON response")
+    reviewed = response["result"]
+    svg, svg_ruc = reviewed["layoutSvgReview"], reviewed["rucReview"]
+    if reviewed["evidence"] != "layout_svg_readback" or reviewed["diagnostics"] or svg["state"] != "matched":
+        raise TraceIssue("cycle_hmi_layout_review_invalid", "The saved and compiled geometry must match both reviewed SVGs")
+    if (svg_ruc["archive"]["sha256"] != ruc["archive"]["sha256"] or svg_ruc["sourceMatched"] is not True
+            or any(svg_ruc[key] != ruc[key] for key in ("jobId", "planSha256"))):
+        raise TraceIssue("cycle_hmi_layout_package", "The layout SVG review and cycle identify different builds or RUCs")
+    widget = result["assemblyWidget"]
+    if svg["assemblyId"] != widget["assembly"] or svg["managerId"] != widget["manager"]:
+        raise TraceIssue("cycle_hmi_layout_route", "The layout SVG review identifies a different assembly or Traffic Manager")
+    browser = smoke["hmi"]["browser"]
+    capture = browser.get("layoutCapture", {})
+    owner = capture.get("ownedListener", {})
+    if (capture.get("state") != "complete" or owner not in smoke.get("ownedEndpoints", [])
+            or owner.get("protocol") != "tcp" or owner.get("address") != HOST
+            or not integer(owner.get("port"), 1) or browser.get("url") != f"http://{HOST}:{owner['port']}/"):
+        raise TraceIssue("cycle_hmi_layout_capture", "The HMI report needs SVGs captured from its owned HTTP listener")
+    for role, path in widget["layoutPaths"].items():
+        retained = capture.get("assets", {}).get(role, {})
+        digest = retained.get("sha256")
+        if (retained.get("path") != path or http_status(retained.get("status")) != 200
+                or not integer(retained.get("bytes"), 1) or not isinstance(digest, str) or not SHA256.fullmatch(digest)):
+            raise TraceIssue("cycle_hmi_layout_capture", f"The HMI report needs a complete capture of the {role} SVG")
+        if svg.get("assets", {}).get(role, {}).get("sha256") != digest:
+            raise TraceIssue("cycle_hmi_layout_hash", f"The reviewed {role} SVG differs from the SVG captured in the HMI session")
+        geometry["assets"][role] = {"path": path, "sha256": digest}
+    geometry.update(state="matched", layoutId=svg["layoutId"], positionToleranceMm=svg["positionToleranceMm"])
+
+
 def check_cycle_hmi(cycle, trace, ruc, document, result, *, require_session_capture=False, assembly_route=None):
     hmi, witness, reviewed = check_run(document, ruc, trace, result)
     check_session_capture(hmi, cycle, result, require_session_capture)
@@ -220,19 +257,25 @@ def check_cycle_hmi(cycle, trace, ruc, document, result, *, require_session_capt
         check_assembly_widget(ruc, reviewed, hmi["browser"], assembly_route, result)
 
 
-def review_cycle_hmi(report, trace, path, *, require_session_capture=False, require_assembly_widget=False):
+def review_cycle_hmi(report, trace, path, *, require_session_capture=False, require_assembly_widget=False,
+                     layout_report_path=None):
     result = report["cycleHmiReview"]
+    evidence_path = path
     try:
         document, result["statusReport"] = json_snapshot(path, TRACE_LIMIT)
+        assembly_route = report["routeReview"] if require_assembly_widget or layout_report_path is not None else None
         check_cycle_hmi(report["cycleTraceReview"], trace, report["rucReview"], document, result,
-                        require_session_capture=require_session_capture,
-                        assembly_route=report["routeReview"] if require_assembly_widget else None)
+                        require_session_capture=require_session_capture, assembly_route=assembly_route)
+        if layout_report_path is not None:
+            evidence_path = layout_report_path
+            reviewed, result["layoutSvgReport"] = json_snapshot(layout_report_path, TRACE_LIMIT)
+            check_layout_svg_pairing(report["rucReview"], document["result"]["arsimSmoke"], reviewed, result)
     except (AttributeError, KeyError, OSError, RuntimeError, TypeError, ValueError) as error:
         code = error.code if isinstance(error, TraceIssue) else "cycle_hmi_invalid"
         message = str(error) if isinstance(error, (OSError, RuntimeError, ValueError)) else "The status or cycle evidence has missing or malformed fields"
         result["state"] = "issues"
         report["diagnostics"].append({"scope": "cycle_hmi", "severity": "error", "code": code,
-                                      "path": path.as_posix(), "message": message})
+                                      "path": evidence_path.as_posix(), "message": message})
     else:
         result["state"] = "matched"
         report["evidence"] = "cycle_hmi_readback"

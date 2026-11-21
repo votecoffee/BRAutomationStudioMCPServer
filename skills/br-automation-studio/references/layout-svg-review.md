@@ -35,4 +35,6 @@ $brStudio = '.\.local\venv\Scripts\br-studio.exe'
 
 Match the reported SVG hashes to the HTTP capture receipt when proving what the HMI served. Confirm page loading and widget bounds with the [combined HMI rehearsal](arsim-hmi-smoke.md). Target appearance and shuttle movement require observation in the intended environment.
 
+For a cycle and held-status review, supply this operation's complete JSON output as `hmiLayoutSvgReport`. The cycle reviewer compares both hashes with the layout capture in the same HMI status report. [Pair the layout geometry with the cycle](cycle-trace-review.md#match-the-captured-layout-geometry-to-the-cycle)
+
 Use the [coordinate frame workflow](launchpad-frame-review.md#trace-the-coordinates-into-the-hmi) when the review also needs to trace the positions to a saved LaunchPad model.

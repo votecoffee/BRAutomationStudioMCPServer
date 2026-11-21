@@ -287,6 +287,9 @@ def run_cycle_trace_review(arguments, request_directory):
     require_widget = arguments.get("requireHmiAssemblyWidget", False)
     if require_widget and not status_report:
         raise InvalidRequest("requireHmiAssemblyWidget needs hmiStatusReport")
+    layout_report = arguments.get("hmiLayoutSvgReport")
+    if layout_report and not status_report:
+        raise InvalidRequest("hmiLayoutSvgReport needs hmiStatusReport")
     verify_time_handoff = arguments.get("verifyPositionTimeHandoff", False)
     if verify_time_handoff and not arguments.get("verifySampledSpeed", False):
         raise InvalidRequest("verifyPositionTimeHandoff requires verifySampledSpeed to be true")
@@ -300,6 +303,7 @@ def run_cycle_trace_review(arguments, request_directory):
                               waypoint_tolerance_um=arguments.get("waypointToleranceMicrometres"),
                               verify_position_time_handoff=verify_time_handoff,
                               require_assembly_widget=require_widget,
+                              hmi_layout_report_path=request_directory / layout_report if layout_report else None,
                               **sampled_speed_options(arguments))
 
 
@@ -632,6 +636,8 @@ CYCLE_TRACE_REVIEW = Operation(
                                       "description": "Require the HMI session to have retained the reviewed scan file."},
         "requireHmiAssemblyWidget": {"type": "boolean", "default": False,
                                      "description": "Require the cycle's Assembly6D widget and both layout SVGs in both HMI documents."},
+        "hmiLayoutSvgReport": {"type": "string", "minLength": 1,
+                               "description": "Completed layout_svg_review JSON for both SVGs captured by the HMI status probe."},
         "verifyPositionTimeHandoff": {"type": "boolean", "default": False,
                                       "description": "Compare outbound arrival and return occupancy timestamps using a common clock. Requires verifySampledSpeed."},
         "returnPositionToleranceMicrometres": {"type": "integer", "minimum": 0, "maximum": 9007199254740991,

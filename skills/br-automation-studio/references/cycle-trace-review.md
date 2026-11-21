@@ -98,3 +98,9 @@ With a supplied HMI report, the last held heartbeat must reach the final direct 
 With br-studio 0.68.0 or later, set `requireHmiAssemblyWidget: true` with `hmiStatusReport`. In the [status smoke request](arsim-status-smoke.md#select-the-assembly6d-widget-and-layout), select the Assembly6D DOM ID and enable the start-page and layout checks. Use the RUC from the cycle review. The startup widget must link to the compiled assembly and Traffic Manager used for the observed cycle.
 
 Read `cycleHmiReview.assemblyWidget` for the selected widget, compiled content, startup map and both layout paths. The initial and reopened documents each need the widget, a successful startup-map request, both expected layout SVGs and a rendered SVG with bounds. A mismatch fails the HMI pairing while preserving the independent cycle result.
+
+## Match the captured layout geometry to the cycle
+
+With br-studio 0.69.0 or later, enable `captureLayoutAssets` and `requireStartPage` in the status smoke request. Review the two SVGs saved by that run with [`layout_svg_review`](layout-svg-review.md#run-the-comparison) and save the complete JSON response. Pass that response as `hmiLayoutSvgReport` alongside `hmiStatusReport` in the cycle review. This also runs the Assembly6D widget check.
+
+The cycle, status and geometry reports must identify the same build and RUC. The geometry report must match the widget's assembly and manager, and both SVG hashes must match the capture from the status report's owned HTTP listener. Read `cycleHmiReview.layoutGeometry` for the layout ID and the two hashes. Browser observations cover both documents. The geometry review covers the SVG bodies saved by the status probe's HTTP capture.
