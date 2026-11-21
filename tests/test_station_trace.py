@@ -1,8 +1,10 @@
 from copy import deepcopy
+from decimal import Decimal
 import unittest
 
 from br_automation_studio.station_trace import (
-    ARRIVAL, FLAGS, TraceIssue, check_leg, check_leg_positions, check_release_motion, check_waypoint_positions, trace_header,
+    ARRIVAL, FLAGS, TraceIssue, check_leg, check_leg_positions, check_release_motion, check_sampled_speed,
+    check_waypoint_positions, trace_header,
 )
 
 
@@ -167,6 +169,34 @@ class StationTraceTest(unittest.TestCase):
             self.assertEqual((caught.exception.code, caught.exception.severity), ("station_trace_waypoint_incomplete", "warning"))
             self.assertEqual(checked["waypointReview"]["pendingWaypoints"], missing)
         self.assertEqual(checked["waypointReview"]["ambiguousSamples"], 2)
+
+    def test_sampled_speed_uses_elapsed_time_and_compares_diagonal_motion_at_the_limit(self):
+        pinned = {"manager": "Traffic", "files": {"project": {"sha256": "a" * 64}, "readback": {"sha256": "c" * 64}},
+                  "positions": {"state": "matched", "compiled": {}},
+                  "assemblyIo": {"state": "matched", "planned": {"requiredReadAxes": ["X", "Y"]}},
+                  "motionLimits": {"state": "matched", "compiled": {"fields": {"InPlaneVelLim": {"raw": "0.5"}}}}}
+        report = {"routeReview": {"launchPad": {"sourceSha256": "a" * 64, "readbackSha256": "c" * 64}},
+                  "rucReview": {"launchPadRoute": pinned}}
+        source = {"scan": 19, "positionSampleScan": 19, "positionShuttleId": 3, "positionValid": True,
+                  "positionXM": "0.100", "positionYM": "0.100", "positionTimeMicroseconds": 0}
+        arrival = dict(source, scan=21, positionSampleScan=21, positionXM="0.4", positionYM="0.5",
+                       positionTimeMicroseconds=1000000)
+        result = {}
+        check_sampled_speed(report, self.trace, [source, {"scan": 20}, arrival], 19, 21, result)
+        speed = result["sampledSpeedReview"]
+        self.assertEqual(speed["state"], "matched")
+        self.assertEqual(Decimal(speed["peakInterval"]["speedMps"]), Decimal("0.5"))
+        self.assertEqual((speed["checkedIntervals"], speed["skippedRows"], speed["maxIntervalMicroseconds"]), (1, 1, 1000000))
+
+        for elapsed, code, severity in (
+            (999999, "station_trace_speed_exceeds_limit", "error"),
+            (0, "station_trace_speed_time_invalid", "error"),
+            (None, "station_trace_speed_incomplete", "warning"),
+        ):
+            with self.subTest(elapsed=elapsed), self.assertRaises(TraceIssue) as caught:
+                check_sampled_speed(report, self.trace, [source, arrival | {"positionTimeMicroseconds": elapsed}],
+                                    19, 21, result)
+            self.assertEqual((caught.exception.code, caught.exception.severity), (code, severity))
 
     def test_position_check_needs_fresh_same_shuttle_samples_and_enforces_the_per_axis_limit(self):
         positions = {"Inspect": {"xyMetres": ["0.66", "0.060"], "path": "Objects.br"},

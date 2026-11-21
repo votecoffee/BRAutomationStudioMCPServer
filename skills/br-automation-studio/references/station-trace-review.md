@@ -69,6 +69,12 @@ With br-studio 0.63.0 or later, add `waypointToleranceMicrometres` to the reques
 
 The reviewer looks for a distinct same-shuttle sample near each waypoint in the compiled order. A witness must be within tolerance on both axes and outside the tolerance of every other compiled object on the route. Read `stationTraceReview.waypointReview` for the ordered witnesses, pending waypoints and counts of ambiguous or unusable samples. Missing ordered evidence leaves the check incomplete. Use timed position samples for velocity and clearance evaluation.
 
+## Check sampled in-plane speed
+
+With br-studio 0.64.0 or later, set `verifySampledSpeed` to true. Use the same LaunchPad inputs and the RUC built with `verifyLaunchPadPositions`, explicit X and Y read axes, and `verifyLaunchPadMotionLimits`. Keep valid same-shuttle XY positions from Release through accepted arrival. Add `positionTimeMicroseconds` as the nonnegative integer acquisition time on a common monotonic clock. Retain the captured sample times from the PLC.
+
+The reviewer needs a usable position and time at each end of the window. It divides straight-line XY displacement by elapsed time between consecutive usable observations and compares each mean with the compiled `InPlaneVelLim`. Read `sampledSpeedReview` for the largest sampled mean, its scan interval, the longest time gap and any exceedance. A decreasing or repeated sample time fails the check. Use the capture's time resolution when assessing brief velocity peaks.
+
 ## Interpret the result
 
 - `matched` requires one Release edge with the approved request and shuttle, route permission, station clear and inspection busy clear. The same leg needs ReleaseDone and a fresh `mpTRAFFIC_SH_ARRIVAL` at the expected station for that shuttle. Either observation may appear first in the PLC trace after release.

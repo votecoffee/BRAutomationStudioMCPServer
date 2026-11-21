@@ -46,6 +46,7 @@ The field names below are the default column names. In `columns`, map every fiel
 | Inspection result | `inspection.resultPresent`, `inspection.result.requestId`, `inspection.result.shuttleId`, `inspection.result.acknowledged`, `inspection.result.approved` |
 | Optional release motion | `inspection.exitVelocityMps` and `inspection.exitAccelerationMps2` |
 | Optional station positions | `inspection.positionSampleScan`, `inspection.positionShuttleId`, `inspection.positionValid`, `inspection.positionXM` and `inspection.positionYM` |
+| Optional position acquisition time | `inspection.positionTimeMicroseconds` and `return.positionTimeMicroseconds` |
 | Return source | `return.sourceHealthy`, `return.occupyingShuttleId`, `return.monitorHealthy`, `return.error`, `return.statusId` |
 | Destination monitors | Each of `inspection.detection` and `return.detection` needs `.sequence`, `.station`, `.shuttleId`, `.event`. |
 | Next held request | `hold.station`, `hold.requestId`, `hold.shuttleId`, `hold.held`, `hold.release`, `hold.resultAccepted` |
@@ -70,6 +71,8 @@ Map the five optional position columns to the recorded PLC sample fields and set
 For the return and hold check, map the same five field names under the `return.` and `hold.` prefixes and set `returnPositionToleranceMicrometres`. You can map the same physical column to the same position field across phases. For example, use one captured X column for `inspection.positionXM`, `return.positionXM` and `hold.positionXM`. Keep each different field in its own column. [Return and hold witnesses](cycle-trace-review.md#verify-positions-on-return-and-at-the-next-hold)
 
 For waypoint evidence, keep intermediate position rows in both legs and pass `waypointToleranceMicrometres` in the request. Use the same position columns as for station witnesses. [Check both waypoint sequences](cycle-trace-review.md#run-the-review)
+
+For sampled speed, add the recorded monotonic position acquisition time under the `inspection.` and `return.` prefixes. Map the time signal explicitly when the capture header differs and set `verifySampledSpeed` in the request. Use a common clock within each leg and retain the original integer microsecond values. [Sampled speed criteria](station-trace-review.md#check-sampled-in-plane-speed)
 
 ## Decode events from the saved project and RUC
 

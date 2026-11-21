@@ -642,6 +642,15 @@ def markdown_waypoint_review(review, text):
     return lines
 
 
+def markdown_sampled_speed(review, text):
+    lines = [f"- Sampled speed {text(review['state'])} · Usable intervals {review['checkedIntervals']}"
+             f" · Compiled velocity limit {text(review.get('velocityLimitMps'))} m/s"]
+    if peak := review.get("peakInterval"):
+        lines.append(f"- Largest sampled mean {text(peak['speedMps'])} m/s · Scans {peak['fromScan']}–{peak['toScan']}"
+                     f" · Longest sample interval {review['maxIntervalMicroseconds']} µs")
+    return lines
+
+
 def markdown_station_trace(trace, text):
     lines = ["", "## Inspection leg trace", ""]
     if "state" in trace:
@@ -668,6 +677,8 @@ def markdown_station_trace(trace, text):
         lines.extend(markdown_position_review("Station positions", positions, text))
     if waypoints := trace.get("waypointReview"):
         lines.extend(markdown_waypoint_review(waypoints, text))
+    if speed := trace.get("sampledSpeedReview"):
+        lines.extend(markdown_sampled_speed(speed, text))
     if fault := trace.get("firstFault"):
         lines.append(f"- First adapter status {fault['statusId']} at scan {fault['scan']}")
     return lines
@@ -698,6 +709,8 @@ def markdown_cycle_trace(cycle, text):
             lines.append(f"- Arrival at {text(arrival['station'])} · Scan {arrival['scan']} · Monitor sequence {arrival['sequence']}")
         if waypoints := returned.get("waypointReview"):
             lines.extend(markdown_waypoint_review(waypoints, text))
+        if speed := returned.get("sampledSpeedReview"):
+            lines.extend(markdown_sampled_speed(speed, text))
         if fault := returned.get("firstFault"):
             lines.append(f"- First return status {fault['statusId']} at scan {fault['scan']}")
     if hold := cycle.get("nextHold"):

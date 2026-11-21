@@ -8,13 +8,15 @@ import re
 
 from .mptraffic_definition import NONE
 from .station_trace import (
-    FLAGS, MONITOR_CHECKPOINTS, POSITION_FIELDS, POSITION_IDENTIFIERS, RELEASE_MOTION_FIELDS, TRACE_LIMIT, TraceIssue, integer,
+    FLAGS, MONITOR_CHECKPOINTS, POSITION_FIELDS, POSITION_IDENTIFIERS, POSITION_TIME, RELEASE_MOTION_FIELDS,
+    TRACE_LIMIT, TraceIssue, integer,
 )
 
 
 HOLD_HMI = ("hold.phase", "hold.releaseTotal", "hold.heartbeat")
 INSPECTION_MOTION = tuple(f"inspection.{field}" for field in RELEASE_MOTION_FIELDS)
-POSITION_COLUMNS = tuple(f"{phase}.{field}" for phase in ("inspection", "return", "hold") for field in POSITION_FIELDS)
+POSITION_COLUMNS = tuple(f"{phase}.{field}" for phase in ("inspection", "return", "hold")
+                         for field in (*POSITION_FIELDS, POSITION_TIME))
 RESULT = ("requestId", "shuttleId", "acknowledged", "approved")
 DETECTION = ("sequence", "station", "shuttleId", "event")
 FIELDS = {
@@ -170,7 +172,7 @@ class Sample:
 
     def position(self, phase, roles):
         values = {role.partition(".")[2]: self.get(role) for role in roles if role.startswith(f"{phase}.")}
-        for name in POSITION_IDENTIFIERS:
+        for name in (*POSITION_IDENTIFIERS, POSITION_TIME):
             if values.get(name) not in (None, ""):
                 values[name] = self.number(f"{phase}.{name}")
         if values.get("positionValid") not in (None, ""):

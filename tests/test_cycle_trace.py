@@ -266,14 +266,15 @@ class CycleTraceTest(unittest.TestCase):
     def test_one_position_stream_can_feed_return_and_hold_without_merging_fields(self):
         trace, columns, rows = self.scan_csv()
         names = {"positionSampleScan": "Position Scan", "positionShuttleId": "Position Shuttle",
-                 "positionValid": "Position Valid", "positionXM": "Position X", "positionYM": "Position Y"}
+                 "positionValid": "Position Valid", "positionXM": "Position X", "positionYM": "Position Y",
+                 "positionTimeMicroseconds": "Position time us"}
         mapped = {f"{phase}.{field}": column for phase in ("return", "hold") for field, column in names.items()}
         trace["scanCapture"]["columns"] = mapped
         columns.extend(names.values())
         rows[-2].update({"Position Scan": "17.000", "Position Shuttle": "3", "Position Valid": "1",
-                         "Position X": "0.10", "Position Y": "0.20"})
+                         "Position X": "0.10", "Position Y": "0.20", "Position time us": "1750000.000"})
         rows[-1].update({"Position Scan": "18.000", "Position Shuttle": "3", "Position Valid": "1",
-                         "Position X": "0.1000", "Position Y": "0.20"})
+                         "Position X": "0.1000", "Position Y": "0.20", "Position time us": "2000000.000"})
         output = StringIO(newline="")
         writer = csv.DictWriter(output, fieldnames=columns, lineterminator="\r\n")
         writer.writeheader()
@@ -284,6 +285,8 @@ class CycleTraceTest(unittest.TestCase):
         self.assertEqual(normalized["returnLeg"]["scans"][-1]["positionSampleScan"], 17)
         self.assertEqual(normalized["nextHold"]["positionSampleScan"], 18)
         self.assertEqual(normalized["nextHold"]["positionXM"], "0.1000")
+        self.assertEqual(normalized["returnLeg"]["scans"][-1]["positionTimeMicroseconds"], 1750000)
+        self.assertEqual(normalized["nextHold"]["positionTimeMicroseconds"], 2000000)
         self.assertNotIn("positionXM", normalized["inspectionLeg"]["scans"][0])
 
         mapped["hold.positionYM"] = "Position X"

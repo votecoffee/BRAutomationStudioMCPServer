@@ -266,7 +266,8 @@ def run_station_trace_review(arguments, request_directory):
     return station_trace_review(*launchpad_inputs(arguments, request_directory), arguments["sourceStation"],
                                 request_directory / arguments["trace"], expected_motion=expected_release_motion(arguments),
                                 position_tolerance_um=arguments.get("positionToleranceMicrometres"),
-                                waypoint_tolerance_um=arguments.get("waypointToleranceMicrometres"))
+                                waypoint_tolerance_um=arguments.get("waypointToleranceMicrometres"),
+                                verify_sampled_speed=arguments.get("verifySampledSpeed", False))
 
 
 def run_cycle_trace_review(arguments, request_directory):
@@ -282,7 +283,8 @@ def run_cycle_trace_review(arguments, request_directory):
                               require_session_capture=require_capture, expected_motion=expected_release_motion(arguments),
                               position_tolerance_um=arguments.get("positionToleranceMicrometres"),
                               return_position_tolerance_um=arguments.get("returnPositionToleranceMicrometres"),
-                              waypoint_tolerance_um=arguments.get("waypointToleranceMicrometres"))
+                              waypoint_tolerance_um=arguments.get("waypointToleranceMicrometres"),
+                              verify_sampled_speed=arguments.get("verifySampledSpeed", False))
 
 
 def run_launchpad_motion_review(arguments, request_directory):
@@ -587,6 +589,8 @@ STATION_TRACE_INPUTS = {
                                       "description": "Maximum per-axis difference from the compiled station position at Release and arrival."},
     "waypointToleranceMicrometres": {"type": "integer", "minimum": 0, "maximum": 9007199254740991,
                                       "description": "Maximum per-axis difference for ordered waypoint position observations."},
+    "verifySampledSpeed": {"type": "boolean", "default": False,
+                           "description": "Compare sampled XY displacement rates with the compiled in-plane velocity limit."},
 }
 STATION_TRACE_REVIEW = Operation(
     name="station_trace_review",
