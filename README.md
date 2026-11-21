@@ -84,7 +84,7 @@ Use `layout_device_review` to verify the selected CPU's saved and compiled `6DDa
 
 Use `layout_svg_review` to compare the generated segment grid, marker positions and directed mapping IDs with the saved project and its RUC. [Generated layout workflow](skills/br-automation-studio/references/layout-svg-review.md)
 
-Use `launchpad_export_review` to compare a locally decoded LaunchPad cycle with the XML export before import. Use `launchpad_route_review` to compare that cycle with the saved or compiled Traffic Manager. The native build can also retain the reviewed LaunchPad inputs and verify the compiled route through `ruc_review`. [LaunchPad route workflow](skills/br-automation-studio/references/launchpad-route-review.md) · [Build with LaunchPad evidence](skills/br-automation-studio/references/native-build.md#bind-the-reviewed-launchpad-export-to-the-build)
+Use `launchpad_export_review` to compare a locally decoded LaunchPad cycle with the XML export before import. Use `launchpad_route_review` to compare that cycle with the saved or compiled Traffic Manager. The native build can retain the reviewed route inputs and pin the imported segment grid. [LaunchPad route workflow](skills/br-automation-studio/references/launchpad-route-review.md) · [Build with LaunchPad evidence](skills/br-automation-studio/references/native-build.md#bind-the-reviewed-launchpad-export-to-the-build)
 
 Use `launchpad_station_review` to verify each station-to-station path and read the source station's LaunchPad model waits before reviewing the native recipe. [Station path workflow](skills/br-automation-studio/references/launchpad-station-review.md)
 

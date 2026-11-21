@@ -150,7 +150,8 @@ LAUNCHPAD_ROUTE_INPUTS = {
 
 def launchpad_build_inputs(arguments, request_directory):
     required = {"launchPadProject", "launchPadReadback", "launchPadExport", "managerId"}
-    if not arguments.keys() & (required | {"nameMap"}):
+    verify_layout = arguments.get("verifyLaunchPadLayout", False)
+    if not verify_layout and not arguments.keys() & (required | {"nameMap"}):
         return None
     if missing := required - arguments.keys():
         raise InvalidRequest(f"Missing LaunchPad build inputs: {', '.join(sorted(missing))}")
@@ -158,7 +159,7 @@ def launchpad_build_inputs(arguments, request_directory):
     return LaunchPadBuildInputs(request_directory / arguments["launchPadProject"],
                                 request_directory / arguments["launchPadReadback"],
                                 request_directory / arguments["launchPadExport"], arguments["managerId"],
-                                request_directory / mapping if mapping is not None else None)
+                                request_directory / mapping if mapping is not None else None, verify_layout=verify_layout)
 
 
 def build_plan(arguments, request_directory):
@@ -432,6 +433,8 @@ BUILD_PLAN = Operation(
         **BUILD_PREFLIGHT.arguments,
         **LAUNCHPAD_ROUTE_INPUTS,
         "launchPadExport": SIMULATION_PREFLIGHT.arguments["launchPadExport"],
+        "verifyLaunchPadLayout": {"type": "boolean", "default": False,
+                                  "description": "Verify and pin the linked 240 mm S3-AS LaunchPad segment grid."},
         "verifyMpTrafficEnum": SIMULATION_PREFLIGHT.arguments["verifyMpTrafficEnum"],
         "verifyMotionPayloads": {"type": "boolean", "default": False,
                                  "description": "Pin the six AS4 SG4/IA32 motion payloads and verify the produced RUC."},

@@ -5,8 +5,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from shutil import copyfile
 
-from .launchpad_baseline import compare_cycle, names_for, nonempty
+from .launchpad_baseline import compare_cycle, names_for, nonempty, read_launchpad_save
 from .launchpad_export import review_launchpad_export
+from .launchpad_layout import compare_layout, linked_layout, master_offsets, native_segments
 from .project import SavedFiles
 
 
@@ -25,12 +26,18 @@ class LaunchPadBuildInputs:
     export: Path
     manager: str
     name_map: Path | None = None
+    verify_layout: bool = False
+
+
+def selected_manager(manager, managers):
+    matches = [row for row in managers if row["manager"] == manager]
+    if len(matches) != 1:
+        raise ValueError(f"Expected one Traffic Manager {manager!r} in the selected target")
+    return matches[0]
 
 
 def checked_manager(binding, managers):
-    matches = [row for row in managers if row["manager"] == binding["manager"]]
-    if len(matches) != 1:
-        raise ValueError(f"Expected one Traffic Manager {binding['manager']!r} in the selected target")
+    manager = selected_manager(binding["manager"], managers)
     expected = binding["objects"]
     if not isinstance(expected, list) or not expected or any(
         not isinstance(row, dict) or not all(nonempty(row.get(key)) for key in ("name", "type", "geometryId", "importedName"))
@@ -38,10 +45,10 @@ def checked_manager(binding, managers):
     ):
         raise ValueError("The build plan has no usable LaunchPad cycle")
     names = {row["name"]: row["importedName"] for row in expected}
-    comparison = compare_cycle(expected, names, matches[0])
+    comparison = compare_cycle(expected, names, manager)
     if any(comparison[key] for key in ("missingObjects", "additionalObjects", "missingEdges", "unexpectedEdges")):
         raise ValueError(f"Traffic Manager {binding['manager']!r} objects or directed edges differ from the reviewed LaunchPad route")
-    return comparison
+    return comparison | {"assembly": manager["assembly"]}
 
 
 def plan_launchpad_route(inputs, managers):
@@ -63,6 +70,38 @@ def plan_launchpad_route(inputs, managers):
                "objects": [row | {"importedName": renames[row["name"]]} for row in objects]}
     checked_manager(binding, managers)
     return binding
+
+
+def grid_identity(summary):
+    return {key: summary[key] for key in ("count", "masterPositionMm", "offsetsFromMasterMm")}
+
+
+def plan_launchpad_layout(inputs, binding, managers, assembly_links):
+    source, decoded = read_launchpad_save(inputs.project, inputs.readback)
+    if any(source[key] != binding["files"][name]["sha256"]
+           for key, name in (("sourceSha256", "project"), ("readbackSha256", "readback"))):
+        raise ValueError("The LaunchPad save or readback changed during layout review")
+    assembly = selected_manager(binding["manager"], managers)["assembly"]
+    layout = linked_layout(assembly_links, assembly)
+    comparison, issues = compare_layout(decoded, layout)
+    if issues:
+        raise ValueError(issues[0][1])
+    return {"assembly": assembly, "layoutId": layout["layoutId"], "path": layout["path"],
+            "gridMm": comparison["gridMm"], "segmentType": comparison["segmentType"],
+            "compatibleAxisMappings": comparison["compatibleAxisMappings"],
+            "grid": grid_identity(comparison["automationStudio"])}
+
+
+def compiled_launchpad_layout(pinned, assembly, assembly_links):
+    if not isinstance(pinned, dict):
+        raise ValueError("Expected a pinned LaunchPad layout")
+    layout = linked_layout(assembly_links, assembly)
+    summary, _ = master_offsets(native_segments(layout), "Compiled Automation Studio layout")
+    grid = grid_identity(summary)
+    matched = (assembly, layout["layoutId"], grid) == (pinned["assembly"], pinned["layoutId"], pinned["grid"])
+    return {"state": "matched" if matched else "issues", "assembly": assembly, "layoutId": layout["layoutId"],
+            "path": layout["path"], "gridMm": pinned["gridMm"], "segmentType": pinned["segmentType"],
+            "plannedGrid": pinned["grid"], "compiledGrid": grid}
 
 
 def retained_launchpad_files(reader, binding):

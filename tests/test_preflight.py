@@ -263,7 +263,10 @@ class BuildPreflightTests(unittest.TestCase):
         readback = {
             "schemaVersion": 1, "codec": {"name": "zipson", "version": "0.2.12"},
             "source": {"fileName": lpj.name, "sha256": sha256(lpj.read_bytes()).hexdigest()},
-            "decoded": {"launchpad_version": "1.4", "segments": [{"id": "master"}],
+            "decoded": {"launchpad_version": "1.4", "segments": [
+                            {"id": "master", "type": "S3-AS", "w": 240, "h": 240, "x": 0, "y": 0, "master": True},
+                            {"id": "next", "type": "S3-AS", "w": 240, "h": 240, "x": 240, "y": 0, "master": False},
+                        ],
                         "workstations": [{"id": "a", "name": "OriginalLoad"}, {"id": "c", "name": "Inspect"}],
                         "gates": [{"id": "b", "name": "Transit"}], "recipe_nodes": [
                             {"recipe_id": "a", "id": "a", "type_name": "workstation", "targets": ["b"]},
@@ -277,7 +280,7 @@ class BuildPreflightTests(unittest.TestCase):
         self.put(self.root / "Rename.json", '{"OriginalLoad":"Load"}')
         export = self.root / "Modeled.x6d"
         raw = b"""<Model>
-          <Group ID="Segments"><Group ID="A"/></Group>
+          <Group ID="Segments"><Group ID="A"/><Group ID="B"/></Group>
           <Group ID="Stations">
             <Group ID="a"><Property ID="Name" Value="OriginalLoad"/>
               <Group ID="NextGates"><Property Value="b"/></Group></Group>
@@ -300,6 +303,29 @@ class BuildPreflightTests(unittest.TestCase):
         binding = plan["manifest"]["launchPadRoute"]
         self.assertEqual(binding["objects"][0]["importedName"], "Load")
         self.assertEqual(binding["files"]["export"]["sha256"], sha256(raw).hexdigest())
+        self.assertNotIn("layout", binding)
+        with self.assertRaisesRegex(InvalidRequest, "Missing LaunchPad build inputs"):
+            self.native_request("build_plan", verifyLaunchPadLayout=True)
+
+        layout_file = self.project / "Physical/ARsim/PC/mapp6D/FixtureLayout.layout6d"
+        base_layout = layout_file.read_bytes()
+        segments = b"""<Group ID="Segments">
+          <Group ID="Segment[1]"><Property ID="TypeGrid240" Value="0"/>
+            <Property ID="X" Value="0"/><Property ID="Y" Value="0"/><Property ID="IsMaster" Value="true"/></Group>
+          <Group ID="Segment[2]"><Property ID="TypeGrid240" Value="0"/>
+            <Property ID="X" Value="1"/><Property ID="Y" Value="0"/><Property ID="IsMaster" Value="false"/></Group>
+        </Group>"""
+        layout = base_layout.replace(b"</Element>", segments + b"</Element>")
+        layout_file.write_bytes(layout)
+        selected = self.native_request("build_plan", **arguments, verifyLaunchPadLayout=True)["result"]
+        grid = selected["buildPlan"]["manifest"]["launchPadRoute"]["layout"]["grid"]
+        self.assertEqual(grid["offsetsFromMasterMm"], [[0, 0], [240, 0]])
+        layout_file.write_bytes(layout.replace(b'ID="X" Value="1"', b'ID="X" Value="2"'))
+        wrong_grid = self.native_request("build_plan", **arguments, verifyLaunchPadLayout=True)["result"]
+        self.assertIsNone(wrong_grid["buildPlan"])
+        self.assertEqual(wrong_grid["diagnostics"][-1]["code"], "launchpad_build_layout_unverified")
+        self.assertIsNotNone(self.native_request("build_plan", **arguments)["result"]["buildPlan"])
+        layout_file.write_bytes(base_layout)
 
         def stage_and_change(manifest, destination):
             stage_inputs(manifest, destination)

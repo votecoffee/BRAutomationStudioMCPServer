@@ -1,6 +1,6 @@
 
 from gzip import compress
-from hashlib import file_digest
+from hashlib import file_digest, sha256
 import json
 import os
 from pathlib import Path
@@ -259,6 +259,49 @@ position-x-mm="0" position-y-mm="0" transform="translate(0 -240)"><g>
         response = self.review()
         self.assertEqual(self.codes(response), ["ruc_review_input"])
         self.assertFalse(response["result"]["rucReview"]["sourceMatched"])
+
+    def test_compiled_layout_must_preserve_the_planned_segment_grid(self):
+        saved = self.project / "Physical/ARsim/PC/mapp6D/FixtureLayout.layout6d"
+        segments = b"""<Group ID="Segments">
+          <Group ID="Segment[1]"><Property ID="TypeGrid240" Value="0"/>
+            <Property ID="X" Value="0"/><Property ID="Y" Value="0"/><Property ID="IsMaster" Value="true"/></Group>
+          <Group ID="Segment[2]"><Property ID="TypeGrid240" Value="0"/>
+            <Property ID="X" Value="1"/><Property ID="Y" Value="0"/><Property ID="IsMaster" Value="false"/></Group>
+        </Group>"""
+        layout = saved.read_bytes().replace(b"</Element>", segments + b"</Element>")
+        saved.write_bytes(layout)
+        member = f"{DATA}/FixtureLayout.br"
+        self.members[member] = b"synthetic BR prefix\0" + layout + b"\0suffix"
+        evidence = {}
+        for name, payload in (("project", "source.lpj"), ("readback", "readback.json"), ("export", "export.x6d")):
+            path = self.job / "launchpad" / payload
+            path.parent.mkdir(exist_ok=True)
+            path.write_bytes(payload.encode())
+            evidence[name] = {"path": path.relative_to(self.job).as_posix(), "sha256": sha256(path.read_bytes()).hexdigest()}
+        manifest = self.plan["manifest"]
+        manifest["inputs"] = source_tree(self.project)
+        manifest["launchPadRoute"] = {
+            "manager": "DemoTraffic", "files": evidence,
+            "objects": [{"name": name, "type": kind, "geometryId": name, "importedName": name}
+                        for name, kind in (("Load", "Station"), ("Transit", "Waypoint"), ("Inspect", "Station"))],
+            "layout": {"assembly": "FixtureAssembly", "layoutId": "FixtureLayout", "gridMm": 240,
+                       "segmentType": "S3-AS", "grid": {"count": 2, "masterPositionMm": [0, 0],
+                                                       "offsetsFromMasterMm": [[0, 0], [240, 0]]}},
+        }
+        self.plan["sha256"] = identity(manifest)
+        self.write("plan.json", self.plan)
+        self.write("job.json", self.package() | {"launchPadRoute": {"manager": "DemoTraffic", "files": evidence}})
+        verified = self.review()
+        self.assertEqual(verified["status"], "complete", verified["result"]["diagnostics"])
+        self.assertEqual(verified["result"]["rucReview"]["launchPadRoute"]["layout"]["state"], "matched")
+
+        self.members[member] = self.members[member].replace(b'ID="X" Value="1"', b'ID="X" Value="2"')
+        self.write("job.json", self.package() | {"launchPadRoute": {"manager": "DemoTraffic", "files": evidence}})
+        rejected = self.review()
+        self.assertEqual(self.codes(rejected), ["ruc_launchpad_layout_mismatch"])
+        route = rejected["result"]["rucReview"]["launchPadRoute"]
+        self.assertEqual(route["state"], "matched")
+        self.assertEqual(route["layout"]["compiledGrid"]["offsetsFromMasterMm"], [[0, 0], [480, 0]])
 
     def test_broken_compiled_return_edge_survives_zip_checks_but_fails_review(self):
         self.members[MAPPING] = self.members[MAPPING].replace(

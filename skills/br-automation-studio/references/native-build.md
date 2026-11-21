@@ -14,6 +14,12 @@ With br-studio 0.51.0 or later, use the same `launchPadProject`, `launchPadReadb
 
 Before dispatch, execution retains and rehashes the exact evidence under the job directory's `launchpad/` subdirectory. Keep that directory with the plan, job receipt and RUC. The [RUC review](ruc-review.md) rehashes the retained files and checks the compiled manager's route. Automation Studio's native import and the saved geometry, process and runtime checks have their own review steps.
 
+### Pin the imported segment grid
+
+With br-studio 0.52.0 or later, add `verifyLaunchPadLayout: true` to both build requests along with the LaunchPad route inputs above. The option follows the selected manager through its assembly to one registered 240 mm S3-AS layout. The [layout comparison](launchpad-layout-review.md) checks the occupied cells relative to the master against the saved LaunchPad design, allowing the compatible square-grid axis mappings.
+
+The plan records the imported layout ID, segment count, master grid position and occupied offsets in the selected Automation Studio coordinate frame. RUC review checks that same grid in the compiled layout. Read `rucReview.launchPadRoute.layout` for the planned and compiled values. Use the [coordinate frame review](launchpad-frame-review.md) to check the route positions and common datum.
+
 ### Verify MpTraffic in the plan and RUC
 
 Since br-studio 0.35.0, set `verifyMpTrafficEnum` to true in both the plan and execution requests to carry the [MpTraffic definition check](simulation-preflight.md#verify-the-mptraffic-definition-before-building) into the native build. The plan compares the registered project declaration and IA32 binary with the selected AS4 catalog files. The plan SHA-256 covers the saved and installed declaration and payload hashes under `manifest.mpTrafficDefinition`.

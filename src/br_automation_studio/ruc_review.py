@@ -12,7 +12,7 @@ from zipfile import BadZipFile, ZipFile
 from .file_device import SYSTEM_CONFIG, read_compiled_layout_device
 from .inspection import inspect_project
 from .json_io import invalid_constant, read_json, unique_object
-from .launchpad_build import checked_manager, retained_launchpad_files
+from .launchpad_build import checked_manager, compiled_launchpad_layout, retained_launchpad_files
 from .links import MotionLinks, RULE_ROLES
 from .motion_payloads import verify_packaged_motion
 from .motion_symbols import plan_motion_symbols, read_motion_symbols
@@ -366,8 +366,9 @@ def review_ruc(path, job_directory, binding=None, *, geometry_manager=None, incl
                     member = archive.member(SYSTEM_CONFIG)
                     if member is not None:
                         review["compiledLayoutDevice"] = read_compiled_layout_device(archive.read(member))
+                pinned_layout = launchpad is not None and "layout" in launchpad
                 modules, links, managers, ready = read_motion(archive, saved, reader, geometry_manager,
-                                                              include_layout=include_layout,
+                                                              include_layout=include_layout or pinned_layout,
                                                               recovery_manager=recovery_manager, include_motion=include_motion,
                                                               include_io=include_io)
                 review.update(modules=modules, assemblyLinks=links, trafficManagers=managers)
@@ -376,6 +377,17 @@ def review_ruc(path, job_directory, binding=None, *, geometry_manager=None, incl
                     if launchpad is not None:
                         route = checked_manager(launchpad, managers)
                         review["launchPadRoute"].update(state="matched", edges=route["expectedEdges"])
+                        if pinned_layout:
+                            try:
+                                layout = compiled_launchpad_layout(launchpad["layout"], route["assembly"], links)
+                            except (LookupError, OverflowError, ValueError) as error:
+                                review["launchPadRoute"]["layout"] = {"state": "unverified"}
+                                reader.issue("error", "ruc_launchpad_layout_unverified", Path("."), str(error))
+                            else:
+                                review["launchPadRoute"]["layout"] = layout
+                                if layout["state"] != "matched":
+                                    reader.issue("error", "ruc_launchpad_layout_mismatch", Path(layout["path"]),
+                                                 "The compiled layout identity or segment grid differs from the build plan")
                 review["widgets"] = read_widgets(archive, saved, reader)
                 if start_widget is not None:
                     start_widget.check(archive, path.parent, manifest, saved["widgets"], review["widgets"],
