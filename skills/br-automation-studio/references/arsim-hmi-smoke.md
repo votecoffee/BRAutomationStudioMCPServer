@@ -42,6 +42,8 @@ The browser report includes the expected `6DData` SVG requests and an inline SVG
 
 Set `requireStartPage` to `true` to verify the selected Assembly6D widget's default page assignment and the generated client map from the same runtime. [Default start page check](arsim-browser-smoke.md#verify-the-default-start-page-in-arsim)
 
+For a build planned with `launchPadWidgetId`, the browser uses the pinned widget by default and checks its served client map in both documents. When supplying `assemblyWidgetId`, use the same ID. [Plan the widget check](native-build.md#check-the-default-assembly6d-widget)
+
 Set `requireWidgetBundle` to `true` to verify the packaged Assembly6D bundle, the served bytes and the script load in each browser document. The same option works with a [status smoke](arsim-status-smoke.md) when an Assembly6D widget is available. [Widget bundle check](arsim-browser-smoke.md#verify-the-assembly6d-bundle-in-both-documents)
 
 Set `captureLayoutAssets` to `true` to enable that browser requirement and save the expected SVGs from the same owned ARsim HTTP listener. Look for `hmi.browser.layoutCapture` in `session.json`. Its paths are relative to the session directory. Retain those files and the receipt for the offline review. [SVG capture and readback](arsim-browser-smoke.md#save-the-generated-svgs)

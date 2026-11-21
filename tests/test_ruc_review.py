@@ -260,6 +260,51 @@ position-x-mm="0" position-y-mm="0" transform="translate(0 -240)"><g>
         self.assertEqual(self.codes(response), ["ruc_review_input"])
         self.assertFalse(response["result"]["rucReview"]["sourceMatched"])
 
+    def add_launchpad_route(self, **pins):
+        evidence = {}
+        for name, payload in (("project", "source.lpj"), ("readback", "readback.json"), ("export", "export.x6d")):
+            path = self.job / "launchpad" / payload
+            path.parent.mkdir(exist_ok=True)
+            path.write_bytes(payload.encode())
+            evidence[name] = {"path": path.relative_to(self.job).as_posix(), "sha256": sha256(path.read_bytes()).hexdigest()}
+        retained = {"manager": "DemoTraffic", "files": evidence}
+        manifest = self.plan["manifest"]
+        manifest["inputs"] = source_tree(self.project)
+        manifest["launchPadRoute"] = {
+            **retained,
+            "objects": [{"name": name, "type": kind, "geometryId": name, "importedName": name}
+                        for name, kind in (("Load", "Station"), ("Transit", "Waypoint"), ("Inspect", "Station"))],
+            **pins,
+        }
+        self.plan["sha256"] = identity(manifest)
+        self.write("plan.json", self.plan)
+        self.write("job.json", self.package() | {"launchPadRoute": retained})
+        return retained
+
+    def test_pinned_launchpad_widget_must_show_the_reviewed_manager(self):
+        self.add_start_page()
+        dom_id = "DemoOverview_LoopOverview"
+        self.add_launchpad_route(startPageWidgetId=dom_id)
+        response = self.review()
+        self.assertEqual(response["status"], "complete", response["result"]["diagnostics"])
+        start = response["result"]["rucReview"]["startPageWidget"]
+        self.assertEqual((start["state"], start["domId"], start["launchPadManager"]), ("matched", dom_id, "DemoTraffic"))
+        self.assertEqual(self.codes(self.review(startPageWidgetId="Different_Widget")), ["ruc_review_input"])
+
+        widget = self.project / "Logical/mappView/Overview.content"
+        widget.write_bytes(widget.read_bytes().replace(b'mpLinkTrafficManager="mapp6D::DemoTraffic"', b""))
+        self.members[WIDGET] = self.members[WIDGET].replace(b'"mapp6D::DemoTraffic"', b'""')
+        self.add_launchpad_route(startPageWidgetId=dom_id)
+        response = self.review()
+        self.assertEqual(self.codes(response), ["start_page_widget_mismatch"])
+        review = response["result"]["rucReview"]
+        self.assertEqual(review["launchPadRoute"]["state"], "matched")
+        self.assertEqual(review["startPageWidget"]["state"], "unverified")
+        self.assertIn("must show reviewed Traffic Manager", response["result"]["diagnostics"][0]["message"])
+
+        self.add_launchpad_route()
+        self.assertEqual(self.review(startPageWidgetId=dom_id)["status"], "complete")
+
     def test_compiled_route_must_preserve_the_planned_grid_and_positions(self):
         saved = self.project / "Physical/ARsim/PC/mapp6D/FixtureLayout.layout6d"
         segments = b"""<Group ID="Segments">
@@ -284,26 +329,12 @@ position-x-mm="0" position-y-mm="0" transform="translate(0 -240)"><g>
         objects.write_bytes(ET.tostring(document, encoding="utf-8", xml_declaration=True))
         object_member = f"{DATA}/DemoObjects.br"
         self.members[object_member] = b"synthetic BR prefix\0" + objects.read_bytes() + b"\0suffix"
-        evidence = {}
-        for name, payload in (("project", "source.lpj"), ("readback", "readback.json"), ("export", "export.x6d")):
-            path = self.job / "launchpad" / payload
-            path.parent.mkdir(exist_ok=True)
-            path.write_bytes(payload.encode())
-            evidence[name] = {"path": path.relative_to(self.job).as_posix(), "sha256": sha256(path.read_bytes()).hexdigest()}
-        manifest = self.plan["manifest"]
-        manifest["inputs"] = source_tree(self.project)
-        manifest["launchPadRoute"] = {
-            "manager": "DemoTraffic", "files": evidence,
-            "objects": [{"name": name, "type": kind, "geometryId": name, "importedName": name}
-                        for name, kind in (("Load", "Station"), ("Transit", "Waypoint"), ("Inspect", "Station"))],
-            "layout": {"assembly": "FixtureAssembly", "layoutId": "FixtureLayout", "gridMm": 240,
-                       "segmentType": "S3-AS", "grid": {"count": 2, "masterPositionMm": [0, 0],
-                                                       "offsetsFromMasterMm": [[0, 0], [240, 0]]}},
-            "positions": positions,
-        }
-        self.plan["sha256"] = identity(manifest)
-        self.write("plan.json", self.plan)
-        self.write("job.json", self.package() | {"launchPadRoute": {"manager": "DemoTraffic", "files": evidence}})
+        retained = self.add_launchpad_route(
+            layout={"assembly": "FixtureAssembly", "layoutId": "FixtureLayout", "gridMm": 240,
+                    "segmentType": "S3-AS", "grid": {"count": 2, "masterPositionMm": [0, 0],
+                                                    "offsetsFromMasterMm": [[0, 0], [240, 0]]}},
+            positions=positions,
+        )
         verified = self.review()
         self.assertEqual(verified["status"], "complete", verified["result"]["diagnostics"])
         route = verified["result"]["rucReview"]["launchPadRoute"]
@@ -313,7 +344,7 @@ position-x-mm="0" position-y-mm="0" transform="translate(0 -240)"><g>
 
         compiled_objects = self.members[object_member]
         self.members[object_member] = compiled_objects.replace(b'ID="X" Value="0.1"', b'ID="X" Value="0.11"', 1)
-        self.write("job.json", self.package() | {"launchPadRoute": {"manager": "DemoTraffic", "files": evidence}})
+        self.write("job.json", self.package() | {"launchPadRoute": retained})
         moved = self.review()
         self.assertEqual(self.codes(moved), ["ruc_launchpad_positions_mismatch"])
         route = moved["result"]["rucReview"]["launchPadRoute"]
@@ -322,7 +353,7 @@ position-x-mm="0" position-y-mm="0" transform="translate(0 -240)"><g>
         self.members[object_member] = compiled_objects
 
         self.members[member] = self.members[member].replace(b'ID="X" Value="1"', b'ID="X" Value="2"')
-        self.write("job.json", self.package() | {"launchPadRoute": {"manager": "DemoTraffic", "files": evidence}})
+        self.write("job.json", self.package() | {"launchPadRoute": retained})
         rejected = self.review()
         self.assertEqual(self.codes(rejected), ["ruc_launchpad_layout_mismatch"])
         route = rejected["result"]["rucReview"]["launchPadRoute"]

@@ -26,6 +26,12 @@ Run the [coordinate frame review](launchpad-frame-review.md) on the imported geo
 
 [RUC review](ruc-review.md) compares the compiled X and Y numerically for each reviewed object. Equivalent decimal spellings match. Inspect the planned values, compiled values and moved object names under `rucReview.launchPadRoute.positions`. This verifies coordinates in the saved Automation Studio frame. Use the frame review to qualify the LaunchPad axis mapping and datum.
 
+### Check the default Assembly6D widget
+
+With br-studio 0.54.0 or later, add `"launchPadWidgetId": "Overview_PlanarDisplay"` to both build requests with the reviewed route inputs. Use the exact `ContentId_WidgetId` from the saved project. Planning checks that this Assembly6D widget is placed on the default visualization's start page and that its links point to the reviewed manager and that manager's assembly. The selected widget ID is part of the build plan SHA-256.
+
+[RUC review](ruc-review.md#verify-the-default-page-placement-of-assembly6d) reads the compiled links, client map, and rendered content for the pinned widget automatically. The [browser rehearsal](arsim-hmi-smoke.md) uses the pinned widget and checks the served client map in both browser documents. Enable `captureLayoutAssets` and run [SVG review](layout-svg-review.md) to compare the served geometry.
+
 ### Verify MpTraffic in the plan and RUC
 
 Since br-studio 0.35.0, set `verifyMpTrafficEnum` to true in both the plan and execution requests to carry the [MpTraffic definition check](simulation-preflight.md#verify-the-mptraffic-definition-before-building) into the native build. The plan compares the registered project declaration and IA32 binary with the selected AS4 catalog files. The plan SHA-256 covers the saved and installed declaration and payload hashes under `manifest.mpTrafficDefinition`.

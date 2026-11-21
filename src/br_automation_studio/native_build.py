@@ -12,11 +12,14 @@ import stat
 from uuid import uuid4
 from zipfile import BadZipFile, ZipFile
 
-from .launchpad_build import launchpad_positions, plan_launchpad_layout, plan_launchpad_route, retain_launchpad_route
+from .launchpad_build import (
+    launchpad_positions, plan_launchpad_layout, plan_launchpad_route, retain_launchpad_route, selected_manager,
+)
 from .motion_payloads import plan_motion_payloads, verify_packaged_motion
 from .motion_symbols import plan_motion_symbols, read_motion_symbols
 from .mptraffic_definition import check_installed_definition, verify_packaged_mptraffic
 from .preflight import build_preflight
+from .project import SavedFiles
 from .windows_job import run_build
 
 GENERATED_ROOTS = {".git", ".local", "binaries", "temp", "buildonly", "temponly"}
@@ -184,6 +187,17 @@ def plan_build(path, studio_root, runtime_root=None, configuration=None, cpu=Non
             except ValueError as error:
                 issue(report, "error", "launchpad_build_positions_unverified", str(error))
                 return report
+        if launchpad_inputs.widget_id is not None:
+            from .start_page import StartPageWidget
+
+            widget = StartPageWidget(launchpad_inputs.widget_id)
+            try:
+                manager = selected_manager(route["manager"], report["trafficManagers"])
+                widget.check_saved(SavedFiles(root), plan, report["widgets"], widget.receipt(), manager)
+            except (OSError, RuntimeError, ValueError) as error:
+                issue(report, "error", "launchpad_build_widget_unverified", str(error))
+                return report
+            route["startPageWidgetId"] = widget.dom_id
     report["buildPlan"] = {"sha256": identity(plan), "manifest": plan}
     return report
 

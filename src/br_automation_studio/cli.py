@@ -134,6 +134,8 @@ def markdown(response):
                 lines.append(f"- LaunchPad layout {text(layout['layoutId'])} · {layout['grid']['count']} segments")
             if positions := route.get("positions"):
                 lines.append(f"- Pinned LaunchPad route positions · {len(positions)} objects")
+            if widget := route.get("startPageWidgetId"):
+                lines.append(f"- Pinned LaunchPad start page widget {text(widget)}")
     if job := report.get("nativeBuild"):
         lines.extend(["", "## Native job", "",
                       f"- Job {text(job['jobId'])} · {text(job['status'])} at {text(job['directory'])}"])
@@ -439,6 +441,8 @@ def markdown_ruc(response, text):
     if start := review.get("startPageWidget"):
         lines.extend(["", "## Default visualization start page", "",
                       f"- {text(start['state'])} · Assembly6D widget {text(start['domId'])}"])
+        if manager := start.get("launchPadManager"):
+            lines.append(f"- Reviewed LaunchPad Traffic Manager {text(manager)}")
         if saved := start.get("saved"):
             identifiers = ("visualizationId", "pageId", "layoutId", "areaId", "contentId")
             lines.append("- " + " → ".join(text(saved[key]) for key in identifiers))

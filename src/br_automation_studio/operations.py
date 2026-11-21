@@ -152,7 +152,8 @@ def launchpad_build_inputs(arguments, request_directory):
     required = {"launchPadProject", "launchPadReadback", "launchPadExport", "managerId"}
     verify_layout = arguments.get("verifyLaunchPadLayout", False)
     verify_positions = arguments.get("verifyLaunchPadPositions", False)
-    if not (verify_layout or verify_positions or arguments.keys() & (required | {"nameMap"})):
+    widget = arguments.get("launchPadWidgetId")
+    if not (verify_layout or verify_positions or widget is not None or arguments.keys() & (required | {"nameMap"})):
         return None
     if missing := required - arguments.keys():
         raise InvalidRequest(f"Missing LaunchPad build inputs: {', '.join(sorted(missing))}")
@@ -161,7 +162,7 @@ def launchpad_build_inputs(arguments, request_directory):
                                 request_directory / arguments["launchPadReadback"],
                                 request_directory / arguments["launchPadExport"], arguments["managerId"],
                                 request_directory / mapping if mapping is not None else None,
-                                verify_layout=verify_layout, verify_positions=verify_positions)
+                                verify_layout=verify_layout, verify_positions=verify_positions, widget_id=widget)
 
 
 def build_plan(arguments, request_directory):
@@ -439,6 +440,8 @@ BUILD_PLAN = Operation(
                                   "description": "Verify and pin the linked 240 mm S3-AS LaunchPad segment grid."},
         "verifyLaunchPadPositions": {"type": "boolean", "default": False,
                                      "description": "Pin the saved absolute station and waypoint XY values for RUC review."},
+        "launchPadWidgetId": {"type": "string", "minLength": 1,
+                              "description": "Pin the default start page's Assembly6D DOM ID and require it to show the reviewed manager."},
         "verifyMpTrafficEnum": SIMULATION_PREFLIGHT.arguments["verifyMpTrafficEnum"],
         "verifyMotionPayloads": {"type": "boolean", "default": False,
                                  "description": "Pin the six AS4 SG4/IA32 motion payloads and verify the produced RUC."},

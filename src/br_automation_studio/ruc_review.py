@@ -13,7 +13,7 @@ from .file_device import SYSTEM_CONFIG, read_compiled_layout_device
 from .inspection import inspect_project
 from .json_io import invalid_constant, read_json, unique_object
 from .launchpad_build import (
-    checked_manager, compiled_launchpad_layout, compiled_launchpad_positions, retained_launchpad_files,
+    checked_manager, compiled_launchpad_layout, compiled_launchpad_positions, retained_launchpad_files, selected_manager,
 )
 from .links import MotionLinks, RULE_ROLES
 from .motion_payloads import verify_packaged_motion
@@ -364,6 +364,18 @@ def review_ruc(path, job_directory, binding=None, *, geometry_manager=None, incl
                     elif binding_report["state"] == "matched":
                         binding_report["state"] = "unverified"
                     return result
+                pinned_widget = launchpad is not None and "startPageWidgetId" in launchpad
+                if pinned_widget:
+                    from .start_page import StartPageWidget
+
+                    dom_id = launchpad["startPageWidgetId"]
+                    if not isinstance(dom_id, str) or not dom_id:
+                        raise ValueError("The LaunchPad plan has no usable start page widget ID")
+                    if start_widget is not None and start_widget.dom_id not in (None, dom_id):
+                        raise ValueError(f"The LaunchPad build plan requires start page widget {dom_id!r}")
+                    start_widget = StartPageWidget(dom_id)
+                    review["startPageWidget"] = start_widget.receipt()
+                    review["startPageWidget"]["launchPadManager"] = launchpad["manager"]
                 if include_layout_device:
                     member = archive.member(SYSTEM_CONFIG)
                     if member is not None:
@@ -412,8 +424,9 @@ def review_ruc(path, job_directory, binding=None, *, geometry_manager=None, incl
                                                  f"{name!r} compiled XY {after} m differs from the planned {before} m")
                 review["widgets"] = read_widgets(archive, saved, reader)
                 if start_widget is not None:
+                    manager = selected_manager(launchpad["manager"], managers) if pinned_widget else None
                     start_widget.check(archive, path.parent, manifest, saved["widgets"], review["widgets"],
-                                       review["startPageWidget"])
+                                       review["startPageWidget"], manager)
                 if require_6d and not saved["motionModules"] and not saved["widgets"]:
                     reader.issue("warning", "ruc_no_expected_6d_content", Path("."),
                                  "No supported saved 6D modules or Assembly6D widgets to compare")

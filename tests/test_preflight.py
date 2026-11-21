@@ -309,6 +309,11 @@ class BuildPreflightTests(unittest.TestCase):
             self.native_request("build_plan", verifyLaunchPadLayout=True)
         with self.assertRaisesRegex(InvalidRequest, "Missing LaunchPad build inputs"):
             self.native_request("build_plan", verifyLaunchPadPositions=True)
+        with self.assertRaisesRegex(InvalidRequest, "Missing LaunchPad build inputs"):
+            self.native_request("build_plan", launchPadWidgetId="DemoOverview_LoopOverview")
+        no_page = self.native_request("build_plan", **arguments, launchPadWidgetId="DemoOverview_LoopOverview")["result"]
+        self.assertIsNone(no_page["buildPlan"])
+        self.assertEqual(no_page["diagnostics"][-1]["code"], "launchpad_build_widget_unverified")
         no_positions = self.native_request("build_plan", **arguments, verifyLaunchPadPositions=True)["result"]
         self.assertIsNone(no_positions["buildPlan"])
         self.assertEqual(no_positions["diagnostics"][-1]["code"], "launchpad_build_positions_unverified")

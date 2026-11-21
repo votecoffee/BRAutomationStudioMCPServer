@@ -396,7 +396,11 @@ class ChromeProbe:
         version = product_version(chrome)
         if chrome.name.lower() != "chrome.exe" or not version:
             raise ValueError("Select an installed Google Chrome chrome.exe")
-        widget = assembly_dom_id(reviewed["widgets"], self.assembly_widget, self.counter_widget) if self.check_assembly else None
+        start = reviewed.get("startPageWidget")
+        selected = self.assembly_widget or (start["domId"] if start else None)
+        widget = None
+        if self.check_assembly or start:
+            widget = assembly_dom_id(reviewed["widgets"], selected, self.counter_widget)
         paths = layout_asset_paths(reviewed["widgets"], widget) if widget is not None else {}
         require_layout = self.require_layout or self.capture_layout
         if require_layout and not paths:
@@ -404,7 +408,7 @@ class ChromeProbe:
         receipt.update(state="ready", assemblyWidgetId=widget, layoutPaths=paths, requireLayoutAssets=require_layout,
                        counterWidgetId=self.counter_widget,
                        chrome={"path": str(chrome), "version": version, "sha256": fingerprint(chrome)})
-        if start := reviewed.get("startPageWidget"):
+        if start:
             if start["state"] != "matched" or start["domId"] != widget:
                 raise ValueError("The start page review must match the browser's Assembly6D widget")
             receipt["startPageMapPath"] = start["compiled"]["clientMapUrl"]

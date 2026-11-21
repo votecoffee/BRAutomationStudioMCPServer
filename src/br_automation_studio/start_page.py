@@ -134,20 +134,29 @@ class StartPageWidget:
     def receipt(self):
         return {"state": "not_checked", "domId": self.dom_id}
 
-    def check(self, archive, project_root, manifest, saved, rendered, report):
+    def check_saved(self, source, manifest, widgets, report, route_manager=None):
+        candidates = [(f"{row['contentId']}_{row['id']}", row) for row in widgets]
+        dom_id, widget = one((item for item in candidates if self.dom_id is None or item[0] == self.dom_id),
+                             ".", "selected saved Assembly6D widget")
+        report["domId"] = dom_id
+        if route_manager is not None:
+            manager, assembly = route_manager["manager"], route_manager["assembly"]
+            require(assembly and widget["assembly"] == assembly and
+                    widget["manager"] in (manager, f"mapp6D::{manager}"), widget["path"],
+                    f"Assembly6D widget {dom_id!r} must show reviewed Traffic Manager {manager!r} and assembly {assembly!r}")
+        report["saved"] = saved_start(source, manifest, widget)
+        pinned = {row["path"]: row["sha256"] for row in manifest["inputs"]["files"]}
+        snapshot = report["savedReadSet"] = source.snapshot()
+        require(not source.diagnostics and all(pinned.get(row["path"]) == row["sha256"] for row in snapshot["files"]),
+                ".", "Saved start page metadata could not be verified against the build manifest")
+        return widget
+
+    def check(self, archive, project_root, manifest, saved, rendered, report, route_manager=None):
         source = SavedFiles(project_root)
         report["state"] = "unverified"
         try:
-            candidates = [(f"{row['contentId']}_{row['id']}", row) for row in saved]
-            dom_id, widget = one((item for item in candidates if self.dom_id is None or item[0] == self.dom_id),
-                                 ".", "selected saved Assembly6D widget")
-            report["domId"] = dom_id
-            report["saved"] = saved_start(source, manifest, widget)
-            pinned = {row["path"]: row["sha256"] for row in manifest["inputs"]["files"]}
-            snapshot = report["savedReadSet"] = source.snapshot()
-            require(not source.diagnostics and all(pinned.get(row["path"]) == row["sha256"] for row in snapshot["files"]),
-                    ".", "Saved start page metadata could not be verified against the build manifest")
-
+            widget = self.check_saved(source, manifest, saved, report, route_manager)
+            dom_id = report["domId"]
             compiled = one((row for row in rendered if (row["contentId"], row["id"]) == (widget["contentId"], widget["id"])),
                            widget["path"], f"rendered Assembly6D options for {dom_id!r}")
             require(compiled["className"] == WIDGET_TYPE and

@@ -29,6 +29,7 @@ class LaunchPadBuildInputs:
     name_map: Path | None = None
     verify_layout: bool = False
     verify_positions: bool = False
+    widget_id: str | None = None
 
 
 def selected_manager(manager, managers):

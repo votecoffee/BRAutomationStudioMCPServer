@@ -26,6 +26,8 @@ With br-studio 0.39.0 or later, add `"startPageWidgetId": "Overview_PlanarDispla
 
 The report at `rucReview.startPageWidget` identifies the saved files and the matching compiled server configuration, visualization, generated client JSON, and content HTML. The review checks the same content URL in the client map, the single DOM element with the selected ID and Assembly6D class, and the saved and rendered assembly and manager links. This workflow covers the direct AS4 v2 start-page assignment. Continue with the [browser and bundle check](arsim-browser-smoke.md) for runtime evidence.
 
+A build planned with `launchPadWidgetId` automatically checks its pinned widget and requires the saved and compiled links to identify the assembly and Traffic Manager of the reviewed route. Read `rucReview.startPageWidget.launchPadManager` for that manager ID. If you also supply `startPageWidgetId`, use the same widget ID as the build plan. [Plan the widget check](native-build.md#check-the-default-assembly6d-widget)
+
 ## Evidence in the result
 
 | Check | Evidence |
