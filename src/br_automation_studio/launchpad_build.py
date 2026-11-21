@@ -9,6 +9,7 @@ from shutil import copyfile
 from .launchpad_baseline import compare_cycle, names_for, nonempty, read_launchpad_save
 from .launchpad_export import review_launchpad_export
 from .launchpad_layout import compare_layout, linked_layout, master_offsets, native_segments
+from .launchpad_recovery import MODES, STARTING_FLAGS, as_declaration, declaration_values, recovery_matches, review_recovery
 from .links import RULE_ROLES, rule_key
 from .project import SavedFiles
 
@@ -32,6 +33,7 @@ class LaunchPadBuildInputs:
     verify_positions: bool = False
     widget_id: str | None = None
     verify_rules: bool = False
+    verify_recovery: bool = False
 
 
 def selected_manager(manager, managers):
@@ -81,11 +83,16 @@ def grid_identity(summary):
     return {key: summary[key] for key in ("count", "masterPositionMm", "offsetsFromMasterMm")}
 
 
-def plan_launchpad_layout(inputs, binding, managers, assembly_links):
+def checked_launchpad_save(inputs, binding):
     source, decoded = read_launchpad_save(inputs.project, inputs.readback)
     if any(source[key] != binding["files"][name]["sha256"]
            for key, name in (("sourceSha256", "project"), ("readbackSha256", "readback"))):
-        raise ValueError("The LaunchPad save or readback changed during layout review")
+        raise ValueError("The LaunchPad save or readback changed during build planning")
+    return decoded
+
+
+def plan_launchpad_layout(inputs, binding, managers, assembly_links):
+    decoded = checked_launchpad_save(inputs, binding)
     assembly = selected_manager(binding["manager"], managers)["assembly"]
     layout = linked_layout(assembly_links, assembly)
     comparison, issues = compare_layout(decoded, layout)
@@ -166,6 +173,48 @@ def launchpad_rules(binding, managers):
             }} for rule in sorted(row["rules"], key=rule_key)
         ]
     return lists
+
+
+def plan_launchpad_recovery(inputs, binding, managers, project):
+    decoded = checked_launchpad_save(inputs, binding)
+    objects = binding["objects"]
+    renamed = {row["name"]: row["importedName"] for row in objects}
+    manager = selected_manager(binding["manager"], managers)
+    review, issues = review_recovery(decoded, objects, renamed, manager["recoveryEvidence"], None,
+                                     inputs.readback, project)
+    if issues:
+        raise ValueError(str(issues[0][2]))
+    return {"launchPadStartingPositions": review["launchPadStartingPositions"],
+            "stations": {row["importedName"]: row["automationStudio"] for row in review["stations"]}}
+
+
+def station_recovery_records(binding, managers):
+    expected = {row["importedName"] for row in binding["objects"] if row["type"] == "Station"}
+    manager = selected_manager(binding["manager"], managers)
+    measured = {}
+    for row in manager["recoveryEvidence"]:
+        name = row["name"]
+        record = as_declaration(row)
+        if name in measured or record["mode"] not in MODES or None in declaration_values(record):
+            raise ValueError(f"Expected a supported recovery declaration for station {name!r} in {row['path']}")
+        measured[name] = record
+    if not expected or measured.keys() != expected:
+        raise ValueError("Expected recovery declarations for all reviewed stations")
+    return measured
+
+
+def compiled_launchpad_recovery(binding, saved_managers, compiled_managers):
+    planned = binding["recovery"]
+    expected = station_recovery_records(binding, saved_managers)
+    if not isinstance(planned, dict) or planned.get("stations") != expected:
+        raise ValueError("The pinned recovery declarations differ from the saved manager")
+    flags = planned.get("launchPadStartingPositions")
+    if not isinstance(flags, dict) or any(type(flags.get(name)) is not bool for name in STARTING_FLAGS):
+        raise ValueError("The build plan has no verified LaunchPad starting-position flags")
+    compiled = station_recovery_records(binding, compiled_managers)
+    changed = sorted(name for name, record in compiled.items() if not recovery_matches(expected[name], record))
+    return {"state": "issues" if changed else "matched", "planned": planned, "compiled": compiled,
+            "changedStations": changed}
 
 
 def retained_launchpad_files(reader, binding):

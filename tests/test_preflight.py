@@ -329,6 +329,11 @@ class BuildPreflightTests(unittest.TestCase):
         no_positions = self.native_request("build_plan", **arguments, verifyLaunchPadPositions=True)["result"]
         self.assertIsNone(no_positions["buildPlan"])
         self.assertEqual(no_positions["diagnostics"][-1]["code"], "launchpad_build_positions_unverified")
+        with self.assertRaisesRegex(InvalidRequest, "Missing LaunchPad build inputs"):
+            self.native_request("build_plan", verifyLaunchPadRecovery=True)
+        no_recovery = self.native_request("build_plan", **arguments, verifyLaunchPadRecovery=True)["result"]
+        self.assertIsNone(no_recovery["buildPlan"])
+        self.assertEqual(no_recovery["diagnostics"][-1]["code"], "launchpad_build_recovery_unverified")
 
         layout_file = self.project / "Physical/ARsim/PC/mapp6D/FixtureLayout.layout6d"
         base_layout = layout_file.read_bytes()

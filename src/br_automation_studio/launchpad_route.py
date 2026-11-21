@@ -21,7 +21,8 @@ def launchpad_route_review(project, configuration, cpu, manager_id, lpj, readbac
                             recovery_manager=recovery_manager, include_motion=include_motion)
     else:
         report = inspect_project(project, configuration, cpu, geometry_manager=geometry_manager,
-                                 include_layout=include_layout, recovery_manager=recovery_manager, include_motion=include_motion)
+                                 include_layout=include_layout, recovery_managers=(recovery_manager,),
+                                 include_motion=include_motion)
     route = report["routeReview"] = {"state": "not_checked", "managerId": manager_id,
                                      "view": "compiled" if job_dir is not None else "saved"}
     if geometry is not None:

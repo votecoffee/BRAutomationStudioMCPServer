@@ -9,16 +9,16 @@ from .project import MOTION_TYPES, SavedFiles, children, choices, package_files,
 
 
 def inspect_project(path, configuration=None, cpu=None, *, geometry_manager=None, include_layout=False,
-                    recovery_manager=None, include_motion=False, include_io=False, include_layout_device=False):
+                    recovery_managers=(), include_motion=False, include_io=False, include_layout_device=False):
     path = Path(path)
     return inspect_saved(SavedFiles(path.parent), Path(path.name), configuration, cpu,
                          geometry_manager=geometry_manager, include_layout=include_layout,
-                         recovery_manager=recovery_manager, include_motion=include_motion, include_io=include_io,
+                         recovery_managers=recovery_managers, include_motion=include_motion, include_io=include_io,
                          include_layout_device=include_layout_device)
 
 
 def inspect_saved(source, project, configuration=None, cpu=None, *, geometry_manager=None, include_layout=False,
-                    recovery_manager=None, include_motion=False, include_io=False, include_layout_device=False):
+                    recovery_managers=(), include_motion=False, include_io=False, include_layout_device=False):
     node, studio = source.xml(project, "Project")
     packages = []
     if node is not None:
@@ -62,7 +62,7 @@ def inspect_saved(source, project, configuration=None, cpu=None, *, geometry_man
                     if module is not None:
                         motion.add(path, path.suffix.lower()[1:], module)
                 assembly_links, managers = motion.check((geometry_manager,), include_layout=include_layout,
-                                                        recovery_manager=recovery_manager, include_motion=include_motion,
+                                                        recovery_managers=recovery_managers, include_motion=include_motion,
                                                         include_io=include_io)
                 content = package_files(source, Path("Logical/Package.pkg"), "Package", {"content"})
                 widgets = list(motion.widgets(content, managers))

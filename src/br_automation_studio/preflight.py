@@ -266,10 +266,10 @@ def check_library_dependencies(providers):
 
 
 def build_preflight(path, studio_root, runtime_root=None, configuration=None, cpu=None, *,
-                    verify_motion_declarations=False, include_layout=False, geometry_manager=None):
+                    verify_motion_declarations=False, include_layout=False, geometry_manager=None, recovery_managers=()):
     saved = SavedFiles(path.parent)
     report = inspect_saved(saved, Path(path.name), configuration, cpu,
-                           include_layout=include_layout, geometry_manager=geometry_manager)
+                           include_layout=include_layout, geometry_manager=geometry_manager, recovery_managers=recovery_managers)
     studio = SavedFiles(studio_root)
     runtimes = SavedFiles(runtime_root if runtime_root is not None else studio.root.parent / "AS/System")
 

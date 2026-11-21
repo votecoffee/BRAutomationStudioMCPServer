@@ -13,8 +13,8 @@ from .file_device import SYSTEM_CONFIG, read_compiled_layout_device
 from .inspection import inspect_project
 from .json_io import invalid_constant, read_json, unique_object
 from .launchpad_build import (
-    checked_manager, compiled_launchpad_layout, compiled_launchpad_positions, launchpad_rules, retained_launchpad_files,
-    selected_manager,
+    checked_manager, compiled_launchpad_layout, compiled_launchpad_positions, compiled_launchpad_recovery,
+    launchpad_rules, retained_launchpad_files, selected_manager,
 )
 from .links import MotionLinks, rule_key
 from .motion_payloads import verify_packaged_motion
@@ -122,7 +122,7 @@ def compare_rows(reader, path, label, expected, actual):
 
 
 def read_motion(archive, saved, reader, geometry_managers=(), *, include_layout=False,
-                recovery_manager=None, include_motion=False, include_io=False):
+                recovery_managers=(), include_motion=False, include_io=False):
     planned = defaultdict(list)
     for row in saved["motionModules"]:
         planned[Path(row["path"]).with_suffix(".br").name.casefold()].append(row)
@@ -152,7 +152,7 @@ def read_motion(archive, saved, reader, geometry_managers=(), *, include_layout=
                      [(item.get("ID"), item.get("Type")) for item in children(root, "Element")])
         motion.add(path, rows[0]["type"], root)
     links, managers = (motion.check(geometry_managers, include_layout=include_layout,
-                                   recovery_manager=recovery_manager, include_motion=include_motion, include_io=include_io)
+                                   recovery_managers=recovery_managers, include_motion=include_motion, include_io=include_io)
                        if ready else ([], []))
     return motion.module_inventory, links, managers, ready
 
@@ -311,12 +311,17 @@ def review_ruc(path, job_directory, binding=None, *, geometry_manager=None, incl
         if path.name != manifest.get("project") or source_tree(path.parent.resolve()) != manifest.get("inputs"):
             reader.issue("error", "ruc_source_changed", Path(path.name), "Saved project does not match the staged input manifest")
             return result
+        launchpad = manifest.get("launchPadRoute")
+        if launchpad is not None and not isinstance(launchpad, dict):
+            raise ValueError("The build plan has no usable LaunchPad evidence")
+        pinned_recovery = launchpad is not None and "recovery" in launchpad
+        recovery_managers = (recovery_manager, launchpad["manager"] if pinned_recovery else None)
 
         if binding is None:
             saved = inspect_project(path, manifest["configuration"], manifest["cpu"],
                                     geometry_manager=geometry_manager if include_saved_geometry else None,
                                     include_layout=include_saved_geometry,
-                                    recovery_manager=recovery_manager, include_motion=include_motion, include_io=include_io,
+                                    recovery_managers=recovery_managers, include_motion=include_motion, include_io=include_io,
                                     include_layout_device=include_layout_device)
             if not match_read_set(reader, path, manifest, result, saved["snapshot"], saved["diagnostics"]):
                 return result
@@ -362,7 +367,6 @@ def review_ruc(path, job_directory, binding=None, *, geometry_manager=None, incl
                     if generated != job.get("motionSymbols"):
                         raise ValueError("The generated motion declarations differ from the job receipt")
                     review["motionSymbols"] = generated
-                launchpad = manifest.get("launchPadRoute")
                 if launchpad is not None:
                     files = retained_launchpad_files(reader, launchpad)
                     retained = {"manager": launchpad["manager"], "files": files}
@@ -401,7 +405,7 @@ def review_ruc(path, job_directory, binding=None, *, geometry_manager=None, incl
                 pinned_manager = launchpad["manager"] if pinned_positions else None
                 modules, links, managers, ready = read_motion(archive, saved, reader, (geometry_manager, pinned_manager),
                                                               include_layout=include_layout or pinned_layout,
-                                                              recovery_manager=recovery_manager, include_motion=include_motion,
+                                                              recovery_managers=recovery_managers, include_motion=include_motion,
                                                               include_io=include_io)
                 review.update(modules=modules, assemblyLinks=links, trafficManagers=managers)
                 if pinned_positions:
@@ -414,6 +418,11 @@ def review_ruc(path, job_directory, binding=None, *, geometry_manager=None, incl
                     if not ready:
                         reader.issue("error", "ruc_launchpad_rules_unverified", Path(DATA),
                                      "The compiled motion modules could not be read for the planned rule-list comparison")
+                if pinned_recovery:
+                    review["launchPadRoute"]["recovery"] = {"state": "unverified", "planned": launchpad["recovery"]}
+                    if not ready:
+                        reader.issue("error", "ruc_launchpad_recovery_unverified", Path(DATA),
+                                     "The compiled motion modules could not be read for the planned station recovery comparison")
                 if ready:
                     compare_motion(reader, saved, links, managers, launchpad["manager"] if pinned_rules else None)
                     if launchpad is not None:
@@ -421,6 +430,17 @@ def review_ruc(path, job_directory, binding=None, *, geometry_manager=None, incl
                         review["launchPadRoute"].update(state="matched", edges=route["expectedEdges"])
                         if pinned_rules:
                             review["launchPadRoute"]["rules"] = compare_launchpad_rules(reader, launchpad, saved, managers)
+                        if pinned_recovery:
+                            try:
+                                recovery = compiled_launchpad_recovery(launchpad, saved["trafficManagers"], managers)
+                            except ValueError as error:
+                                reader.issue("error", "ruc_launchpad_recovery_unverified", Path(DATA), str(error))
+                            else:
+                                review["launchPadRoute"]["recovery"] = recovery
+                                for name in recovery["changedStations"]:
+                                    reader.issue("error", "ruc_launchpad_recovery_mismatch",
+                                                 Path(recovery["compiled"][name]["path"]),
+                                                 f"The recovery mode, eligibility, or indexed points changed at station {name!r}")
                         if pinned_layout:
                             try:
                                 layout = compiled_launchpad_layout(launchpad["layout"], route["assembly"], links)

@@ -32,7 +32,8 @@ def as_declaration(evidence):
                 return record
             index = int(match[1])
             xy = item["xyMetres"]
-            if index in indices or not all(isinstance(value, str) and POSITION.fullmatch(value) for value in xy):
+            if (index in indices or not isinstance(xy, list) or len(xy) != 2
+                    or not all(isinstance(value, str) and POSITION.fullmatch(value) for value in xy)):
                 return record
             if not all(Decimal(value).is_finite() for value in xy):
                 return record
@@ -50,6 +51,10 @@ def declaration_values(record):
 
 def point_values(record):
     return [(point["index"], tuple(Decimal(value) for value in point["xyMetres"])) for point in record["points"]]
+
+
+def recovery_matches(saved, compiled):
+    return declaration_values(saved) == declaration_values(compiled) and point_values(saved) == point_values(compiled)
 
 
 def review_recovery(decoded, objects, renamed, native, saved, readback, project):
@@ -94,7 +99,7 @@ def review_recovery(decoded, objects, renamed, native, saved, readback, project)
                 row["savedToCompiled"] = "unverified"
                 if None not in studio_values and studio["mode"] in MODES:
                     issues.append(("ruc_recovery_unverified", project, f"Cannot verify saved recovery at {name}", "warning"))
-            elif saved_values == studio_values and point_values(saved_station) == point_values(studio):
+            elif recovery_matches(saved_station, studio):
                 row["savedToCompiled"] = "matched"
             else:
                 row["savedToCompiled"] = "issues"

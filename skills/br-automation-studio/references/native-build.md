@@ -38,6 +38,12 @@ Review the saved manager's linked rule lists and typed member, entry and exit ob
 
 RUC review checks the same lists and role assignments. Read `rucReview.launchPadRoute.rules` for the planned and compiled groups and changed list IDs. Review the target simulator's booking and release sequence with the intended routes and shuttles.
 
+### Pin the reviewed station recovery
+
+With br-studio 0.56.0 or later, use `"verifyLaunchPadRecovery": true` in both build requests with the reviewed route inputs. Planning compares each imported station's saved recovery mode, station eligibility flag and explicit point count with the LaunchPad declarations. It records the model-wide starting-position flags and the saved Automation Studio points by index with Absolute X and Y in metres. [Station recovery review](launchpad-recovery-review.md)
+
+RUC review compares the compiled mode, eligibility and indexed positions with the plan. Read `rucReview.launchPadRoute.recovery` for the planned and compiled declarations and the stations that changed. Check the target runtime for actual shuttle occupancy after recovery.
+
 ### Verify MpTraffic in the plan and RUC
 
 Since br-studio 0.35.0, set `verifyMpTrafficEnum` to true in both the plan and execution requests to carry the [MpTraffic definition check](simulation-preflight.md#verify-the-mptraffic-definition-before-building) into the native build. The plan compares the registered project declaration and IA32 binary with the selected AS4 catalog files. The plan SHA-256 covers the saved and installed declaration and payload hashes under `manifest.mpTrafficDefinition`.

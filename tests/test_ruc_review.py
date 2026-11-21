@@ -281,6 +281,48 @@ position-x-mm="0" position-y-mm="0" transform="translate(0 -240)"><g>
         self.write("job.json", self.package() | {"launchPadRoute": retained})
         return retained
 
+    def test_compiled_recovery_must_preserve_positions_at_their_planned_indices(self):
+        relative = "Physical/ARsim/PC/mapp6D/DemoObjects.trafficobjectlist"
+        file = self.project / relative
+        document = ET.fromstring(file.read_bytes())
+        stations = {}
+        for row in document.findall("./Element/Selector[@Value='Station']"):
+            name = row.find("./Property[@ID='Name']").get("Value")
+            recovery = ET.SubElement(row, "Group", ID="RecoveryPoints")
+            ET.SubElement(recovery, "Property", ID="Mode", Value="Sequential")
+            ET.SubElement(recovery, "Property", ID="StationIsRecoveryPoint", Value="Enable")
+            points = []
+            if name == "Load":
+                for index, x in enumerate(("0.02", "0.05"), start=1):
+                    group = ET.SubElement(recovery, "Group", ID=f"RecoveryPoint[{index}]")
+                    position = ET.SubElement(group, "Selector", ID="Position", Value="Absolute")
+                    ET.SubElement(position, "Property", ID="X", Value=x)
+                    ET.SubElement(position, "Property", ID="Y", Value="0.001")
+                    points.append({"index": index, "xyMetres": [x, "0.001"]})
+            stations[name] = {"path": relative, "mode": "Sequential", "stationIsRecoveryPoint": True,
+                              "explicitPointCount": len(points), "points": points}
+        file.write_bytes(ET.tostring(document, encoding="utf-8", xml_declaration=True))
+        member = f"{DATA}/DemoObjects.br"
+        compiled = file.read_bytes().replace(b'Value="0.02"', b'Value="0.0200"')
+        self.members[member] = b"compiled BR prefix\0" + compiled
+        flags = {"first_node": False, "recovery_points": True, "all_stations_as_recovery_stations": True}
+        retained = self.add_launchpad_route(recovery={"stations": stations, "launchPadStartingPositions": flags})
+        response = self.review()
+        self.assertEqual(response["status"], "complete", response["result"]["diagnostics"])
+        self.assertIn("Compiled station recovery matched", markdown(response))
+
+        point = document.find(".//Group[@ID='RecoveryPoint[1]']/Selector/Property[@ID='X']")
+        second = document.find(".//Group[@ID='RecoveryPoint[2]']/Selector/Property[@ID='X']")
+        point.set("Value", "0.05")
+        second.set("Value", "0.02")
+        self.members[member] = b"compiled BR prefix\0" + ET.tostring(document, encoding="utf-8", xml_declaration=True)
+        self.write("job.json", self.package() | {"launchPadRoute": retained})
+        swapped = self.review()
+        self.assertEqual(self.codes(swapped), ["ruc_launchpad_recovery_mismatch"])
+        route = swapped["result"]["rucReview"]["launchPadRoute"]
+        self.assertEqual(route["state"], "matched")
+        self.assertEqual(route["recovery"]["changedStations"], ["Load"])
+
     def test_pinned_launchpad_widget_must_show_the_reviewed_manager(self):
         self.add_start_page()
         dom_id = "DemoOverview_LoopOverview"

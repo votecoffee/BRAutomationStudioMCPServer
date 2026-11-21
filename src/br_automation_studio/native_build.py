@@ -13,8 +13,8 @@ from uuid import uuid4
 from zipfile import BadZipFile, ZipFile
 
 from .launchpad_build import (
-    launchpad_positions, launchpad_rules, plan_launchpad_layout, plan_launchpad_route, retain_launchpad_route,
-    selected_manager,
+    launchpad_positions, launchpad_rules, plan_launchpad_layout, plan_launchpad_recovery, plan_launchpad_route,
+    retain_launchpad_route, selected_manager,
 )
 from .motion_payloads import plan_motion_payloads, verify_packaged_motion
 from .motion_symbols import plan_motion_symbols, read_motion_symbols
@@ -89,9 +89,11 @@ def plan_build(path, studio_root, runtime_root=None, configuration=None, cpu=Non
                verify_motion_symbols=False, launchpad_inputs=None):
     verify_layout = launchpad_inputs is not None and launchpad_inputs.verify_layout
     verify_positions = launchpad_inputs is not None and launchpad_inputs.verify_positions
+    verify_recovery = launchpad_inputs is not None and launchpad_inputs.verify_recovery
     report = build_preflight(path, studio_root, runtime_root, configuration, cpu,
                              verify_motion_declarations=verify_motion_declarations, include_layout=verify_layout,
-                             geometry_manager=launchpad_inputs.manager if verify_positions else None)
+                             geometry_manager=launchpad_inputs.manager if verify_positions else None,
+                             recovery_managers=(launchpad_inputs.manager,) if verify_recovery else ())
     report["buildPlan"] = None
     if blocked(report):
         return report
@@ -204,6 +206,12 @@ def plan_build(path, studio_root, runtime_root=None, configuration=None, cpu=Non
                 route["rules"] = launchpad_rules(route, report["trafficManagers"])
             except ValueError as error:
                 issue(report, "error", "launchpad_build_rules_unverified", str(error))
+                return report
+        if verify_recovery:
+            try:
+                route["recovery"] = plan_launchpad_recovery(launchpad_inputs, route, report["trafficManagers"], path)
+            except (OSError, RuntimeError, ValueError) as error:
+                issue(report, "error", "launchpad_build_recovery_unverified", str(error))
                 return report
     report["buildPlan"] = {"sha256": identity(plan), "manifest": plan}
     return report

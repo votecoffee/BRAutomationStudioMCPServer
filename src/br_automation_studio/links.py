@@ -153,7 +153,7 @@ class MotionLinks:
                 results.append(match)
         return results
 
-    def check(self, geometry_managers=(), *, include_layout=False, recovery_manager=None,
+    def check(self, geometry_managers=(), *, include_layout=False, recovery_managers=(),
               include_motion=False, include_io=False):
         assembly_links = []
         managers = []
@@ -173,7 +173,7 @@ class MotionLinks:
                 assembly_links.append(assembly)
             if kind == "trafficmanager":
                 managers.append(self.manager(path, node, collect_positions=identity in geometry_managers,
-                                             collect_recovery=identity == recovery_manager))
+                                             collect_recovery=identity in recovery_managers))
         return assembly_links, managers
 
     def manager(self, path, node, *, collect_positions=False, collect_recovery=False):
