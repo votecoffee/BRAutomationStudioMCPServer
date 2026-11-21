@@ -69,7 +69,7 @@ Run `br-studio run --request <simulation-preflight.json>`. Add `--format markdow
 
 With br-studio 0.49.0 or later, set `inspectLaunchPadExport` to true alongside `launchPadExport`. Read `simulationPreflight.launchPadExport.structure` for the XML root, group counts and available IDs and names. The check uses the same bytes identified by the export hash. It recognizes the unqualified top-level `Segments` group and inventories `Stations`, `Waypoints`, `Gates`, `Branches` and `ExclusiveGroups` when present.
 
-The reference is the installed AS4 mapp 6D 2.2 importer. An export outside the observed XML structure produces an `unverified` result with a diagnostic and retains the file identity. Use the selected Automation Studio importer for format acceptance and the [LaunchPad route review](launchpad-route-review.md) for the saved and compiled Traffic Manager mappings. [B&R LaunchPad export workflow](https://www.br-automation.com/en/products/software/acopos-6d-launchpad/)
+The reference is the installed AS4 mapp 6D 2.2 importer. An export outside the observed XML structure produces an `unverified` result with a diagnostic and retains the file identity. Use [the standalone export comparison](launchpad-route-review.md#compare-the-export-before-import) to compare a saved cycle with the export. Use the selected Automation Studio importer for format acceptance and the [LaunchPad route review](launchpad-route-review.md) for the saved and compiled Traffic Manager mappings. [B&R LaunchPad export workflow](https://www.br-automation.com/en/products/software/acopos-6d-launchpad/)
 
 ## Verify the MpTraffic definition before building
 

@@ -14,6 +14,7 @@ from .hmi_smoke import arsim_hmi_smoke, read_status_bindings
 from .inspection import inspect_project
 from .layout_device import layout_device_review
 from .layout_svg import layout_svg_review
+from .launchpad_export import review_launchpad_export
 from .launchpad_frame import launchpad_frame_review
 from .launchpad_geometry import GeometryCriteria
 from .launchpad_route import launchpad_route_review
@@ -181,6 +182,12 @@ def run_layout_svg_review(arguments, request_directory):
     return layout_svg_review(project_path(arguments, request_directory), request_directory / arguments["jobDirectory"],
                              arguments["managerId"], request_directory / arguments["assemblySvg"],
                              request_directory / arguments["trafficSvg"])
+
+
+def run_launchpad_export_review(arguments, request_directory):
+    return review_launchpad_export(request_directory / arguments["launchPadProject"],
+                                  request_directory / arguments["launchPadReadback"],
+                                  request_directory / arguments["launchPadExport"])
 
 
 def launchpad_inputs(arguments, request_directory):
@@ -480,6 +487,17 @@ LAUNCHPAD_ROUTE_REVIEW = Operation(
     required=("project", "managerId", "launchPadProject", "launchPadReadback"),
     handler=run_launchpad_route_review,
 )
+LAUNCHPAD_EXPORT_REVIEW = Operation(
+    name="launchpad_export_review",
+    summary="Compare the saved LaunchPad cycle with the typed route in an observed AS4 XML export.",
+    arguments={
+        "launchPadProject": LAUNCHPAD_ROUTE_REVIEW.arguments["launchPadProject"],
+        "launchPadReadback": LAUNCHPAD_ROUTE_REVIEW.arguments["launchPadReadback"],
+        "launchPadExport": SIMULATION_PREFLIGHT.arguments["launchPadExport"],
+    },
+    required=("launchPadProject", "launchPadReadback", "launchPadExport"),
+    handler=run_launchpad_export_review,
+)
 LAUNCHPAD_STATION_REVIEW = Operation(
     name="launchpad_station_review",
     summary="Read station-to-station paths and LaunchPad model waits for a matched saved or compiled Traffic Manager route.",
@@ -655,7 +673,7 @@ ARSIM_STATUS_SMOKE = Operation(
 OPERATIONS = {item.name: item for item in (
     PROJECT_INSPECT, WIDGET_PACKAGE_REVIEW, BUILD_PREFLIGHT, MOTION_INTERFACE_REVIEW, SIMULATION_ENVIRONMENT, SIMULATION_PREFLIGHT, BUILD_PLAN, BUILD_EXECUTE, RUC_REVIEW,
     ASSEMBLY_IO_REVIEW, LAYOUT_DEVICE_REVIEW, LAYOUT_SVG_REVIEW,
-    LAUNCHPAD_ROUTE_REVIEW, LAUNCHPAD_STATION_REVIEW, STATION_TRACE_REVIEW, CYCLE_TRACE_REVIEW,
+    LAUNCHPAD_ROUTE_REVIEW, LAUNCHPAD_EXPORT_REVIEW, LAUNCHPAD_STATION_REVIEW, STATION_TRACE_REVIEW, CYCLE_TRACE_REVIEW,
     LAUNCHPAD_RECOVERY_REVIEW, LAUNCHPAD_MOTION_REVIEW,
     LAUNCHPAD_GEOMETRY_REVIEW, LAUNCHPAD_LAYOUT_REVIEW, LAUNCHPAD_FRAME_REVIEW, RUC_BINDING_REVIEW,
     ARSIM_SMOKE, ARSIM_BROWSER_SMOKE, ARSIM_OPCUA_SMOKE, ARSIM_HMI_SMOKE, ARSIM_STATUS_SMOKE,

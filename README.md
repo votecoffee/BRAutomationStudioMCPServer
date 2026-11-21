@@ -45,6 +45,7 @@ $brStudio = '.\.local\venv\Scripts\br-studio.exe'
 & $brStudio operation-help layout_device_review
 & $brStudio operation-help layout_svg_review
 & $brStudio operation-help launchpad_route_review
+& $brStudio operation-help launchpad_export_review
 & $brStudio operation-help launchpad_station_review
 & $brStudio operation-help station_trace_review
 & $brStudio operation-help cycle_trace_review
@@ -83,7 +84,7 @@ Use `layout_device_review` to verify the selected CPU's saved and compiled `6DDa
 
 Use `layout_svg_review` to compare the generated segment grid, marker positions and directed mapping IDs with the saved project and its RUC. [Generated layout workflow](skills/br-automation-studio/references/layout-svg-review.md)
 
-Use `launchpad_route_review` to compare a locally decoded LaunchPad cycle with a selected saved or compiled Traffic Manager. [LaunchPad route workflow](skills/br-automation-studio/references/launchpad-route-review.md)
+Use `launchpad_export_review` to compare a locally decoded LaunchPad cycle with the XML export before import. Use `launchpad_route_review` to compare that cycle with the saved or compiled Traffic Manager. [LaunchPad route workflow](skills/br-automation-studio/references/launchpad-route-review.md)
 
 Use `launchpad_station_review` to verify each station-to-station path and read the source station's LaunchPad model waits before reviewing the native recipe. [Station path workflow](skills/br-automation-studio/references/launchpad-station-review.md)
 

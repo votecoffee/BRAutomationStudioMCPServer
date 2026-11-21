@@ -30,6 +30,8 @@ def markdown(response):
         return markdown_widget_package_review(response, text)
     if "motionInterfaceReview" in report:
         return markdown_motion_interfaces(response, text)
+    if "exportReview" in report:
+        return markdown_export_review(response, text)
 
     titles = {
         "project_inspect": "Saved Automation Studio project inspection",
@@ -139,6 +141,29 @@ def markdown(response):
                 lines.append(f"- Verified motion payloads {len(payloads)}")
         if symbols := job.get("motionSymbols"):
             lines.extend(markdown_motion_symbols(symbols, text))
+    lines.extend(markdown_diagnostics(report["diagnostics"], text))
+    return "\n".join(lines)
+
+
+def markdown_export_review(response, text):
+    report = response["result"]
+    review = report["exportReview"]
+    lines = ["# LaunchPad export comparison", "", f"- Status **{text(review['state'])}**"]
+    if original := review["launchPad"]:
+        lines.append(f"- LaunchPad save {text(original['sourcePath'])} · SHA-256 {original['sourceSha256']}")
+    if exported := review["export"]:
+        lines.append(f"- Export {text(exported['path'])} · SHA-256 {exported['sha256']}")
+    if "exportSegments" in review:
+        lines.append(f"- Segments · Save {review['expectedSegments']} · Export {review['exportSegments']}")
+    if "expectedEdges" in review:
+        lines.append(f"- Expected directed edges {len(review['expectedEdges'])}")
+        for key, label in (("missingEdges", "Missing"), ("unexpectedEdges", "Unexpected")):
+            for edge in review[key]:
+                lines.append(f"- {label} {text(edge['source'])} ({text(edge['sourceType'])}) → "
+                             f"{text(edge['destination'])} ({text(edge['destinationType'])}) · Count {edge['count']}")
+        for edge in review["unresolvedReferences"]:
+            lines.append(f"- Unresolved {text(edge['source'])} → ID {text(edge['destinationId'])}"
+                         f" · Expected {text(edge['expectedType'])} · Found {text(edge['actualType'])}")
     lines.extend(markdown_diagnostics(report["diagnostics"], text))
     return "\n".join(lines)
 

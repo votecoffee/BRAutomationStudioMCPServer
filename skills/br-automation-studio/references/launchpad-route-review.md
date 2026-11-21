@@ -31,6 +31,27 @@ Use `br-studio operation-help launchpad_route_review` to discover the request co
 
 Run `br-studio run --request <route-review.json>`. Add `--format markdown` for the readable report. If the import renamed objects, pass `nameMap` as a path to a UTF-8 JSON object, for example `{"Transfer":"Transit"}`. Omitted names keep their saved identifiers. Each expected route object must map to a distinct manager name.
 
+## Compare the export before import
+
+With br-studio 0.50.0 or later, use `launchpad_export_review` on the original save, its decoded readback and the exported file. This check can run before creating an Automation Studio project.
+
+```json
+{
+  "schemaVersion": 1,
+  "workspace": "route-review",
+  "operation": "launchpad_export_review",
+  "arguments": {
+    "launchPadProject": "C:/Projects/Example/Route.lpj",
+    "launchPadReadback": "C:/Toolset/.local/route-readback.json",
+    "launchPadExport": "C:/Projects/Example/Route.x6d"
+  }
+}
+```
+
+The operation compares the segment count, exact object names and types, and directed edge counts for a single saved cycle. In the observed AS4 2.2 XML structure, it resolves the `Value` entries under `NextStations`, `NextWaypoints`, `NextGates` and `NextBranches` by object ID. Reported differences include unresolved IDs, wrong endpoint types and return edges aimed at a different station. Keep the save, readback and export hashes from the result.
+
+The reference is the installed AS4 2.2 importer. A structure outside that readback or ambiguous records leave the route unverified. Use the selected native importer and the saved or compiled Traffic Manager comparison for import acceptance. Use the geometry and recipe workflows for positions, process steps and runtime behavior.
+
 ## Interpret the comparison
 
 - The readback must identify the original `.lpj` by SHA-256. The route follows recipe IDs through a single unbranched cycle. Its terminal return marker shares the starting geometry ID, which provides the final directed return edge.

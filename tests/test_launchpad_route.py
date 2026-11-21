@@ -62,6 +62,56 @@ class LaunchPadRouteTest(unittest.TestCase):
         self.assertEqual(check["missingEdges"], [])
         self.assertIn("Inspect (Station) → Load (Station)", markdown(response))
 
+    def test_export_review_checks_resolved_return_edges_in_modelled_xml(self):
+        self.data["decoded"]["segments"] = [{"id": "segment"}]
+        self.receipt.write_text(json.dumps(self.data), encoding="utf-8")
+        export = self.root / "Modeled.x6d"
+        raw = b"""<ModeledExport>
+          <Group ID="Segments"><Group ID="Segment[1]"/></Group>
+          <Group ID="Stations">
+            <Group ID="Station[1]"><Property ID="Name" Value="Load"/>
+              <Group ID="NextGates"><Property ID="Next[1]" Value="Gate[1]"/></Group>
+            </Group>
+            <Group ID="Station[2]"><Property ID="Name" Value="Inspect"/>
+              <Group ID="NextStations"><Property ID="Next[1]" Value="Station[1]"/></Group>
+            </Group>
+          </Group>
+          <Group ID="Gates"><Group ID="Gate[1]"><Property ID="Name" Value="Transit"/>
+            <Group ID="NextStations"><Property ID="Next[1]" Value="Station[2]"/></Group>
+          </Group></Group>
+        </ModeledExport>"""
+        request = {"schemaVersion": 1, "workspace": "route", "operation": "launchpad_export_review",
+                   "arguments": {"launchPadProject": self.lpj.name, "launchPadReadback": self.receipt.name,
+                                 "launchPadExport": export.name}}
+        export.write_bytes(raw)
+        response = execute(request, self.root)
+        self.assertEqual(response["status"], "complete", response)
+        matched = response["result"]["exportReview"]
+        self.assertEqual(matched["export"]["sha256"], sha256(raw).hexdigest())
+        self.assertEqual(matched["expectedSegments"], matched["exportSegments"])
+        self.assertEqual(matched["unresolvedReferences"], [])
+        self.assertEqual(export.read_bytes(), raw)
+
+        wrong = raw.replace(b'Value="Station[1]"', b'Value="Station[2]"')
+        export.write_bytes(wrong)
+        response = execute(request, self.root)
+        self.assertEqual(response["status"], "issues")
+        review = response["result"]["exportReview"]
+        self.assertEqual(review["missingEdges"][0]["destination"], "Load")
+        self.assertEqual(review["unexpectedEdges"][0]["destination"], "Inspect")
+        self.assertIn("Missing Inspect (Station) → Load (Station)", markdown(response))
+
+        export.write_bytes(raw.replace(b'Value="Station[1]"', b'Value="Gate[1]"'))
+        result = execute(request, self.root)["result"]
+        self.assertEqual(result["exportReview"]["unresolvedReferences"],
+                         [{"source": "Inspect", "destinationId": "Gate[1]",
+                           "expectedType": "Station", "actualType": "Waypoint"}])
+        self.assertIn("launchpad_export_reference_unresolved", [row["code"] for row in result["diagnostics"]])
+
+        self.lpj.write_bytes(self.lpj.read_bytes() + b"changed")
+        invalid = execute(request, self.root)["result"]
+        self.assertIn("launchpad_export_baseline_invalid", [row["code"] for row in invalid["diagnostics"]])
+
     def test_duplicate_connections_are_not_collapsed_to_a_set(self):
         path = self.six_d / "DemoMappings.trafficmappinglist"
         data = path.read_bytes()
