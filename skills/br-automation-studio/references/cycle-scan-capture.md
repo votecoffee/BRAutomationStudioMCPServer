@@ -76,6 +76,8 @@ For sampled speed, add the recorded monotonic position acquisition time under th
 
 Set `maxSampleIntervalMicroseconds` in the review request to enforce the permitted time gap between usable position samples. Keep the original scan rows when a position sample is unavailable so the report can distinguish the missing observation from a missing PLC scan. [Sampling interval check](station-trace-review.md#limit-the-interval-between-position-samples)
 
+For a shared clock, add `verifyPositionTimeHandoff` to compare the last outbound and first return timestamps. When both windows use the same recorded acquisition signal, map both time fields to that one column. [Handoff rules](cycle-trace-review.md#compare-timestamps-at-the-handoff-between-legs)
+
 ## Decode events from the saved project and RUC
 
 Use the [enum declaration lookup](build-preflight.md#read-explicit-enumeration-values) to inspect the selected library's event map during preflight. The scan review below verifies the definition against the retained build and RUC.

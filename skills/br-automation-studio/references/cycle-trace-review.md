@@ -24,6 +24,12 @@ Use `verifySampledSpeed` to compare timed XY displacement rates on both legs wit
 
 Use `maxSampleIntervalMicroseconds` with the speed check to apply the same maximum acquisition gap to both legs. The phase identifies the leg where a gap left the review incomplete. Capture the position stream again at the required cadence before attempting the HMI comparison. [Interval diagnostics](station-trace-review.md#limit-the-interval-between-position-samples)
 
+## Compare timestamps at the handoff between legs
+
+With br-studio 0.66.0 or later, set `verifyPositionTimeHandoff: true` with `verifySampledSpeed: true` when the capture uses one monotonic acquisition clock across both legs. If outbound arrival and the initial return-source occupancy use the same PLC scan, they must have the same position acquisition time. If occupancy is recorded on a later scan, its time must increase. Preserve the recorded clock and timestamps in both windows. [Capture column mapping](cycle-scan-capture.md#check-station-positions-in-the-scan-file)
+
+Read `cycleTraceReview.positionTimeHandoff` for both scan and timestamp pairs and their signed difference in microseconds. A conflict fails the cycle in phase `position_time_handoff` before any supplied HMI comparison. The per-leg maximum sample interval applies inside each travel window. The handoff difference may include time held at the station.
+
 ## Record the return leg
 
 Use the same PLC scan index as the outbound trace. Start while the inspected shuttle occupies the return source station. This may overlap the outbound capture from its accepted arrival onward. A return starting after the outbound interval must begin at the next scan.

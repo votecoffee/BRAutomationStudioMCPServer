@@ -284,6 +284,9 @@ def run_cycle_trace_review(arguments, request_directory):
     require_capture = arguments.get("requireSessionScanCapture", False)
     if require_capture and (not status_report or not scan_csv):
         raise InvalidRequest("requireSessionScanCapture needs both hmiStatusReport and scanCsv")
+    verify_time_handoff = arguments.get("verifyPositionTimeHandoff", False)
+    if verify_time_handoff and not arguments.get("verifySampledSpeed", False):
+        raise InvalidRequest("verifyPositionTimeHandoff requires verifySampledSpeed to be true")
     return cycle_trace_review(*launchpad_inputs(arguments, request_directory), arguments["sourceStation"],
                               request_directory / arguments["trace"],
                               hmi_status_path=request_directory / status_report if status_report else None,
@@ -292,6 +295,7 @@ def run_cycle_trace_review(arguments, request_directory):
                               position_tolerance_um=arguments.get("positionToleranceMicrometres"),
                               return_position_tolerance_um=arguments.get("returnPositionToleranceMicrometres"),
                               waypoint_tolerance_um=arguments.get("waypointToleranceMicrometres"),
+                              verify_position_time_handoff=verify_time_handoff,
                               **sampled_speed_options(arguments))
 
 
@@ -622,6 +626,8 @@ CYCLE_TRACE_REVIEW = Operation(
                             "description": "Completed arsim_status_smoke JSON for the same cycle RUC and session."},
         "requireSessionScanCapture": {"type": "boolean", "default": False,
                                       "description": "Require the HMI session to have retained the reviewed scan file."},
+        "verifyPositionTimeHandoff": {"type": "boolean", "default": False,
+                                      "description": "Compare outbound arrival and return occupancy timestamps using a common clock. Requires verifySampledSpeed."},
         "returnPositionToleranceMicrometres": {"type": "integer", "minimum": 0, "maximum": 9007199254740991,
                                                "description": "Maximum per-axis position difference at return source, arrival and next hold."},
     },

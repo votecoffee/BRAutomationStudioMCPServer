@@ -122,6 +122,8 @@ Use `verifySampledSpeed` to compare timed XY displacement rates with the compile
 
 Use `maxSampleIntervalMicroseconds` with the speed check to require a maximum time gap between usable XY samples. [Sampling interval check](skills/br-automation-studio/references/station-trace-review.md#limit-the-interval-between-position-samples)
 
+Use `verifyPositionTimeHandoff` in the cycle review to compare acquisition times at the outbound-to-return handoff on a shared clock. [Timestamp handoff review](skills/br-automation-studio/references/cycle-trace-review.md#compare-timestamps-at-the-handoff-between-legs)
+
 Use `ruc_binding_review` to trace a selected one-way mapp View status binding through the saved project, compiled widget and OPC UA exposure map. Set `verifyIecType` to compare the compiled node type with the selected CPU task's registered IEC declaration. [Binding readback workflow](skills/br-automation-studio/references/ruc-binding-review.md)
 
 For a private loopback fixture, `arsim_smoke` materializes the reviewed RUC and compares served mapp View assets with their packaged bytes. [ARsim smoke workflow](skills/br-automation-studio/references/arsim-smoke.md)

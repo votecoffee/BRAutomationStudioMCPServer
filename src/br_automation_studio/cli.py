@@ -717,6 +717,12 @@ def markdown_cycle_trace(cycle, text):
             lines.extend(markdown_sampled_speed(speed, text))
         if fault := returned.get("firstFault"):
             lines.append(f"- First return status {fault['statusId']} at scan {fault['scan']}")
+    if handoff := cycle.get("positionTimeHandoff"):
+        arrival, occupancy = handoff["outboundArrival"], handoff["returnOccupancy"]
+        lines.extend(["", "## Position time handoff", "",
+                      f"- State {text(handoff['state'])} · Outbound arrival scan {arrival['scan']} at {arrival['timeMicroseconds']} µs"
+                      f" · Return occupancy scan {occupancy['scan']} at {occupancy['timeMicroseconds']} µs"
+                      f" · Difference {handoff['elapsedMicroseconds']} µs"])
     if hold := cycle.get("nextHold"):
         lines.extend(["", "## Next inspection hold", "",
                       f"- Station {text(hold['station'])} · Shuttle {hold['shuttleId']} "

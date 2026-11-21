@@ -428,7 +428,9 @@ def check_sampled_speed(report, trace, rows, first_scan, last_scan, leg, *, max_
                              f"Scan {scan} needs a nonnegative position time increasing in microseconds")
         result["acceptedSamples"] += 1
         result.setdefault("firstSampleScan", scan)
+        result.setdefault("firstSampleTimeMicroseconds", time)
         result["lastSampleScan"] = scan
+        result["lastSampleTimeMicroseconds"] = time
         if previous is not None:
             elapsed = time - previous[1]
             try:

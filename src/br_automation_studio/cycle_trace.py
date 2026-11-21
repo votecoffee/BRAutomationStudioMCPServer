@@ -128,10 +128,27 @@ def check_return_positions(report, trace, tolerance_um, cycle):
                             cycle.setdefault("returnPositionReview", {}))
 
 
+def check_position_time_handoff(cycle):
+    outbound = cycle["outbound"]["sampledSpeedReview"]
+    returned = cycle["returnLeg"]["sampledSpeedReview"]
+    arrival = {"scan": outbound["lastSampleScan"], "timeMicroseconds": outbound["lastSampleTimeMicroseconds"]}
+    occupancy = {"scan": returned["firstSampleScan"], "timeMicroseconds": returned["firstSampleTimeMicroseconds"]}
+    elapsed = occupancy["timeMicroseconds"] - arrival["timeMicroseconds"]
+    same_scan = arrival["scan"] == occupancy["scan"]
+    result = cycle["positionTimeHandoff"] = {
+        "state": "issues", "outboundArrival": arrival, "returnOccupancy": occupancy, "elapsedMicroseconds": elapsed,
+    }
+    if (same_scan and elapsed != 0) or (not same_scan and elapsed <= 0):
+        required = "share one acquisition timestamp" if same_scan else "have strictly increasing acquisition timestamps"
+        raise TraceIssue("cycle_trace_position_time_handoff", f"Outbound arrival and return occupancy must {required}")
+    result["state"] = "matched"
+
+
 def cycle_trace_review(project, configuration, cpu, manager_id, lpj, readback, name_map, job_directory,
                        source_station, trace_path, *, hmi_status_path=None, scan_csv_path=None, require_session_capture=False,
                        expected_motion=None, position_tolerance_um=None, return_position_tolerance_um=None,
-                       waypoint_tolerance_um=None, verify_sampled_speed=False, max_sample_interval_us=None):
+                       waypoint_tolerance_um=None, verify_sampled_speed=False, max_sample_interval_us=None,
+                       verify_position_time_handoff=False):
     report = launchpad_route_review(project, configuration, cpu, manager_id, lpj, readback, name_map, job_directory,
                                     include_stations=True)
     result = report["cycleTraceReview"] = {"state": "not_checked", "sourceStation": source_station}
@@ -188,6 +205,9 @@ def cycle_trace_review(project, configuration, cpu, manager_id, lpj, readback, n
             result["phase"] = "return_sampled_speed"
             check_sampled_speed(report, inspection, trace["returnLeg"]["scans"], returned["occupiedScan"],
                                 returned["arrival"]["scan"], returned, max_sample_interval_us=max_sample_interval_us)
+            if verify_position_time_handoff:
+                result["phase"] = "position_time_handoff"
+                check_position_time_handoff(result)
         result["phase"] = "complete"
     except (CsvError, OSError, RuntimeError, ValueError) as error:
         severity = error.severity if isinstance(error, TraceIssue) else "error"

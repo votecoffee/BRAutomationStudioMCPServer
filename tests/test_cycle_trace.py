@@ -8,7 +8,7 @@ from tempfile import TemporaryDirectory
 import unittest
 
 from br_automation_studio.cycle_capture import FIELDS, HOLD_HMI, materialize_cycle
-from br_automation_studio.cycle_trace import check_cycle, check_return_positions
+from br_automation_studio.cycle_trace import check_cycle, check_position_time_handoff, check_return_positions
 from br_automation_studio.station_trace import ARRIVAL, FLAGS, MONITOR_CHECKPOINTS, TraceIssue
 
 
@@ -72,6 +72,25 @@ class CycleTraceTest(unittest.TestCase):
         ]
         second = self.run_cycle(self.trace)
         self.assertTrue(second["returnLeg"]["arrivalObservedBeforeSourceClear"])
+
+    def test_position_time_handoff_needs_equality_on_shared_scan_and_progress_on_later_scan(self):
+        outbound = {"sampledSpeedReview": {"lastSampleScan": 13, "lastSampleTimeMicroseconds": 3000}}
+        for scan, time, matches in (
+            (13, 3000, True), (13, 3001, False), (13, 2999, False),
+            (15, 4000, True), (15, 3000, False), (15, 1000, False),
+        ):
+            with self.subTest(scan=scan, time=time):
+                returned = {"sampledSpeedReview": {"firstSampleScan": scan, "firstSampleTimeMicroseconds": time}}
+                cycle = {"outbound": outbound, "returnLeg": returned}
+                if matches:
+                    check_position_time_handoff(cycle)
+                else:
+                    with self.assertRaises(TraceIssue) as caught:
+                        check_position_time_handoff(cycle)
+                    self.assertEqual(caught.exception.code, "cycle_trace_position_time_handoff")
+                handoff = cycle["positionTimeHandoff"]
+                self.assertEqual(handoff["state"], "matched" if matches else "issues")
+                self.assertEqual(handoff["elapsedMicroseconds"], time - 3000)
 
     def test_return_needs_correct_station_shuttle_and_continuity(self):
         for row, changes, code, severity in (
