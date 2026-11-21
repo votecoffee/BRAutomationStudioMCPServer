@@ -8,7 +8,7 @@ from tempfile import TemporaryDirectory
 import unittest
 
 from br_automation_studio.cycle_capture import FIELDS, HOLD_HMI, materialize_cycle
-from br_automation_studio.cycle_trace import check_cycle
+from br_automation_studio.cycle_trace import check_cycle, check_return_positions
 from br_automation_studio.station_trace import ARRIVAL, FLAGS, MONITOR_CHECKPOINTS, TraceIssue
 
 
@@ -111,6 +111,31 @@ class CycleTraceTest(unittest.TestCase):
         with self.assertRaises(TraceIssue) as caught:
             self.run_cycle(self.trace)
         self.assertEqual(caught.exception.code, "cycle_trace_hold_missing")
+
+    def test_return_positions_include_the_next_hold_and_require_a_fresh_sample(self):
+        compiled = {"Outfeed": {"xyMetres": ["0.3", "0.40"], "path": "Objects.br"},
+                    "Inspect": {"xyMetres": ["0.1", "0.20"], "path": "Objects.br"}}
+        pinned = {"manager": "Traffic", "files": {"project": {"sha256": "a" * 64}, "readback": {"sha256": "c" * 64}},
+                  "positions": {"state": "matched", "compiled": compiled},
+                  "assemblyIo": {"state": "matched", "planned": {"requiredReadAxes": ["X", "Y"]}}}
+        report = {"routeReview": {"launchPad": {"sourceSha256": "a" * 64, "readbackSha256": "c" * 64}},
+                  "rucReview": {"launchPadRoute": pinned}}
+        rows = self.trace["returnLeg"]["scans"]
+        for row, station in ((rows[0], "Outfeed"), (rows[-1], "Inspect"), (self.trace["nextHold"], "Inspect")):
+            x, y = compiled[station]["xyMetres"]
+            row.update(positionSampleScan=row["scan"], positionShuttleId=3, positionValid=True, positionXM=x, positionYM=y)
+        cycle = self.run_cycle(self.trace)
+        check_return_positions(report, self.trace, 0, cycle)
+        positions = cycle["returnPositionReview"]
+        self.assertEqual(positions["state"], "matched")
+        self.assertEqual({name: row["scan"] for name, row in positions["samples"].items()},
+                         {"sourceOccupancy": 15, "returnArrival": 17, "nextHold": 18})
+
+        self.trace["nextHold"]["positionSampleScan"] = 17
+        with self.assertRaises(TraceIssue) as caught:
+            check_return_positions(report, self.trace, 0, cycle)
+        self.assertEqual((caught.exception.code, caught.exception.severity), ("station_trace_position_stale", "warning"))
+        self.assertEqual(cycle["nextHold"]["requestId"], 13)
 
     def test_return_fault_takes_priority_over_state_and_arrival(self):
         self.trace["returnLeg"]["scans"][2].update(error=True, statusId=-30007, monitorHealthy=False)
@@ -237,6 +262,33 @@ class CycleTraceTest(unittest.TestCase):
         self.assertEqual({name: release[name] for name in sample}, sample | {
             "positionSampleScan": 11, "positionShuttleId": 3, "positionValid": True,
         })
+
+    def test_one_position_stream_can_feed_return_and_hold_without_merging_fields(self):
+        trace, columns, rows = self.scan_csv()
+        names = {"positionSampleScan": "Position Scan", "positionShuttleId": "Position Shuttle",
+                 "positionValid": "Position Valid", "positionXM": "Position X", "positionYM": "Position Y"}
+        mapped = {f"{phase}.{field}": column for phase in ("return", "hold") for field, column in names.items()}
+        trace["scanCapture"]["columns"] = mapped
+        columns.extend(names.values())
+        rows[-2].update({"Position Scan": "17.000", "Position Shuttle": "3", "Position Valid": "1",
+                         "Position X": "0.10", "Position Y": "0.20"})
+        rows[-1].update({"Position Scan": "18.000", "Position Shuttle": "3", "Position Valid": "1",
+                         "Position X": "0.1000", "Position Y": "0.20"})
+        output = StringIO(newline="")
+        writer = csv.DictWriter(output, fieldnames=columns, lineterminator="\r\n")
+        writer.writeheader()
+        writer.writerows(rows)
+        data = output.getvalue().encode("utf-8")
+        normalized, capture = self.materialize(trace, data)
+        self.assertEqual(capture["positionColumns"], mapped)
+        self.assertEqual(normalized["returnLeg"]["scans"][-1]["positionSampleScan"], 17)
+        self.assertEqual(normalized["nextHold"]["positionSampleScan"], 18)
+        self.assertEqual(normalized["nextHold"]["positionXM"], "0.1000")
+        self.assertNotIn("positionXM", normalized["inspectionLeg"]["scans"][0])
+
+        mapped["hold.positionYM"] = "Position X"
+        with self.assertRaisesRegex(ValueError, "only for the same position field"):
+            self.materialize(trace, data)
 
     def test_as_chart_needs_aligned_signals_and_preserves_the_sample_count(self):
         trace, columns, rows = self.scan_csv()

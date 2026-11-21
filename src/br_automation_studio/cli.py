@@ -624,6 +624,15 @@ def markdown_stations(station_review, text):
     return lines
 
 
+def markdown_position_review(label, positions, text):
+    labels = {"release": "Release", "arrival": "Arrival", "sourceOccupancy": "Return source occupancy",
+              "returnArrival": "Return arrival", "nextHold": "Next hold"}
+    lines = [f"- {label} {text(positions['state'])} · Tolerance {positions['toleranceMicrometres']} µm per axis"]
+    for event, point in positions["samples"].items():
+        lines.append(f"- {labels[event]} position at {text(point['station'])} · Scan {point['scan']} · {text(point['state'])}")
+    return lines
+
+
 def markdown_station_trace(trace, text):
     lines = ["", "## Inspection leg trace", ""]
     if "state" in trace:
@@ -647,9 +656,7 @@ def markdown_station_trace(trace, text):
             lines.append(f"- Exit velocity {text(observed['exitVelocityMps'])} m/s · "
                          f"Exit acceleration {text(observed['exitAccelerationMps2'])} m/s²")
     if positions := trace.get("positionReview"):
-        lines.append(f"- Station positions {text(positions['state'])} · Tolerance {positions['toleranceMicrometres']} µm per axis")
-        for event, point in positions["samples"].items():
-            lines.append(f"- {event.title()} position at {text(point['station'])} · Scan {point['scan']} · {text(point['state'])}")
+        lines.extend(markdown_position_review("Station positions", positions, text))
     if fault := trace.get("firstFault"):
         lines.append(f"- First adapter status {fault['statusId']} at scan {fault['scan']}")
     return lines
@@ -684,6 +691,9 @@ def markdown_cycle_trace(cycle, text):
         lines.extend(["", "## Next inspection hold", "",
                       f"- Station {text(hold['station'])} · Shuttle {hold['shuttleId']} "
                       f"· New request {hold['requestId']} · Scan {hold['scan']}"])
+    if positions := cycle.get("returnPositionReview"):
+        lines.extend(["", "## Return and hold positions", ""])
+        lines.extend(markdown_position_review("Return and hold positions", positions, text))
     return lines
 
 

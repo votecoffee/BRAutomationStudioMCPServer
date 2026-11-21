@@ -36,6 +36,12 @@ Capture `nextHold` after the outbound interval and both return observations. Use
 
 Keep the raw PLC export, normalized trace, review output and RUC job together. The review records the trace SHA-256, compiled paths and decisive scan indexes. A gap or missing witness yields `incomplete`. An identity conflict, premature hold or recorded adapter error yields `issues`.
 
+## Verify positions on return and at the next hold
+
+With br-studio 0.62.0 or later, set `returnPositionToleranceMicrometres` to the maximum difference on each axis. Use the same LaunchPad inputs as the RUC built with `verifyLaunchPadPositions` and explicit X and Y in `launchPadReadAxes`. Capture the same shuttle's valid XY sample on the first occupied return-source scan, the accepted return-arrival scan and the next held request scan. Use the [station sample fields](station-trace-review.md#check-position-at-the-two-station-events) in the selected `returnLeg.scans` and `nextHold` rows. Supply the outbound position tolerance as well when the capture includes both outbound witnesses.
+
+Read `cycleTraceReview.returnPositionReview.samples` for the three witnesses. A stale sample or unavailable position leaves the check incomplete. A different shuttle or a position outside the tolerance fails it. A requested position check must pass before any supplied HMI pairing. [Map the capture columns](cycle-scan-capture.md#check-station-positions-in-the-scan-file)
+
 ## Match the HMI reopen to that hold
 
 Build one PC simulation RUC with the selected Traffic Manager route and read-only HMI status bindings. Configure the [status smoke](arsim-status-smoke.md) to wait for the next hold, using the request ID, shuttle ID, held phase and release count expected in that run. Size its OPC UA timeout for the inspection cycle. Hold the new request across both browser documents and direct read windows.

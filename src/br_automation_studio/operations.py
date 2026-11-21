@@ -279,7 +279,8 @@ def run_cycle_trace_review(arguments, request_directory):
                               hmi_status_path=request_directory / status_report if status_report else None,
                               scan_csv_path=request_directory / scan_csv if scan_csv else None,
                               require_session_capture=require_capture, expected_motion=expected_release_motion(arguments),
-                              position_tolerance_um=arguments.get("positionToleranceMicrometres"))
+                              position_tolerance_um=arguments.get("positionToleranceMicrometres"),
+                              return_position_tolerance_um=arguments.get("returnPositionToleranceMicrometres"))
 
 
 def run_launchpad_motion_review(arguments, request_directory):
@@ -603,6 +604,8 @@ CYCLE_TRACE_REVIEW = Operation(
                             "description": "Completed arsim_status_smoke JSON for the same cycle RUC and session."},
         "requireSessionScanCapture": {"type": "boolean", "default": False,
                                       "description": "Require the HMI session to have retained the reviewed scan file."},
+        "returnPositionToleranceMicrometres": {"type": "integer", "minimum": 0, "maximum": 9007199254740991,
+                                               "description": "Maximum per-axis position difference at return source, arrival and next hold."},
     },
     required=STATION_TRACE_REVIEW.required,
     handler=run_cycle_trace_review,

@@ -279,8 +279,8 @@ def check_position_sample(row, shuttle, expected, tolerance_um, witness):
     witness["state"] = "matched"
 
 
-def check_leg_positions(report, trace, tolerance_um, leg):
-    result = leg["positionReview"] = {"state": "unverified", "toleranceMicrometres": tolerance_um, "samples": {}}
+def check_station_positions(report, trace, tolerance_um, samples, result):
+    result.update(state="unverified", toleranceMicrometres=tolerance_um, samples={})
     binding = bound_launchpad_evidence(report, trace["managerId"])
     positions, assembly_io = (binding.get(name, {}) for name in ("positions", "assemblyIo"))
     if (positions.get("state") != "matched" or assembly_io.get("state") != "matched"
@@ -289,13 +289,10 @@ def check_leg_positions(report, trace, tolerance_um, leg):
                          "Use the same LaunchPad inputs and a RUC with verified positions and explicit X and Y read axes",
                          "warning")
     compiled = positions["compiled"]
-    endpoints = (("release", trace["sourceStation"], leg["releaseScans"][0]),
-                 ("arrival", trace["destinationStation"], leg["arrival"]["scan"]))
-    for event, station, scan in endpoints:
+    for event, station, sample in samples:
         expected = compiled[station]["xyMetres"]
-        witness = result["samples"][event] = {"state": "unverified", "station": station, "scan": scan,
+        witness = result["samples"][event] = {"state": "unverified", "station": station, "scan": sample["scan"],
                                                "expectedXYMetres": expected, "configurationPath": compiled[station]["path"]}
-        sample = next(row for row in trace["scans"] if row["scan"] == scan)
         try:
             check_position_sample(sample, trace["shuttleId"], expected, tolerance_um, witness)
         except TraceIssue as error:
@@ -303,6 +300,14 @@ def check_leg_positions(report, trace, tolerance_um, leg):
                 witness["state"] = result["state"] = "issues"
             raise
     result["state"] = "matched"
+
+
+def check_leg_positions(report, trace, tolerance_um, leg):
+    endpoints = (("release", trace["sourceStation"], leg["releaseScans"][0]),
+                 ("arrival", trace["destinationStation"], leg["arrival"]["scan"]))
+    by_scan = {row["scan"]: row for row in trace["scans"]}
+    samples = [(event, station, by_scan[scan]) for event, station, scan in endpoints]
+    check_station_positions(report, trace, tolerance_um, samples, leg.setdefault("positionReview", {}))
 
 
 def station_trace_review(project, configuration, cpu, manager_id, lpj, readback, name_map, job_directory,

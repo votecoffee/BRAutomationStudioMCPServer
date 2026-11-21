@@ -63,9 +63,11 @@ With br-studio 0.59.0 or later, record the outbound station's `ExitVelocity` and
 
 Pass both expected inputs as decimal strings to `cycle_trace_review` and use the RUC and LaunchPad files from a build with `verifyLaunchPadMotionLimits`. The check uses the exact Release-edge row. A blank cell or an absent observation on that scan leaves the motion check incomplete. Read `cycleTraceReview.scanCapture.releaseMotionColumns` for the source columns and `cycleTraceReview.outbound.releaseMotion` for the comparison. [Expected inputs](station-trace-review.md#check-the-motion-inputs-on-the-release-edge)
 
-## Check the two station positions in the scan file
+## Check station positions in the scan file
 
 Map the five optional position columns to the recorded PLC sample fields and set `positionToleranceMicrometres` in the cycle review request. Check the source position on the Release edge and the destination position on the accepted arrival scan. Use the position sample's own scan index and shuttle ID. Preserve coordinate text in metres and the sample validity flag. Blank values are permitted where the capture provides no observation. Read `cycleTraceReview.scanCapture.positionColumns` for the selected headers and `cycleTraceReview.outbound.positionReview` for the comparison. [Position checks and required RUC evidence](station-trace-review.md#check-position-at-the-two-station-events)
+
+For the return and hold check, map the same five field names under the `return.` and `hold.` prefixes and set `returnPositionToleranceMicrometres`. You can map the same physical column to the same position field across phases. For example, use one captured X column for `inspection.positionXM`, `return.positionXM` and `hold.positionXM`. Keep each different field in its own column. [Return and hold witnesses](cycle-trace-review.md#verify-positions-on-return-and-at-the-next-hold)
 
 ## Decode events from the saved project and RUC
 

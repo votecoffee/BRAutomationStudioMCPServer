@@ -114,7 +114,7 @@ Use `launchPadReadAxes` to require explicit read channels and verify the linked 
 
 Use `station_trace_review` to compare the recorded station motion inputs on the Release edge with an expected velocity and acceleration. [Release motion check](skills/br-automation-studio/references/station-trace-review.md#check-the-motion-inputs-on-the-release-edge)
 
-Use `positionToleranceMicrometres` to compare the same shuttle's recorded X and Y at Release and arrival with the compiled station positions. [Station position check](skills/br-automation-studio/references/station-trace-review.md#check-position-at-the-two-station-events)
+Use `positionToleranceMicrometres` to compare the same shuttle's X and Y at outbound Release and arrival with the compiled station positions. Use `returnPositionToleranceMicrometres` in the cycle review to check return source occupancy, return arrival and the next hold. [Outbound positions](skills/br-automation-studio/references/station-trace-review.md#check-position-at-the-two-station-events) · [Return and hold positions](skills/br-automation-studio/references/cycle-trace-review.md#verify-positions-on-return-and-at-the-next-hold)
 
 Use `ruc_binding_review` to trace a selected one-way mapp View status binding through the saved project, compiled widget and OPC UA exposure map. Set `verifyIecType` to compare the compiled node type with the selected CPU task's registered IEC declaration. [Binding readback workflow](skills/br-automation-studio/references/ruc-binding-review.md)
 
