@@ -75,6 +75,12 @@ With br-studio 0.64.0 or later, set `verifySampledSpeed` to true. Use the same L
 
 The reviewer needs a usable position and time at each end of the window. It divides straight-line XY displacement by elapsed time between consecutive usable observations and compares each mean with the compiled `InPlaneVelLim`. Read `sampledSpeedReview` for the largest sampled mean, its scan interval, the longest time gap and any exceedance. A decreasing or repeated sample time fails the check. Use the capture's time resolution when assessing brief velocity peaks.
 
+## Limit the interval between position samples
+
+With br-studio 0.65.0 or later, supply `maxSampleIntervalMicroseconds` with `verifySampledSpeed: true` to enforce a maximum elapsed time between consecutive usable X/Y samples. Use a positive integer from the test's timing requirements. An interval equal to the maximum passes the timing check. Missing or unusable intermediate samples can widen the interval.
+
+Read `maxIntervalMicroseconds` for the longest observed gap, `overlongIntervals` for the count above the maximum and `firstOverlongInterval` for the first pair of scans and elapsed time. An overlong interval makes the check incomplete. An interval whose mean exceeds the compiled velocity limit still fails the speed check.
+
 ## Interpret the result
 
 - `matched` requires one Release edge with the approved request and shuttle, route permission, station clear and inspection busy clear. The same leg needs ReleaseDone and a fresh `mpTRAFFIC_SH_ARRIVAL` at the expected station for that shuttle. Either observation may appear first in the PLC trace after release.

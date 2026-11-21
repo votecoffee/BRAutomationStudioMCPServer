@@ -131,7 +131,7 @@ def check_return_positions(report, trace, tolerance_um, cycle):
 def cycle_trace_review(project, configuration, cpu, manager_id, lpj, readback, name_map, job_directory,
                        source_station, trace_path, *, hmi_status_path=None, scan_csv_path=None, require_session_capture=False,
                        expected_motion=None, position_tolerance_um=None, return_position_tolerance_um=None,
-                       waypoint_tolerance_um=None, verify_sampled_speed=False):
+                       waypoint_tolerance_um=None, verify_sampled_speed=False, max_sample_interval_us=None):
     report = launchpad_route_review(project, configuration, cpu, manager_id, lpj, readback, name_map, job_directory,
                                     include_stations=True)
     result = report["cycleTraceReview"] = {"state": "not_checked", "sourceStation": source_station}
@@ -183,10 +183,11 @@ def cycle_trace_review(project, configuration, cpu, manager_id, lpj, readback, n
             leg, returned = result["outbound"], result["returnLeg"]
             inspection = trace["inspectionLeg"]
             result["phase"] = "outbound_sampled_speed"
-            check_sampled_speed(report, inspection, inspection["scans"], leg["releaseScans"][0], leg["arrival"]["scan"], leg)
+            check_sampled_speed(report, inspection, inspection["scans"], leg["releaseScans"][0], leg["arrival"]["scan"], leg,
+                                max_sample_interval_us=max_sample_interval_us)
             result["phase"] = "return_sampled_speed"
             check_sampled_speed(report, inspection, trace["returnLeg"]["scans"], returned["occupiedScan"],
-                                returned["arrival"]["scan"], returned)
+                                returned["arrival"]["scan"], returned, max_sample_interval_us=max_sample_interval_us)
         result["phase"] = "complete"
     except (CsvError, OSError, RuntimeError, ValueError) as error:
         severity = error.severity if isinstance(error, TraceIssue) else "error"

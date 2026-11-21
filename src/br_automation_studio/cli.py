@@ -648,6 +648,10 @@ def markdown_sampled_speed(review, text):
     if peak := review.get("peakInterval"):
         lines.append(f"- Largest sampled mean {text(peak['speedMps'])} m/s · Scans {peak['fromScan']}–{peak['toScan']}"
                      f" · Longest sample interval {review['maxIntervalMicroseconds']} µs")
+    if maximum := review.get("maxSampleIntervalMicroseconds"):
+        lines.append(f"- Requested maximum sample interval {maximum} µs · Intervals over maximum {review['overlongIntervals']}")
+    if gap := review.get("firstOverlongInterval"):
+        lines.append(f"- First interval over maximum {gap['elapsedMicroseconds']} µs · Scans {gap['fromScan']}–{gap['toScan']}")
     return lines
 
 

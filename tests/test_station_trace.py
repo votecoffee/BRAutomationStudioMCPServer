@@ -188,6 +188,18 @@ class StationTraceTest(unittest.TestCase):
         self.assertEqual(Decimal(speed["peakInterval"]["speedMps"]), Decimal("0.5"))
         self.assertEqual((speed["checkedIntervals"], speed["skippedRows"], speed["maxIntervalMicroseconds"]), (1, 1, 1000000))
 
+        check_sampled_speed(report, self.trace, [source, {"scan": 20}, arrival], 19, 21, result,
+                            max_sample_interval_us=1000000)
+        self.assertEqual(result["sampledSpeedReview"]["overlongIntervals"], 0)
+        with self.assertRaises(TraceIssue) as caught:
+            check_sampled_speed(report, self.trace, [source, {"scan": 20}, arrival], 19, 21, result,
+                                max_sample_interval_us=999999)
+        self.assertEqual((caught.exception.code, caught.exception.severity),
+                         ("station_trace_speed_interval_too_long", "warning"))
+        speed = result["sampledSpeedReview"]
+        self.assertEqual((speed["state"], speed["overlongIntervals"], speed["exceededIntervals"]), ("incomplete", 1, 0))
+        self.assertEqual(speed["firstOverlongInterval"], speed["peakInterval"])
+
         for elapsed, code, severity in (
             (999999, "station_trace_speed_exceeds_limit", "error"),
             (0, "station_trace_speed_time_invalid", "error"),
@@ -195,7 +207,7 @@ class StationTraceTest(unittest.TestCase):
         ):
             with self.subTest(elapsed=elapsed), self.assertRaises(TraceIssue) as caught:
                 check_sampled_speed(report, self.trace, [source, arrival | {"positionTimeMicroseconds": elapsed}],
-                                    19, 21, result)
+                                    19, 21, result, max_sample_interval_us=999998)
             self.assertEqual((caught.exception.code, caught.exception.severity), (code, severity))
 
     def test_position_check_needs_fresh_same_shuttle_samples_and_enforces_the_per_axis_limit(self):

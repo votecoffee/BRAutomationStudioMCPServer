@@ -22,6 +22,8 @@ With br-studio 0.63.0 or later, set `waypointToleranceMicrometres` to check for 
 
 Use `verifySampledSpeed` to compare timed XY displacement rates on both legs with the verified assembly limit. The return interval starts at the first occupied source observation and ends at accepted return arrival. Read `cycleTraceReview.outbound.sampledSpeedReview` and `cycleTraceReview.returnLeg.sampledSpeedReview`. A requested speed check must pass before HMI pairing. [Timestamp and limit requirements](station-trace-review.md#check-sampled-in-plane-speed)
 
+Use `maxSampleIntervalMicroseconds` with the speed check to apply the same maximum acquisition gap to both legs. The phase identifies the leg where a gap left the review incomplete. Capture the position stream again at the required cadence before attempting the HMI comparison. [Interval diagnostics](station-trace-review.md#limit-the-interval-between-position-samples)
+
 ## Record the return leg
 
 Use the same PLC scan index as the outbound trace. Start while the inspected shuttle occupies the return source station. This may overlap the outbound capture from its accepted arrival onward. A return starting after the outbound interval must begin at the next scan.

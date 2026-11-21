@@ -390,11 +390,13 @@ def sampled_speed_interval(before, after, elapsed_us, limit):
         return distance_squared.sqrt() / elapsed_us, exceeds_limit, delta
 
 
-def check_sampled_speed(report, trace, rows, first_scan, last_scan, leg):
+def check_sampled_speed(report, trace, rows, first_scan, last_scan, leg, *, max_sample_interval_us=None):
     result = leg["sampledSpeedReview"] = {"state": "unverified", "firstScan": first_scan, "lastScan": last_scan,
                                           "acceptedSamples": 0, "skippedRows": 0, "checkedIntervals": 0,
                                           "exceededIntervals": 0, "maxIntervalMicroseconds": None,
                                           "peakInterval": None, "firstExceeded": None}
+    if max_sample_interval_us is not None:
+        result.update(maxSampleIntervalMicroseconds=max_sample_interval_us, overlongIntervals=0, firstOverlongInterval=None)
     verified_position_context(report, trace)
     limits = bound_launchpad_evidence(report, trace["managerId"]).get("motionLimits", {})
     if limits.get("state") != "matched":
@@ -438,6 +440,10 @@ def check_sampled_speed(report, trace, rows, first_scan, last_scan, leg):
                         "deltaXYMicrometres": [str(value) for value in delta], "speedMps": format(speed, ".9g")}
             result["checkedIntervals"] += 1
             result["maxIntervalMicroseconds"] = max(result["maxIntervalMicroseconds"] or 0, elapsed)
+            if max_sample_interval_us is not None and elapsed > max_sample_interval_us:
+                result["overlongIntervals"] += 1
+                if result["firstOverlongInterval"] is None:
+                    result["firstOverlongInterval"] = interval
             if peak_speed is None or speed > peak_speed:
                 peak_speed = speed
                 result["peakInterval"] = interval
@@ -454,12 +460,17 @@ def check_sampled_speed(report, trace, rows, first_scan, last_scan, leg):
             or result.get("lastSampleScan") != last_scan):
         raise TraceIssue("station_trace_speed_incomplete",
                          "Capture timed same-shuttle positions at both ends of the sampled interval", "warning")
+    if gap := result.get("firstOverlongInterval"):
+        result["state"] = "incomplete"
+        raise TraceIssue("station_trace_speed_interval_too_long",
+                         f"Scans {gap['fromScan']} to {gap['toScan']} are {gap['elapsedMicroseconds']} µs apart, "
+                         f"above the requested maximum of {max_sample_interval_us} µs", "warning")
     result["state"] = "matched"
 
 
 def station_trace_review(project, configuration, cpu, manager_id, lpj, readback, name_map, job_directory,
                          source_station, trace_path, *, expected_motion=None, position_tolerance_um=None,
-                         waypoint_tolerance_um=None, verify_sampled_speed=False):
+                         waypoint_tolerance_um=None, verify_sampled_speed=False, max_sample_interval_us=None):
     report = launchpad_route_review(project, configuration, cpu, manager_id, lpj, readback, name_map, job_directory,
                                     include_stations=True)
     result = report["stationTraceReview"] = {"state": "not_checked", "sourceStation": source_station}
@@ -480,7 +491,8 @@ def station_trace_review(project, configuration, cpu, manager_id, lpj, readback,
             check_waypoint_positions(report, trace, trace["scans"], path, result["releaseScans"][0], result["arrival"]["scan"],
                                      waypoint_tolerance_um, result)
         if verify_sampled_speed:
-            check_sampled_speed(report, trace, trace["scans"], result["releaseScans"][0], result["arrival"]["scan"], result)
+            check_sampled_speed(report, trace, trace["scans"], result["releaseScans"][0], result["arrival"]["scan"], result,
+                                max_sample_interval_us=max_sample_interval_us)
     except (OSError, RuntimeError, ValueError) as error:
         severity = error.severity if isinstance(error, TraceIssue) else "error"
         code = error.code if isinstance(error, TraceIssue) else "station_trace_invalid"

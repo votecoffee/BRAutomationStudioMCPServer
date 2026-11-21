@@ -74,6 +74,8 @@ For waypoint evidence, keep intermediate position rows in both legs and pass `wa
 
 For sampled speed, add the recorded monotonic position acquisition time under the `inspection.` and `return.` prefixes. Map the time signal explicitly when the capture header differs and set `verifySampledSpeed` in the request. Use a common clock within each leg and retain the original integer microsecond values. [Sampled speed criteria](station-trace-review.md#check-sampled-in-plane-speed)
 
+Set `maxSampleIntervalMicroseconds` in the review request to enforce the permitted time gap between usable position samples. Keep the original scan rows when a position sample is unavailable so the report can distinguish the missing observation from a missing PLC scan. [Sampling interval check](station-trace-review.md#limit-the-interval-between-position-samples)
+
 ## Decode events from the saved project and RUC
 
 Use the [enum declaration lookup](build-preflight.md#read-explicit-enumeration-values) to inspect the selected library's event map during preflight. The scan review below verifies the definition against the retained build and RUC.
