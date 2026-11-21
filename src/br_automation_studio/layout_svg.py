@@ -178,10 +178,7 @@ def mapping_line_endpoints(group, line, start, end):
             "maxAxisDeltaMm": round(largest, 9), "withinTolerance": largest <= TOLERANCE_MM}
 
 
-def check_traffic(root, manager_id, positions, mappings, *, verify_mapping_line_endpoints=False):
-    overlay = svg_group(root, manager_id, "traffic-manager")
-    if "transform" in overlay.attrib:
-        raise UnsupportedLayout("The Traffic Manager group must share the SVG coordinate frame")
+def check_traffic(overlay, positions, mappings, *, verify_mapping_line_endpoints=False):
     groups = overlay.findall(SVG + "g")
     expected = {f"{OBJECTS[kind][0]}_{name}": (name, kind, xy) for name, (kind, xy) in positions.items()}
     semantic = {prefix for prefix, _ in OBJECTS.values()} | {"link", "branching_waypoint"}
@@ -215,13 +212,42 @@ def check_traffic(root, manager_id, positions, mappings, *, verify_mapping_line_
     return objects, edges
 
 
-def layout_svg_review(project, job, manager_id, assembly_svg, traffic_svg, *, verify_mapping_line_endpoints=False):
+def check_traffic_labels(overlay, positions):
+    groups = {child: group for group in overlay.findall(SVG + "g") for child in group.findall(SVG + "text")}
+    candidates = [label for label in overlay.iter(SVG + "text")
+                  if (label.get("id") or "").startswith("label_") or "traffic-object-label" in classes(label)]
+    inventory("Traffic label IDs", [f"label_{name}" for name in positions], [label.get("id") for label in candidates])
+    by_id = {label.get("id"): label for label in candidates}
+    result = []
+    for name, (_, configured) in sorted(positions.items()):
+        ident = f"label_{name}"
+        label = by_id[ident]
+        expected_classes = {"text-anchor-middle", "dominant-baseline-middle", "traffic-object-label"}
+        offset = point((label.get(key, "0").removesuffix("em") for key in ("x", "y")), 1)
+        if (label not in groups or "style" in groups[label].attrib or len(label) or not expected_classes.issubset(classes(label))
+                or {"transform", "dx", "dy", "rotate", "textLength", "style"} & label.attrib.keys() or offset != (0, 0)):
+            raise UnsupportedLayout(f"Expected a centered plain-text traffic label with a translated group for {ident!r}")
+        x, y = translation(groups[label])
+        anchor = (x, -y)
+        residual = max(abs(expected - observed) for expected, observed in zip(configured, anchor))
+        if not isfinite(residual):
+            raise ValueError(f"Label {ident!r} coordinate difference exceeds the numeric range")
+        result.append({"name": name, "id": ident, "text": label.text or "", "configuredMm": configured,
+                       "anchorMm": anchor, "maxAxisDeltaMm": round(residual, 9),
+                       "textMatched": label.text == name, "anchorMatched": residual <= TOLERANCE_MM})
+    return result
+
+
+def layout_svg_review(project, job, manager_id, assembly_svg, traffic_svg, *, verify_mapping_line_endpoints=False,
+                      verify_traffic_labels=False):
     report = review_ruc(project, job, geometry_manager=manager_id, include_layout=True, include_saved_geometry=True)
     ruc = report["rucReview"]
     result = report["layoutSvgReview"] = {"state": "not_checked", "managerId": manager_id,
                                           "positionToleranceMm": TOLERANCE_MM, "assets": {}}
     if verify_mapping_line_endpoints:
         result["mappingLineEndpoints"] = {"state": "not_checked", "arrowClearanceMm": ARROW_CLEARANCE_MM}
+    if verify_traffic_labels:
+        result["trafficLabels"] = {"state": "not_checked"}
 
     def issue(code, path, message, severity="error"):
         report["diagnostics"].append({"scope": "layout_svg", "path": path.as_posix(),
@@ -252,8 +278,11 @@ def layout_svg_review(project, job, manager_id, assembly_svg, traffic_svg, *, ve
         result["segments"] = check_assembly(root, assembly, layout["layoutId"], grid)
         path = traffic_svg
         root, result["assets"]["trafficManager"] = svg_input(path, manager_id)
+        overlay = svg_group(root, manager_id, "traffic-manager")
+        if "transform" in overlay.attrib:
+            raise UnsupportedLayout("The Traffic Manager group must share the SVG coordinate frame")
         result["objects"], result["edges"] = check_traffic(
-            root, manager_id, positions, mappings, verify_mapping_line_endpoints=verify_mapping_line_endpoints,
+            overlay, positions, mappings, verify_mapping_line_endpoints=verify_mapping_line_endpoints,
         )
         for item in result["objects"]:
             if not item["withinTolerance"]:
@@ -273,6 +302,19 @@ def layout_svg_review(project, job, manager_id, assembly_svg, traffic_svg, *, ve
                 state="issues" if failed else "matched", checkedLinks=len(edges), failedLinks=failed,
                 maxAxisDeltaMm=max((edge["lineEndpoints"]["maxAxisDeltaMm"] for edge in edges), default=None),
             )
+        if verify_traffic_labels:
+            label_result = result["trafficLabels"]
+            labels = check_traffic_labels(overlay, positions)
+            for label in labels:
+                if not label["textMatched"]:
+                    issue("layout_svg_label_text", path, f"Label {label['id']!r} shows {label['text']!r}, expected {label['name']!r}")
+                if not label["anchorMatched"]:
+                    issue("layout_svg_label_anchor", path,
+                          f"Label {label['id']!r} differs from its configured anchor by up to {label['maxAxisDeltaMm']} mm")
+            failed = sum(not (label["textMatched"] and label["anchorMatched"]) for label in labels)
+            label_result.update(state="issues" if failed else "matched", labels=labels,
+                                checkedLabels=len(labels), failedLabels=failed,
+                                maxAxisDeltaMm=max((label["maxAxisDeltaMm"] for label in labels), default=None))
     except UnsupportedLayout as error:
         issue("layout_svg_unverified", path, str(error), "warning")
         result["state"] = "unverified"

@@ -44,3 +44,9 @@ Use the [coordinate frame workflow](launchpad-frame-review.md#trace-the-coordina
 With br-studio 0.70.0 or later, set `verifyMappingLineEndpoints: true` in `layout_svg_review`. For each directed mapping, the review uses the direction between the configured marker centers and the footprints from the station rectangle or waypoint ellipse. The drawn start must be on the source boundary. The drawn end must stop 10 mm before the destination boundary, leaving the clearance observed for the arrowhead in the retained AS4 mapp 6D 2.2 SVGs.
 
 Read `mappingLineEndpoints` for the number checked and largest per-axis error. Read each edge's `lineEndpoints` for the expected and observed points in assembly X/Y millimetres. A difference above 0.001 mm fails review even when the mapping ID and class match. A transformed line or a link too short for this clipping model remains unverified. Confirm this format with the target runtime's actual SVGs.
+
+## Check station and waypoint labels
+
+With br-studio 0.71.0 or later, set `verifyTrafficLabels: true` in `layout_svg_review`. For each compiled station and waypoint, the SVG must contain one `label_<object>` element with the exact object name and an anchor at the configured marker center. This check supports the centered plain-text labels in translated groups observed in the AS4 mapp 6D 2.2 SVGs.
+
+Read `trafficLabels` for the checked count, each label's text and X/Y anchor in millimetres, and the largest per-axis difference. A wrong name or an anchor difference above 0.001 mm fails review. Confirm font appearance and readability in the actual target browser.

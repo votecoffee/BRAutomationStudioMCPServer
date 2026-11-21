@@ -530,6 +530,9 @@ def markdown_layout_svg(review, text):
     if endpoints := review.get("mappingLineEndpoints"):
         lines.append(f"- Mapping line endpoints {text(endpoints['state'])} · Links checked {text(endpoints.get('checkedLinks'))} "
                      f"· Largest axis difference (mm) {text(endpoints.get('maxAxisDeltaMm'))}")
+    if labels := review.get("trafficLabels"):
+        lines.append(f"- Traffic labels {text(labels['state'])} · Labels checked {text(labels.get('checkedLabels'))} "
+                     f"· Largest anchor axis difference (mm) {text(labels.get('maxAxisDeltaMm'))}")
     if "objects" in review:
         lines.extend([f"- Directed mapping links matched {len(review['edges'])}", "",
                       "| Object | Type | Configured X/Y (mm) | SVG X/Y (mm) | Max axis delta (mm) |",
@@ -767,6 +770,9 @@ def markdown_cycle_hmi(hmi, text):
         if endpoints := geometry.get("mappingLineEndpoints"):
             lines.append(f"  - Mapping endpoints matched · Links checked {text(endpoints.get('checkedLinks'))} "
                          f"· Largest axis difference (mm) {text(endpoints.get('maxAxisDeltaMm'))}")
+        if labels := geometry.get("trafficLabels"):
+            lines.append(f"  - Traffic labels matched · Labels checked {labels['checkedLabels']} "
+                         f"· Largest anchor axis difference (mm) {text(labels['maxAxisDeltaMm'])}")
     for role, row in hmi.get("status", {}).items():
         lines.append(f"- {text(role)} {row['value']} · Widget {text(row['widget'])} · Node {text(row['identifier'])}")
     return lines

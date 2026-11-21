@@ -249,6 +249,28 @@ position-x-mm="0" position-y-mm="0" transform="translate(0 -240)"><g>
         self.assertEqual(self.codes(changed_line), ["layout_svg_line_endpoint_mismatch"])
         self.assertEqual(changed_line["result"]["layoutSvgReview"]["mappingLineEndpoints"]["failedLinks"], 1)
 
+        labels = "".join(
+            f'<g transform="translate({x} -20)"><text id="label_{name}" '
+            f'class="text-anchor-middle dominant-baseline-middle traffic-object-label" x="0" y="0em">{name}</text></g>'
+            for name, x in (("Load", 100), ("Transit", 200), ("Inspect", 300))
+        )
+        labeled = overlay.replace("</g></svg>", labels + "</g></svg>")
+        request["arguments"]["verifyTrafficLabels"] = True
+        traffic.write_text(labeled, encoding="utf-8")
+        checked = execute(request, self.root)
+        self.assertEqual(checked["status"], "complete", checked)
+        self.assertEqual(checked["result"]["layoutSvgReview"]["trafficLabels"]["checkedLabels"], 3)
+        for original, replacement, code in (
+            (">Transit</text>", ">Inspect</text>", "layout_svg_label_text"),
+            ('translate(100 -20)"><text', 'translate(101 -20)"><text', "layout_svg_label_anchor"),
+        ):
+            with self.subTest(code=code):
+                traffic.write_text(labeled.replace(original, replacement), encoding="utf-8")
+                invalid_label = execute(request, self.root)
+                self.assertEqual(self.codes(invalid_label), [code])
+                self.assertEqual(invalid_label["result"]["layoutSvgReview"]["trafficLabels"]["failedLabels"], 1)
+        del request["arguments"]["verifyTrafficLabels"]
+
         traffic.write_text(overlay, encoding="utf-8")
         member = f"{DATA}/DemoObjects.br"
         self.members[member] = self.members[member].replace(b'Value="0.02"', b'Value="0.04"', 1)

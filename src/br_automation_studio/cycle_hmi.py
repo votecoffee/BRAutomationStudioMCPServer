@@ -228,6 +228,11 @@ def check_layout_svg_pairing(ruc, smoke, response, result):
         if endpoints.get("state") != "matched":
             raise TraceIssue("cycle_hmi_layout_review_invalid", "The geometry report's mapping line endpoint review must match")
         geometry["mappingLineEndpoints"] = endpoints
+    if "trafficLabels" in svg:
+        labels = svg["trafficLabels"]
+        if labels.get("state") != "matched":
+            raise TraceIssue("cycle_hmi_layout_review_invalid", "The geometry report's traffic label review must match")
+        geometry["trafficLabels"] = {key: labels[key] for key in ("state", "checkedLabels", "failedLabels", "maxAxisDeltaMm")}
     geometry.update(state="matched", layoutId=svg["layoutId"], positionToleranceMm=svg["positionToleranceMm"])
 
 

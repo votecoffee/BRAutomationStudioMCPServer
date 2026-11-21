@@ -106,3 +106,5 @@ With br-studio 0.69.0 or later, enable `captureLayoutAssets` and `requireStartPa
 The cycle, status and geometry reports must identify the same build and RUC. The geometry report must match the widget's assembly and manager, and both SVG hashes must match the capture from the status report's owned HTTP listener. Read `cycleHmiReview.layoutGeometry` for the layout ID and the two hashes. Browser observations cover both documents. The geometry review covers the SVG bodies saved by the status probe's HTTP capture.
 
 If the geometry review includes `verifyMappingLineEndpoints`, the paired layout receipt also carries that result. [Check the drawn mapping endpoints](layout-svg-review.md#check-the-drawn-mapping-endpoints)
+
+If the geometry review includes `verifyTrafficLabels`, the paired layout receipt carries the label count and largest anchor delta. [Check station and waypoint labels](layout-svg-review.md#check-station-and-waypoint-labels)
