@@ -92,3 +92,9 @@ With br-studio 0.67.0 or later, record each consecutive PLC scan from the first 
 The held request, station, shuttle, phase and release total must agree on all scans. Hold stays active and release and result acceptance stay clear. The heartbeat is nondecreasing. Read `cycleTraceReview.holdContinuation` for the checked range. Missing scans leave the review incomplete. A recorded state change fails it before HMI pairing.
 
 With a supplied HMI report, the last held heartbeat must reach the final direct OPC UA heartbeat after the reopen. Read `cycleHmiReview.holdCoverage` for both values. Use `requireSessionScanCapture` with the raw scan file retained by the HMI session when the original file is part of acceptance.
+
+## Verify the cycle's Assembly6D widget
+
+With br-studio 0.68.0 or later, set `requireHmiAssemblyWidget: true` with `hmiStatusReport`. In the [status smoke request](arsim-status-smoke.md#select-the-assembly6d-widget-and-layout), select the Assembly6D DOM ID and enable the start-page and layout checks. Use the RUC from the cycle review. The startup widget must link to the compiled assembly and Traffic Manager used for the observed cycle.
+
+Read `cycleHmiReview.assemblyWidget` for the selected widget, compiled content, startup map and both layout paths. The initial and reopened documents each need the widget, a successful startup-map request, both expected layout SVGs and a rendered SVG with bounds. A mismatch fails the HMI pairing while preserving the independent cycle result.

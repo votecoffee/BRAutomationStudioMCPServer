@@ -45,10 +45,10 @@ class CycleHmiTest(unittest.TestCase):
                          "result": {"rucReview": self.ruc, "arsimSmoke": self.smoke, "diagnostics": [],
                                     "evidence": "arsim_loopback_status"}}
 
-    def check(self, require_capture=False):
+    def check(self, require_capture=False, assembly_route=None):
         checked = {}
         check_cycle_hmi(self.cycle, self.trace, self.ruc, self.document, checked,
-                        require_session_capture=require_capture)
+                        require_session_capture=require_capture, assembly_route=assembly_route)
         return checked
 
     def test_matching_synthetic_capture_retains_request_and_order(self):
@@ -72,6 +72,39 @@ class CycleHmiTest(unittest.TestCase):
         with self.assertRaises(TraceIssue) as issue:
             self.check()
         self.assertEqual(issue.exception.code, "cycle_hmi_hold_coverage")
+
+    def test_assembly_widget_needs_the_cycle_route_and_layout_in_both_documents(self):
+        route = {"managerId": "Traffic", "assembly": "Planar"}
+        with self.assertRaises(TraceIssue) as issue:
+            self.check(assembly_route=route)
+        self.assertEqual(issue.exception.code, "cycle_hmi_assembly_widget")
+        kind, widget_id = "widgets/mapp6D/Assembly6D", "Main_Overview"
+        client_map, content = "/main.json", "wwwRoot/contents/Main.html"
+        self.ruc["widgets"] = [{"contentId": "Main", "id": "Overview", "className": kind,
+                                "assembly": "Planar", "manager": "mapp6D::Traffic", "path": content}]
+        self.ruc["startPageWidget"] = {
+            "state": "matched", "domId": widget_id,
+            "compiled": {"widgetType": kind, "assembly": "Planar", "manager": "mapp6D::Traffic",
+                         "content": content, "clientMapUrl": client_map},
+        }
+        browser = self.hmi["browser"]
+        browser.update(assemblyWidgetId=widget_id, startPageMapPath=client_map)
+        for phase in ("initial", "reopened"):
+            browser[phase].update(widgetType=kind, startPageMap={"state": "observed", "path": client_map, "httpStatus": 200},
+                                  layout={"state": "observed", "boundedSvgCount": 1, "assets": {
+                                      "assembly": {"path": "/FileDevice:6DData/Planar.svg", "httpStatus": 200},
+                                      "trafficManager": {"path": "/FileDevice:6DData/Traffic.svg", "httpStatus": 304},
+                                  }})
+        receipt = self.check(assembly_route=route)["assemblyWidget"]
+        self.assertEqual(receipt["state"], "matched")
+        self.assertEqual(receipt["documents"]["reopened"]["layoutStatuses"]["trafficManager"], 304)
+        with self.assertRaises(TraceIssue) as issue:
+            self.check(assembly_route=route | {"managerId": "OtherTraffic"})
+        self.assertEqual(issue.exception.code, "cycle_hmi_assembly_route")
+        browser["reopened"]["layout"]["assets"]["trafficManager"]["path"] = "/FileDevice:6DData/OtherTraffic.svg"
+        with self.assertRaises(TraceIssue) as issue:
+            self.check(assembly_route=route)
+        self.assertEqual(issue.exception.code, "cycle_hmi_assembly_layout")
 
     def test_retained_scan_must_match_reviewed_bytes_and_listener(self):
         digest, size = "c" * 64, 128

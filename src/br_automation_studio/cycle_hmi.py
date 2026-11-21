@@ -1,7 +1,7 @@
 """Correlate a selected cycle's next hold with a completed loopback status report."""
 
 from .arsim_smoke import HOST
-from .browser_smoke import numeric_text
+from .browser_smoke import ASSEMBLY_WIDGET, http_status, layout_asset_paths, numeric_text
 from .hmi_smoke import check_samples
 from .launchpad_route import json_snapshot
 from .opcua_smoke import CURRENT_READ, INTEGER_NODE_TYPES
@@ -47,7 +47,7 @@ def check_run(document, ruc, trace, result):
     if smoke["state"] != "complete" or smoke["cleanup"] != "empty" or hmi["state"] != "complete":
         raise ValueError("The ARsim runtime and HMI check must complete with verified cleanup")
     result.update(sessionId=session, captureKind=capture, packageSha256=package)
-    return hmi, witness
+    return hmi, witness, reviewed
 
 
 def check_heartbeat(hmi, witness, heartbeat, result):
@@ -141,8 +141,56 @@ def check_session_capture(hmi, cycle, result, required):
     result["scanCapture"] = {"state": "matched", "sha256": retained["sha256"], "bytes": retained["bytes"]}
 
 
-def check_cycle_hmi(cycle, trace, ruc, document, result, *, require_session_capture=False):
-    hmi, witness = check_run(document, ruc, trace, result)
+def check_assembly_widget(ruc, reviewed, browser, route, result):
+    manager, assembly = route["managerId"], route["assembly"]
+    browser_id = browser.get("assemblyWidgetId")
+    widget_result = result["assemblyWidget"] = {"state": "issues", "domId": browser_id, "manager": manager,
+                                                "assembly": assembly, "documents": {}}
+    start = reviewed.get("startPageWidget", {})
+    pinned_start = ruc.get("startPageWidget")
+    if (not isinstance(browser_id, str) or not browser_id or browser_id == browser.get("counterWidgetId")
+            or start.get("state") != "matched" or start.get("domId") != browser_id
+            or (pinned_start is not None and pinned_start.get("domId") != browser_id)):
+        raise TraceIssue("cycle_hmi_assembly_widget", "The HMI report needs the reviewed Assembly6D start-page widget")
+    widgets = ruc["widgets"]
+    matches = [row for row in widgets if f"{row['contentId']}_{row['id']}" == browser_id]
+    compiled = start["compiled"]
+    if (len(matches) != 1 or not assembly or compiled["widgetType"] != ASSEMBLY_WIDGET
+            or compiled["assembly"] != assembly or compiled["manager"] not in (manager, f"mapp6D::{manager}")):
+        raise TraceIssue("cycle_hmi_assembly_route", "The HMI widget must show the cycle's compiled assembly and Traffic Manager")
+    widget, = matches
+    if (widget["className"] != ASSEMBLY_WIDGET or (widget["assembly"], widget["manager"], widget["path"]) !=
+            (compiled["assembly"], compiled["manager"], compiled["content"])):
+        raise TraceIssue("cycle_hmi_assembly_route", "The HMI widget differs from the widget read from the cycle RUC")
+    client_map = compiled["clientMapUrl"]
+    paths = layout_asset_paths(widgets, browser_id)
+    if (set(paths) != {"assembly", "trafficManager"} or not isinstance(client_map, str) or not client_map
+            or browser.get("startPageMapPath") != client_map
+            or (pinned_start is not None and pinned_start.get("compiled") != compiled)):
+        raise TraceIssue("cycle_hmi_assembly_route", "The cycle widget needs its verified startup map and both layout paths")
+    widget_result.update(content=compiled["content"], clientMapPath=client_map, layoutPaths=paths)
+    for phase in ("initial", "reopened"):
+        observed = browser[phase]
+        startup = observed.get("startPageMap", {})
+        layout = observed.get("layout", {})
+        assets = layout.get("assets", {})
+        if (observed.get("widgetType") != ASSEMBLY_WIDGET or startup.get("state") != "observed"
+                or startup.get("path") != client_map or http_status(startup.get("httpStatus")) not in (200, 304)):
+            raise TraceIssue("cycle_hmi_assembly_document", f"The {phase} HMI document needs the widget and its startup map")
+        if layout.get("state") != "observed" or not integer(layout.get("boundedSvgCount"), 1):
+            raise TraceIssue("cycle_hmi_assembly_layout", f"The {phase} HMI document needs a rendered 6D layout")
+        statuses = {}
+        for role, path in paths.items():
+            asset = assets.get(role, {})
+            if asset.get("path") != path or http_status(asset.get("httpStatus")) not in (200, 304):
+                raise TraceIssue("cycle_hmi_assembly_layout", f"The {phase} HMI document did not load the expected {role} SVG")
+            statuses[role] = asset["httpStatus"]
+        widget_result["documents"][phase] = {"startPageMapStatus": startup["httpStatus"], "layoutStatuses": statuses}
+    widget_result["state"] = "matched"
+
+
+def check_cycle_hmi(cycle, trace, ruc, document, result, *, require_session_capture=False, assembly_route=None):
+    hmi, witness, reviewed = check_run(document, ruc, trace, result)
     check_session_capture(hmi, cycle, result, require_session_capture)
     identifiers = witness["bindings"]
     if (set(identifiers) != set(ROLES)
@@ -168,14 +216,17 @@ def check_cycle_hmi(cycle, trace, ruc, document, result, *, require_session_capt
     result["status"] = checked = {}
     for role in ROLES:
         checked[role] = check_status_role(hmi, result["packageSha256"], role, identifiers[role], expected[role], widgets)
+    if assembly_route is not None:
+        check_assembly_widget(ruc, reviewed, hmi["browser"], assembly_route, result)
 
 
-def review_cycle_hmi(report, trace, path, *, require_session_capture=False):
+def review_cycle_hmi(report, trace, path, *, require_session_capture=False, require_assembly_widget=False):
     result = report["cycleHmiReview"]
     try:
         document, result["statusReport"] = json_snapshot(path, TRACE_LIMIT)
         check_cycle_hmi(report["cycleTraceReview"], trace, report["rucReview"], document, result,
-                        require_session_capture=require_session_capture)
+                        require_session_capture=require_session_capture,
+                        assembly_route=report["routeReview"] if require_assembly_widget else None)
     except (AttributeError, KeyError, OSError, RuntimeError, TypeError, ValueError) as error:
         code = error.code if isinstance(error, TraceIssue) else "cycle_hmi_invalid"
         message = str(error) if isinstance(error, (OSError, RuntimeError, ValueError)) else "The status or cycle evidence has missing or malformed fields"

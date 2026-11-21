@@ -126,6 +126,8 @@ Use `verifyPositionTimeHandoff` in the cycle review to compare acquisition times
 
 Use `scanCapture.holdThroughScan` to verify the next held request on each recorded PLC scan and check that the capture covers the HMI reopen. [Hold continuity review](skills/br-automation-studio/references/cycle-trace-review.md#verify-the-held-request-through-the-reopen)
 
+Use `requireHmiAssemblyWidget` to pair the cycle with the Assembly6D startup widget and its rendered layout in both HMI documents. [Cycle widget review](skills/br-automation-studio/references/cycle-trace-review.md#verify-the-cycles-assembly6d-widget)
+
 Use `ruc_binding_review` to trace a selected one-way mapp View status binding through the saved project, compiled widget and OPC UA exposure map. Set `verifyIecType` to compare the compiled node type with the selected CPU task's registered IEC declaration. [Binding readback workflow](skills/br-automation-studio/references/ruc-binding-review.md)
 
 For a private loopback fixture, `arsim_smoke` materializes the reviewed RUC and compares served mapp View assets with their packaged bytes. [ARsim smoke workflow](skills/br-automation-studio/references/arsim-smoke.md)

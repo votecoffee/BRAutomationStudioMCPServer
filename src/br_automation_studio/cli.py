@@ -750,6 +750,13 @@ def markdown_cycle_hmi(hmi, text):
     if coverage := hmi.get("holdCoverage"):
         lines.append(f"- Hold coverage {text(coverage['state'])} · Final held heartbeat {coverage['lastHoldHeartbeat']} "
                      f"· Last direct sample after browser {coverage['directAfterLast']}")
+    if assembly := hmi.get("assemblyWidget"):
+        lines.append(f"- Assembly6D {text(assembly['state'])} · Widget {text(assembly['domId'])} "
+                     f"· Assembly {text(assembly['assembly'])} · Manager {text(assembly['manager'])}")
+        for phase, observed in assembly["documents"].items():
+            layout = observed["layoutStatuses"]
+            lines.append(f"  - {text(phase.title())} · Start page map HTTP {observed['startPageMapStatus']} "
+                         f"· Assembly SVG HTTP {layout['assembly']} · Manager SVG HTTP {layout['trafficManager']}")
     for role, row in hmi.get("status", {}).items():
         lines.append(f"- {text(role)} {row['value']} · Widget {text(row['widget'])} · Node {text(row['identifier'])}")
     return lines
