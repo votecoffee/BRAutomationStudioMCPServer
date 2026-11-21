@@ -1,6 +1,6 @@
 # Rehearse one ACOPOS 6D inspection cycle with its HMI
 
-Use this workflow with br-studio 0.74.0 or later for a saved AS4 PC simulation project, a two-station LaunchPad route and a PLC-hosted mapp View page. Work in one run directory with a reviewed project and build as inputs. Keep installation paths, project identifiers and captures in the local run directory.
+Use this workflow with br-studio 0.75.0 or later for a saved AS4 PC simulation project, a two-station LaunchPad route and a PLC-hosted mapp View page. Work in one run directory with a reviewed project and build as inputs. Keep installation paths, project identifiers and captures in the local run directory.
 
 ## Qualify the project and build
 
@@ -19,8 +19,8 @@ run/
   build/                           Retained native job, RUC and launchpad/ inputs
   status-bindings.json
   status-request.json
-  status-response.json
   session/
+    status-response.json
     session.json
     scan-capture.csv
     layout-assets/assembly.svg
@@ -80,11 +80,13 @@ Save as `status-request.json`. The PVI and Chrome paths are examples. Use actual
 }
 ```
 
-From the run directory in PowerShell 7, save the JSON result. Use the installed executable's full path in place of `br-studio` if it is outside PATH.
+From the run directory in PowerShell 7, save the JSON result at the run root. Move the completed response next to the retained scan once the command succeeds. Use the installed executable's full path in place of `br-studio` if it is outside PATH.
 
 ```powershell
 br-studio run --request ./status-request.json | Set-Content -LiteralPath ./status-response.json -Encoding utf8NoBOM
-$LASTEXITCODE
+if ($LASTEXITCODE -eq 0) {
+    Move-Item -LiteralPath ./status-response.json -Destination ./session/status-response.json
+}
 ```
 
 Coordinate the matched Planar Motor Simulator and inspection stimuli with the owner of the ARsim session that the status probe opens. Keep the Logger connection evidence with that session. The probe waits for the expected held status, reads the initial and reopened browser documents, performs the direct reads and retains the finalized scan CSV and SVGs before cleanup. Have the producer record through the last post-reopen read, then publish `cycle.csv` in the owned ARsim USER device. Review the completed JSON for `result.arsimSmoke.sessionId`, cleanup, the browser layout capture and the retained scan receipt. [Same-runtime scan capture](arsim-status-smoke.md#retain-a-scan-file-from-the-same-runtime)
@@ -157,15 +159,14 @@ Save as `cycle-request.json`. If the build retained a name map, supply the same 
     "launchPadProject": "build/launchpad/source.lpj",
     "launchPadReadback": "build/launchpad/readback.json",
     "trace": "cycle-trace.json",
-    "scanCsv": "session/scan-capture.csv",
-    "hmiStatusReport": "status-response.json",
+    "hmiStatusReport": "session/status-response.json",
     "hmiLayoutSvgReport": "svg-response.json",
     "requireSessionScanCapture": true
   }
 }
 ```
 
-The geometry report also enables the cycle's Assembly6D widget check. Add motion checks when their source evidence is present and the test defines the expected values.
+The review uses `scan-capture.csv` beside the selected status response. Supply `scanCsv` explicitly when the retained copy is stored elsewhere. The geometry report also enables the cycle's Assembly6D widget check. Add motion checks when their source evidence is present and the test defines the expected values.
 
 | Check | Request inputs | Evidence needed |
 | --- | --- | --- |

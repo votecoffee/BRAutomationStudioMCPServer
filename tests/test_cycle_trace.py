@@ -8,7 +8,9 @@ from tempfile import TemporaryDirectory
 import unittest
 
 from br_automation_studio.cycle_capture import FIELDS, HOLD_HMI, materialize_cycle
-from br_automation_studio.cycle_trace import bind_cycle_build, check_cycle, check_position_time_handoff, check_return_positions
+from br_automation_studio.cycle_trace import (
+    bind_cycle_build, check_adjacent_scan, check_cycle, check_position_time_handoff, check_return_positions,
+)
 from br_automation_studio.station_trace import ARRIVAL, FLAGS, MONITOR_CHECKPOINTS, TraceIssue
 
 
@@ -104,6 +106,22 @@ class CycleTraceTest(unittest.TestCase):
                 with self.assertRaises(TraceIssue) as caught:
                     bind_cycle_build(trace, report, self.identity, ("launchPadSha256",), {})
                 self.assertEqual(caught.exception.code, "cycle_trace_build_binding")
+
+    def test_adjacent_scan_requires_a_regular_file_at_the_retained_name(self):
+        with TemporaryDirectory() as temp:
+            root = Path(temp)
+            path = root / "scan-capture.csv"
+            (root / "cycle.csv").write_bytes(b"scan\n1\n")
+            with self.assertRaises(TraceIssue) as missing:
+                check_adjacent_scan(path)
+            self.assertEqual(missing.exception.code, "cycle_hmi_scan_capture_missing")
+            path.mkdir()
+            with self.assertRaises(TraceIssue) as mismatch:
+                check_adjacent_scan(path)
+            self.assertEqual(mismatch.exception.code, "cycle_hmi_scan_capture_mismatch")
+            path.rmdir()
+            path.write_bytes(b"scan\n1\n")
+            check_adjacent_scan(path)
 
     def test_position_time_handoff_needs_equality_on_shared_scan_and_progress_on_later_scan(self):
         outbound = {"sampledSpeedReview": {"lastSampleScan": 13, "lastSampleTimeMicroseconds": 3000}}

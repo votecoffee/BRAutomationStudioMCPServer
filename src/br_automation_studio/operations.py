@@ -284,8 +284,8 @@ def run_cycle_trace_review(arguments, request_directory):
     status_report = arguments.get("hmiStatusReport")
     scan_csv = arguments.get("scanCsv")
     require_capture = arguments.get("requireSessionScanCapture", False)
-    if require_capture and (not status_report or not scan_csv):
-        raise InvalidRequest("requireSessionScanCapture needs both hmiStatusReport and scanCsv")
+    if require_capture and not status_report:
+        raise InvalidRequest("requireSessionScanCapture needs hmiStatusReport")
     require_widget = arguments.get("requireHmiAssemblyWidget", False)
     if require_widget and not status_report:
         raise InvalidRequest("requireHmiAssemblyWidget needs hmiStatusReport")
@@ -635,11 +635,11 @@ CYCLE_TRACE_REVIEW = Operation(
         "trace": {"type": "string", "minLength": 1,
                   "description": "Normalized cycle trace or cycle trace descriptor for CSV samples."},
         "scanCsv": {"type": "string", "minLength": 1,
-                    "description": "Recorded PLC scan samples bound by the trace descriptor's SHA-256."},
+                    "description": "Recorded PLC scans. Strict review defaults to scan-capture.csv beside hmiStatusReport."},
         "hmiStatusReport": {"type": "string", "minLength": 1,
                             "description": "Completed arsim_status_smoke JSON for the same cycle RUC and session."},
         "requireSessionScanCapture": {"type": "boolean", "default": False,
-                                      "description": "Require the session's retained scan file. Bind omitted scan or HMI identities to the status receipt and omitted inspection hashes to the matched pinned build."},
+                                      "description": "Require the session's retained scan and completed HMI status receipt. Use the receipt for missing scan or HMI identities and the matched pinned build for missing inspection hashes."},
         "requireHmiAssemblyWidget": {"type": "boolean", "default": False,
                                      "description": "Require the cycle's Assembly6D widget and both layout SVGs in both HMI documents."},
         "hmiLayoutSvgReport": {"type": "string", "minLength": 1,

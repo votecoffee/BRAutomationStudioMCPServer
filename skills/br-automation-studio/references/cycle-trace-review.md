@@ -99,6 +99,12 @@ With br-studio 0.74.0 or later, the strict review can also fill omitted `inspect
 
 Read `cycleTraceReview.buildBinding` for the job ID, plan hash, both inspection hashes and which fields were derived. The reviewer fills missing fields in memory. Explicit hashes, including fields whose value is `null`, must match the reviewed inputs. Use explicit hashes for normalized traces and scan reviews that lack the matching pinned inputs and same-session receipt. [Complete rehearsal example](inspection-cycle-rehearsal.md#review-the-saved-svgs-and-plc-scans)
 
+## Review the scan beside its status response
+
+With br-studio 0.75.0 or later, place the completed status response beside the original `scan-capture.csv`. Set `hmiStatusReport` and `requireSessionScanCapture: true` and omit `scanCsv`. Keep the `scanCapture` descriptor with the selected windows and any column mappings.
+
+The reviewer checks the status receipt against the selected build and uses the regular file named `scan-capture.csv` in the response's current directory. It verifies the captured bytes against the receipt. Move both files together when archiving the run. Look for `scanCsv` in `cycleTraceReview.sessionScanBinding.derivedFields` and the actual path in `cycleTraceReview.scanCapture.path`. Supply `scanCsv` explicitly when the retained copy is in a different directory or has been renamed. [Complete rehearsal example](inspection-cycle-rehearsal.md#capture-the-hmi-and-cycle-together)
+
 ## Verify the held request through the reopen
 
 With br-studio 0.67.0 or later, record each consecutive PLC scan from the first new hold through the final direct heartbeat after the browser reopen. Use [`scanCapture.holdThroughScan`](cycle-scan-capture.md#keep-recording-the-next-held-request) with a scan file. In a normalized JSON trace, set a top-level `holdContinuation` with `throughScan` and `scans`. Put each subsequent scan, starting at `nextHold.scan + 1`, in that array. Use the same fields as `nextHold`, including `phase`, `releaseTotal` and `heartbeat`.

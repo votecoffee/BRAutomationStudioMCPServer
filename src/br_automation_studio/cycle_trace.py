@@ -1,11 +1,14 @@
 """Correlate an inspection leg, return and next hold for one shuttle in a saved trace."""
 
 from csv import Error as CsvError
+from pathlib import Path
+from stat import FILE_ATTRIBUTE_REPARSE_POINT, S_ISREG
 
 from .cycle_capture import materialize_cycle
 from .cycle_hmi import bind_session_scan_capture, review_cycle_hmi
 from .launchpad_route import json_snapshot, launchpad_route_review
 from .mptraffic_events import read_project_events
+from .runtime_capture import CAPTURE_COPY
 from .station_trace import (
     MONITOR_CHECKPOINTS, TRACE_LIMIT, TraceIssue, bound_launchpad_evidence, check_bound_leg, check_detections,
     check_leg_positions, check_monitor_checkpoint, check_release_motion, check_sampled_speed, check_station_positions,
@@ -197,6 +200,16 @@ def bind_cycle_build(trace, report, identity, missing, result):
     return {**trace, "inspectionLeg": trace["inspectionLeg"] | {key: identity[key] for key in missing}}
 
 
+def check_adjacent_scan(path):
+    try:
+        info = path.lstat()
+    except FileNotFoundError as error:
+        raise TraceIssue("cycle_hmi_scan_capture_missing",
+                         f"Keep {CAPTURE_COPY} beside the status response or supply scanCsv") from error
+    if not S_ISREG(info.st_mode) or getattr(info, "st_file_attributes", 0) & FILE_ATTRIBUTE_REPARSE_POINT:
+        raise TraceIssue("cycle_hmi_scan_capture_mismatch", f"The adjacent {CAPTURE_COPY} must be a regular file")
+
+
 def cycle_trace_review(project, configuration, cpu, manager_id, lpj, readback, name_map, job_directory,
                        source_station, trace_path, *, hmi_status_path=None, scan_csv_path=None, require_session_capture=False,
                        expected_motion=None, position_tolerance_um=None, return_position_tolerance_um=None,
@@ -218,24 +231,32 @@ def cycle_trace_review(project, configuration, cpu, manager_id, lpj, readback, n
             raise TraceIssue("cycle_trace_route", "The compiled route needs two station legs that close the cycle")
         identity = leg_identity(report, manager_id, outbound)
         trace, result["trace"] = json_snapshot(trace_path, TRACE_LIMIT)
-        if scan_csv_path is not None:
-            if require_session_capture and hmi_status_path is not None and isinstance(trace, dict):
-                scan, hmi = trace.get("scanCapture"), trace.get("hmi", {})
+        if require_session_capture and hmi_status_path is not None and isinstance(trace, dict):
+            scan, hmi = trace.get("scanCapture"), trace.get("hmi", {})
+            if scan_csv_path is None and (not isinstance(scan, dict) or not isinstance(hmi, dict)):
+                raise ValueError("Automatic scan selection needs a scanCapture object and an object for any supplied hmi mapping")
+            if isinstance(scan, dict) and isinstance(hmi, dict):
                 inspection = trace.get("inspectionLeg")
                 missing = (
                     [key for key in BUILD_HASH_FIELDS if key not in inspection] if isinstance(inspection, dict) else []
                 )
-                if (isinstance(scan, dict) and isinstance(hmi, dict)
-                        and (missing or "sha256" not in scan or not {"sessionId", "heartbeatIdentifier", "bindings"} <= hmi.keys())):
+                if (scan_csv_path is None or missing or "sha256" not in scan
+                        or not {"sessionId", "heartbeatIdentifier", "bindings"} <= hmi.keys()):
                     result["phase"] = "bind_session_scan"
                     evidence_path = hmi_status_path
                     status_snapshot = json_snapshot(hmi_status_path, TRACE_LIMIT)
                     trace, binding = bind_session_scan_capture(trace, status_snapshot[0], report["rucReview"])
+                    if scan_csv_path is None:
+                        evidence_path = Path(status_snapshot[1]["path"]).with_name(CAPTURE_COPY)
+                        check_adjacent_scan(evidence_path)
+                        scan_csv_path = evidence_path
+                        binding["derivedFields"].append("scanCsv")
                     result["sessionScanBinding"] = {**binding, "statusReport": status_snapshot[1]}
                     if missing:
                         result["phase"] = "bind_build"
                         evidence_path = trace_path
                         trace = bind_cycle_build(trace, report, identity, missing, result)
+        if scan_csv_path is not None:
             evidence_path = scan_csv_path
             trace = materialize_cycle(
                 trace, scan_csv_path, result.setdefault("scanCapture", {}),
