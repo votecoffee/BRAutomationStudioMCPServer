@@ -343,7 +343,7 @@ def build_preflight(path, studio_root, runtime_root=None, configuration=None, cp
                     verify_motion_declarations=False, include_layout=False, geometry_manager=None, recovery_managers=(),
                     include_motion=False, include_io=False, expected_controller_type=None, controller_io_assembly=None,
                     controller_io_task_class=None, controller_powerlink_connector=None,
-                    controller_powerlink_assembly=None, physical_assembly=None):
+                    controller_powerlink_assembly=None, physical_assembly=None, mapp_view_ethernet_connector=None):
     if controller_io_assembly is not None and expected_controller_type is None:
         raise ValueError("The controller I/O review needs an expected controller type")
     if controller_io_task_class is not None and controller_io_assembly is None:
@@ -411,6 +411,11 @@ def build_preflight(path, studio_root, runtime_root=None, configuration=None, cp
 
         report["physicalAssemblyReview"] = review_physical_assembly(saved, studio, report, hardware,
                                                                    physical_assembly, runtime_supports)
+    if mapp_view_ethernet_connector is not None:
+        from .mapp_view_endpoint import review_mapp_view_endpoint
+
+        report["mappViewEndpointReview"] = review_mapp_view_endpoint(saved, studio, report, hardware,
+                                                                   mapp_view_ethernet_connector)
     report["snapshot"] = saved.snapshot()
     report["evidence"] = "saved_files_and_installation_metadata"
     report["preflight"] = {

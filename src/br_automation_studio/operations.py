@@ -112,7 +112,8 @@ def preflight(arguments, request_directory):
                            expected_controller_type=controller, controller_io_assembly=assembly,
                            controller_io_task_class=task_class, controller_powerlink_connector=powerlink,
                            controller_powerlink_assembly=powerlink_assembly,
-                           physical_assembly=arguments.get("physicalAssembly"))
+                           physical_assembly=arguments.get("physicalAssembly"),
+                           mapp_view_ethernet_connector=arguments.get("mappViewEthernetConnector"))
 
 
 def run_motion_interface_review(arguments, request_directory):
@@ -520,6 +521,8 @@ BUILD_PREFLIGHT = Operation(
                                         "description": "Compare this assembly's saved interface and node number with the direct connection. Requires controllerPowerlinkConnector."},
         "physicalAssembly": {"type": "string", "minLength": 1,
                              "description": "Check that this selected 6D assembly and CPU have simulation disabled for physical handoff."},
+        "mappViewEthernetConnector": {"type": "string", "minLength": 1,
+                                      "description": "Review the saved static IPv4 and mapp View startup on this dedicated CPU Ethernet connector."},
     },
     required=("project", "studioRoot"),
     handler=preflight,

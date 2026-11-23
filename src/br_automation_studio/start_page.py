@@ -33,11 +33,14 @@ def saved_resource(source, paths, extension, root, identity, owner):
     return path, node
 
 
-def visualization_start(visu, path, visualization, content):
+def visualization_start(visu, path, visualization, content=None):
     require(visu.get("id") == visualization, path, "Visualization ID differs")
     start = one(nested(visu, "StartPage"), path, "StartPage element")
     page = resource_id(start.get("pageRefId"), path, "start page ID")
-    for group, tag, identity in (("Pages", "Page", page), ("Contents", "Content", content)):
+    references = [("Pages", "Page", page)]
+    if content is not None:
+        references.append(("Contents", "Content", content))
+    for group, tag, identity in references:
         one((item for item in nested(visu, group, tag) if item.get("refId") == identity),
             path, f"visualization reference to {identity!r}")
     return page

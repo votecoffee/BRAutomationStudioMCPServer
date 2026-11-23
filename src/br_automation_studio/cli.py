@@ -115,6 +115,15 @@ def markdown(response):
                 lines.append(f"- {text(module['name'])} · Saved revision {text(module['savedVersion'])}"
                              f" · Catalog revision {text(module['catalogVersion'])} · {text(module['state'])}"
                              f" · {text(module['catalog'])}")
+    if endpoint := report.get("mappViewEndpointReview"):
+        lines.extend(["", "## Saved mapp View browser entry", "",
+                      f"- Ethernet {text(endpoint['connector'])} · {text(endpoint['state'])}"
+                      f" · {text(endpoint['addressMode'])} · {text(endpoint['address'])}",
+                      f"- Default visualization {text(endpoint['visualizationId'])}"
+                      f" · Start page {text(endpoint['startPageId'])} · {text(endpoint['serverConfig'])}"])
+        for listener in endpoint["listeners"]:
+            lines.append(f"- {listener['scheme'].upper()} port {listener['port']}"
+                         f" · Default URL {text(listener['defaultUrl'])}")
     if physical := report.get("physicalAssemblyReview"):
         lines.extend(["", "## Physical 6D assembly mode", "",
                       f"- Assembly {text(physical['assembly'])} · {text(physical['state'])}"

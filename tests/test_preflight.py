@@ -195,6 +195,95 @@ class BuildPreflightTests(unittest.TestCase):
         self.assertIn(exact.as_posix(), {row["path"] for row in result["preflight"]["studioSnapshot"]["files"]})
         self.assertIn("Saved revision 1.0.0.1 · Catalog revision 1.0.0.1", markdown(matched))
 
+    def test_saved_mapp_view_entry_traces_ethernet_listeners_and_registered_start_page(self):
+        self.local_core("5.29.1")
+        folder = self.project / "Physical/ARsim/PC"
+        cpu = folder / "Cpu.pkg"
+        cpu.write_bytes(cpu.read_bytes().replace(b'ModuleId="PC_any"', b'ModuleId="X20CP1684"').replace(
+            b"</Objects>", b'<Object Type="File">Server.mappviewcfg</Object>'
+            b'<Object Type="File">Panel.vis</Object></Objects>'))
+        self.put(self.studio / "AS/Hardware/Modules/X20CP1684/1.5.0.0/X20CP1684.hwx",
+                 '<Module Version="1.5.0.0"><Connectors>'
+                 '<Connector Name="IF2"><Connections><Connection Name="Ethernet" /></Connections></Connector>'
+                 '<Connector Name="IF3"><Connections><Connection Name="Ethernet" /><Connection Name="Powerlink" />'
+                 '</Connections></Connector></Connectors></Module>')
+        hardware = folder.parent / "Hardware.hw"
+        target = ('<Hardware><Module Name="PC" Type="X20CP1684" Version="1.5.0.0"><Connector Name="IF2">'
+                  '<Parameter ID="ActivateDevice" Value="1" /><Parameter ID="Mode" Value="Manual" />'
+                  '<Parameter ID="InternetAddress" Value="192.0.2.24" /></Connector></Module></Hardware>')
+        self.put(hardware, target)
+        server_path = folder / "Server.mappviewcfg"
+        server = ('<Configuration><Element Type="MAPPVIEWCFG"><Group ID="Server">'
+                  '<Selector ID="WebServerProtocol" Value="3"><Property ID="WebServerPort" Value="81" />'
+                  '<Property ID="WebServerPortSsl" Value="443" /><Property ID="SSLConfiguration" Value="PanelTLS" />'
+                  '</Selector></Group><Group ID="Client"><Property ID="defaultVisu" Value="CounterPanel" />'
+                  '</Group></Element></Configuration>')
+        self.put(server_path, server)
+        vis = folder / "Panel.vis"
+        visualization = ('<v:Visualization xmlns:v="http://www.br-automation.com/iat2015/visualizationDefinition/v2"'
+                         ' id="CounterPanel"><StartPage pageRefId="Overview"/><Pages><Page refId="Overview"/>'
+                         '</Pages></v:Visualization>')
+        self.put(vis, visualization)
+        logical = self.project / "Logical/Package.pkg"
+        pkg = logical.read_bytes()
+        logical.write_bytes(pkg.replace(b"</Objects>", b'<Object Type="File">Overview.page</Object></Objects>'))
+        self.put(logical.with_name("Overview.page"),
+                 '<p:Page xmlns:p="http://www.br-automation.com/iat2015/pageDefinition/v2" id="Overview" />')
+        options = {"mappViewEthernetConnector": "IF2"}
+
+        response = self.inspect(**options)
+        self.assertEqual(response["status"], "complete", response["result"]["diagnostics"])
+        endpoint = response["result"]["mappViewEndpointReview"]
+        self.assertEqual(endpoint["state"], "matched")
+        self.assertEqual(endpoint["address"], "192.0.2.24")
+        self.assertEqual(endpoint["serverConfig"], "Physical/ARsim/PC/Server.mappviewcfg")
+        self.assertEqual(endpoint["visualizationId"], "CounterPanel")
+        self.assertEqual(endpoint["startPage"], "Logical/Overview.page")
+        self.assertEqual(endpoint["sslConfiguration"], "PanelTLS")
+        self.assertEqual([row["defaultUrl"] for row in endpoint["listeners"]],
+                         ["http://192.0.2.24:81/index.html", "https://192.0.2.24:443/index.html"])
+        self.assertEqual(endpoint["listeners"][0]["explicitVisualizationUrl"],
+                         "http://192.0.2.24:81/index.html?visuId=CounterPanel")
+        self.assertIn("Default visualization CounterPanel · Start page Overview", markdown(response))
+        self.assertNotIn("mappViewEndpointReview", self.inspect()["result"])
+
+        for changed in (target.replace("Manual", "DHCP Client"), target.replace("192.0.2.24", "127.0.0.1"),
+                        target.replace('ID="ActivateDevice" Value="1"', 'ID="ActivateDevice" Value="0"')):
+            self.put(hardware, changed)
+            partial = self.inspect(**options)
+            self.assertEqual(partial["status"], "partial")
+            browser = partial["result"]["mappViewEndpointReview"]
+            self.assertIsNone(browser["address"])
+            self.assertEqual(browser["startPageId"], "Overview")
+            self.assertTrue(all(row["defaultUrl"] is None for row in browser["listeners"]))
+        self.put(hardware, target)
+        powerlink = self.inspect(mappViewEthernetConnector="IF3")
+        self.assertEqual(powerlink["status"], "partial")
+        self.assertIsNone(powerlink["result"]["mappViewEndpointReview"]["address"])
+
+        self.put(server_path, server.replace('ID="WebServerProtocol" Value="3"', 'ID="WebServerProtocol" Value="2"'))
+        tls = self.inspect(**options)["result"]["mappViewEndpointReview"]
+        self.assertEqual([row["scheme"] for row in tls["listeners"]], ["https"])
+        self.put(server_path, server.replace('<Property ID="SSLConfiguration" Value="PanelTLS" />', ""))
+        missing_ssl = self.inspect(**options)
+        self.assertEqual(missing_ssl["status"], "partial")
+        listeners = missing_ssl["result"]["mappViewEndpointReview"]["listeners"]
+        self.assertEqual(listeners[0]["defaultUrl"], "http://192.0.2.24:81/index.html")
+        self.assertIsNone(listeners[1]["defaultUrl"])
+
+        for changed in (server.replace('Value="443"', 'Value="81"'),
+                        server.replace('Value="CounterPanel"', 'Value="Unregistered"')):
+            self.put(server_path, changed)
+            partial = self.inspect(**options)
+            self.assertEqual(partial["status"], "partial")
+            self.assertTrue(all(row["defaultUrl"] is None
+                                for row in partial["result"]["mappViewEndpointReview"]["listeners"]))
+        self.put(server_path, server)
+        logical.write_bytes(pkg)
+        partial = self.inspect(**options)
+        self.assertEqual(partial["status"], "partial")
+        self.assertTrue(all(row["defaultUrl"] is None for row in partial["result"]["mappViewEndpointReview"]["listeners"]))
+
     def test_physical_assembly_review_checks_independent_simulation_settings(self):
         self.local_core("5.29.1")
         folder = self.project / "Physical/ARsim/PC"

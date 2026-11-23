@@ -58,6 +58,12 @@ With br-studio 0.98.0 or later, set `physicalAssembly` to the registered assembl
 
 Read `physicalAssemblyReview` for the settings and sources. A saved CPU flag takes precedence. When the CPU omits it, the review can use the applicable `ArCfgGroupSimulation.xml` default referenced by the exact selected CPU catalog. The result identifies that catalog and includes the definition in the installation read set. Missing, conflicting or unsupported settings produce `physical_assembly_mode_unverified`. Check the active target and connection in Automation Studio before the physical handoff.
 
+### Trace the saved mapp View browser entry
+
+With br-studio 0.99.0 or later, set `mappViewEthernetConnector` to the selected CPU's dedicated Ethernet connector, such as `IF2` on the X20CP1684. The check follows the saved enabled connector's manual IPv4 address, the CPU's registered `.mappviewcfg`, the default `.vis` and its registered start `.page`. [B&R X20CP1684 interfaces](https://www.br-automation.com/en-ca/products/plc-systems/x20-system/x20-plc/x20cp1684/) · [B&R browser startup tutorial](https://help.br-automation.com/#/en/4/visualization/mappview/guides/getting_started/getting_started_testvisu.html)
+
+Read `mappViewEndpointReview` for the saved paths, visualization, page ID and listeners. An explicit HTTP or HTTPS port yields an `/index.html` URL and a second URL with `?visuId=`. HTTPS also needs an explicit saved SSL configuration reference. The review reports missing data as `mapp_view_entry_unverified`. For DHCP, identify the assigned address on the deployed target. For TLS, check the commissioned hostname and certificate trust in the client. After deployment, confirm the intended page opens and its live PLC values update.
+
 ## Check package Runtime requirements
 
 With br-studio 0.86.0 or later, preflight compares the selected CPU's saved Automation Runtime with the Runtime dependencies and lockouts declared in each selected package's installed `TP.cfg`. The result appears under the corresponding package in Markdown and in `preflight.technologyPackages[].constraints` in JSON. The receipt records the manifest path, the inclusive bounds, `selectedVersion` and `state`.

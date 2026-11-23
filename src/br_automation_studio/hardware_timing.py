@@ -34,10 +34,10 @@ def unsigned_value(value):
     return None
 
 
-def powerlink_ports(definition):
+def catalog_ports(definition, network):
     return [port.get("Name") for group in children(definition, "Connectors")
             for port in children(group, "Connector")
-            if any(link.get("Name") == "Powerlink" for protocol in children(port, "Connections")
+            if any(link.get("Name") == network for protocol in children(port, "Connections")
                    for link in children(protocol, "Connection"))]
 
 
@@ -126,14 +126,14 @@ def review_powerlink(saved, studio, project, hardware, cpu_catalog, connector, a
         return result
     result["cpuCatalog"] = exact.as_posix()
     cpu_definition, _ = studio.xml(exact, "Module")
-    if powerlink_ports(cpu_definition).count(connector) != 1:
+    if catalog_ports(cpu_definition, "Powerlink").count(connector) != 1:
         issue(f"The exact CPU catalog does not declare one POWERLINK connector named {connector!r}", "error")
         return result
 
     selected = hardware["modules"][0]
     result["controller"] = selected["name"]
     controller_definition, _ = studio.xml(Path(selected["catalog"]), "Module")
-    controller_ports = powerlink_ports(controller_definition)
+    controller_ports = catalog_ports(controller_definition, "Powerlink")
     direct = [(node, link) for node in children(root, "Module")
               if node.get("Name") == selected["name"] and node.get("Type") == selected["type"]
               for link in children(node, "Connection")
