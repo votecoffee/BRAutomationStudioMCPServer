@@ -111,6 +111,29 @@ class CycleTraceTest(unittest.TestCase):
             "startScan": 12, "endScan": 18, "elapsedScans": 6,
             "startTimeMicroseconds": 14400, "endTimeMicroseconds": 32400, "elapsedMicroseconds": 18000,
         })
+        for max_scans, max_time, diagnostic in (
+            (6, 18000, None),
+            (6, 17999, "cycle_trace_elapsed_limit"),
+            (5, 18000, "cycle_trace_scan_limit"),
+            (5, 17999, "cycle_trace_scan_limit"),
+        ):
+            with self.subTest(max_scans=max_scans, max_time=max_time):
+                checked = {}
+                options = {"verify_scan_clock": True, "max_release_to_next_hold_scans": max_scans,
+                           "max_release_to_next_hold_us": max_time}
+                if diagnostic:
+                    with self.assertRaises(TraceIssue) as caught:
+                        check_cycle(self.trace, self.identity, self.outbound, self.inbound, checked, **options)
+                    self.assertEqual(caught.exception.code, diagnostic)
+                    self.assertEqual(checked["phase"], "scan_timing")
+                else:
+                    check_cycle(self.trace, self.identity, self.outbound, self.inbound, checked, **options)
+                bounds = checked["scanTiming"]
+                self.assertEqual(bounds["intervals"], timing["intervals"])
+                self.assertEqual(bounds["releaseToNextHoldLimit"]["state"], "matched" if max_scans == 6 else "issues")
+                self.assertEqual(bounds["releaseToNextHoldTimeLimit"], {
+                    "maximumMicroseconds": max_time, "state": "matched" if max_time == 18000 else "issues",
+                })
         for row, time, code, severity in (
             (returned[0], 22501, "cycle_trace_scan_time_overlap", "error"),
             (returned[1], 22500, "cycle_trace_scan_time_order", "error"),
@@ -124,11 +147,13 @@ class CycleTraceTest(unittest.TestCase):
                 try:
                     rejected = {}
                     with self.assertRaises(TraceIssue) as caught:
-                        check_cycle(self.trace, self.identity, self.outbound, self.inbound, rejected, verify_scan_clock=True)
+                        check_cycle(self.trace, self.identity, self.outbound, self.inbound, rejected,
+                                    verify_scan_clock=True, max_release_to_next_hold_us=18000)
                     self.assertEqual((caught.exception.code, caught.exception.severity), (code, severity))
                     self.assertEqual(rejected["phase"], "scan_clock")
                     interval = rejected["scanTiming"]["intervals"]["releaseToNextHold"]
                     self.assertEqual(interval, {"startScan": 12, "endScan": 18, "elapsedScans": 6})
+                    self.assertNotIn("releaseToNextHoldTimeLimit", rejected["scanTiming"])
                 finally:
                     row[SCAN_TIME] = original
 

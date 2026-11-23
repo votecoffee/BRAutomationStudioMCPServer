@@ -74,6 +74,8 @@ With br-studio 0.81.0 or later, set `verifyScanClock: true` when the trace recor
 
 Distinct scan indexes must have strictly increasing nonnegative integer timestamps. When the two legs share a scan, their timestamps must agree. The review records the checked span in `cycleTraceReview.scanTiming.clock` and adds both endpoint times and `elapsedMicroseconds` to each interval. Missing timestamps leave the clock review incomplete. Invalid or conflicting timestamps fail it. Both outcomes retain the scan-count intervals.
 
+With br-studio 0.85.0 or later, set `maxReleaseToNextHoldMicroseconds` with `verifyScanClock` to enforce an approved elapsed-time limit. The review compares the clock readings at Release and first next hold. The exact limit passes. An exceeded limit records `cycle_trace_elapsed_limit` and retains the measured interval. If both the scan-count and elapsed-time limits are supplied, `releaseToNextHoldLimit` and `releaseToNextHoldTimeLimit` report their outcomes separately. A clock failure leaves the elapsed-time limit unevaluated.
+
 ## Check when the release total increments
 
 With br-studio 0.79.0 or later, set `releaseTotalEvent` for an isolated one-shuttle cycle when the project's counter semantics and sample timing are known.

@@ -202,8 +202,31 @@ def verify_cycle_scan_clock(trace, timing):
     clock.update(state="matched", firstScan=min(times), lastScan=max(times), checkedScans=len(times))
 
 
+def check_cycle_timing_limits(timing, max_scans, max_microseconds):
+    interval = timing["intervals"]["releaseToNextHold"]
+    exceeds_scans = exceeds_time = False
+    if max_scans is not None:
+        elapsed_scans = interval["elapsedScans"]
+        exceeds_scans = elapsed_scans > max_scans
+        timing["releaseToNextHoldLimit"] = {
+            "maximumScans": max_scans, "state": "issues" if exceeds_scans else "matched",
+        }
+    if max_microseconds is not None:
+        elapsed_us = interval["elapsedMicroseconds"]
+        exceeds_time = elapsed_us > max_microseconds
+        timing["releaseToNextHoldTimeLimit"] = {
+            "maximumMicroseconds": max_microseconds, "state": "issues" if exceeds_time else "matched",
+        }
+    if exceeds_scans:
+        raise TraceIssue("cycle_trace_scan_limit",
+                         f"Release to the next hold took {elapsed_scans} PLC scans, above the configured limit of {max_scans}")
+    if exceeds_time:
+        raise TraceIssue("cycle_trace_elapsed_limit",
+                         f"Release to the next hold took {elapsed_us} µs, above the configured limit of {max_microseconds} µs")
+
+
 def check_cycle(trace, identity, outbound_path, inbound_path, result, *, max_release_to_next_hold_scans=None,
-                verify_scan_clock=False):
+                verify_scan_clock=False, max_release_to_next_hold_us=None):
     if not isinstance(trace, dict) or type(trace.get("schemaVersion")) is not int or trace["schemaVersion"] != 1:
         raise ValueError("Expected a schemaVersion 1 cycle trace")
     outbound = result["outbound"] = {"path": outbound_path, "identity": identity}
@@ -221,16 +244,9 @@ def check_cycle(trace, identity, outbound_path, inbound_path, result, *, max_rel
     if verify_scan_clock:
         result["phase"] = "scan_clock"
         verify_cycle_scan_clock(trace, timing)
-    if max_release_to_next_hold_scans is not None:
+    if max_release_to_next_hold_scans is not None or max_release_to_next_hold_us is not None:
         result["phase"] = "scan_timing"
-        elapsed = timing["intervals"]["releaseToNextHold"]["elapsedScans"]
-        within_limit = elapsed <= max_release_to_next_hold_scans
-        timing["releaseToNextHoldLimit"] = {
-            "maximumScans": max_release_to_next_hold_scans, "state": "matched" if within_limit else "issues",
-        }
-        if not within_limit:
-            raise TraceIssue("cycle_trace_scan_limit",
-                             f"Release to the next hold took {elapsed} PLC scans, above the configured limit of {max_release_to_next_hold_scans}")
+        check_cycle_timing_limits(timing, max_release_to_next_hold_scans, max_release_to_next_hold_us)
     result["phase"] = "complete"
 
 
@@ -318,7 +334,8 @@ def cycle_trace_review(project, configuration, cpu, manager_id, lpj, readback, n
                        waypoint_tolerance_um=None, verify_sampled_speed=False, max_sample_interval_us=None,
                        verify_position_time_handoff=False, require_assembly_widget=False, hmi_layout_report_path=None,
                        captured_layout_checks=None, require_hold_through_reopen=False, release_total_event=None,
-                       max_release_to_next_hold_scans=None, verify_scan_clock=False, max_position_sample_age_us=None):
+                       max_release_to_next_hold_scans=None, verify_scan_clock=False, max_position_sample_age_us=None,
+                       max_release_to_next_hold_us=None):
     report = launchpad_route_review(project, configuration, cpu, manager_id, lpj, readback, name_map, job_directory,
                                     include_stations=True)
     result = report["cycleTraceReview"] = {"state": "not_checked", "sourceStation": source_station}
@@ -372,7 +389,8 @@ def cycle_trace_review(project, configuration, cpu, manager_id, lpj, readback, n
         elif isinstance(trace, dict) and "scanCapture" in trace:
             raise ValueError("Supply scanCsv for a cycle trace with scanCapture")
         check_cycle(trace, identity, outbound, inbound, result,
-                    max_release_to_next_hold_scans=max_release_to_next_hold_scans, verify_scan_clock=verify_scan_clock)
+                    max_release_to_next_hold_scans=max_release_to_next_hold_scans, verify_scan_clock=verify_scan_clock,
+                    max_release_to_next_hold_us=max_release_to_next_hold_us)
         if release_total_event is not None:
             result["phase"] = "release_total"
             evidence_path = scan_csv_path or trace_path

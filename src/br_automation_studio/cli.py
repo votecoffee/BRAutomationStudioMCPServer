@@ -801,6 +801,9 @@ def markdown_cycle_trace(cycle, text):
             lines.extend(["", f"- Scan acquisition clock {text(clock['state'])}"])
         if limit := timing.get("releaseToNextHoldLimit"):
             lines.extend(["", f"- Release-to-next-hold limit {text(limit['state'])} · Maximum {limit['maximumScans']} scans"])
+        if limit := timing.get("releaseToNextHoldTimeLimit"):
+            lines.extend(["", f"- Release-to-next-hold time limit {text(limit['state'])}"
+                          f" · Maximum {limit['maximumMicroseconds']} µs"])
     return lines
 
 

@@ -316,6 +316,9 @@ def run_cycle_trace_review(arguments, request_directory):
     if verify_time_handoff and not arguments.get("verifySampledSpeed", False):
         raise InvalidRequest("verifyPositionTimeHandoff requires verifySampledSpeed to be true")
     verify_scan_clock = arguments.get("verifyScanClock", False)
+    max_release_to_next_hold_us = arguments.get("maxReleaseToNextHoldMicroseconds")
+    if max_release_to_next_hold_us is not None and not verify_scan_clock:
+        raise InvalidRequest("maxReleaseToNextHoldMicroseconds needs verifyScanClock")
     max_position_age = arguments.get("maxPositionSampleAgeMicroseconds")
     outbound_tolerance = arguments.get("positionToleranceMicrometres")
     return_tolerance = arguments.get("returnPositionToleranceMicrometres")
@@ -340,6 +343,7 @@ def run_cycle_trace_review(arguments, request_directory):
                               captured_layout_checks=layout_checks if verify_layout else None,
                               release_total_event=release_total_event,
                               max_release_to_next_hold_scans=arguments.get("maxReleaseToNextHoldScans"),
+                              max_release_to_next_hold_us=max_release_to_next_hold_us,
                               verify_scan_clock=verify_scan_clock, max_position_sample_age_us=max_position_age,
                               **sampled_speed_options(arguments))
 
@@ -691,6 +695,8 @@ CYCLE_TRACE_REVIEW = Operation(
                               "description": "Require the sampled release total to increase once at the selected event scan and stay steady through the next hold."},
         "maxReleaseToNextHoldScans": {"type": "integer", "minimum": 1, "maximum": 9007199254740991,
                                       "description": "Maximum allowed scan index difference from the Release edge to the first next hold."},
+        "maxReleaseToNextHoldMicroseconds": {"type": "integer", "minimum": 1, "maximum": 9007199254740991,
+                                             "description": "Maximum measured time from the Release edge to the first next hold. Requires verifyScanClock."},
         "verifyScanClock": {"type": "boolean", "default": False,
                             "description": "Measure cycle intervals from one recorded microsecond clock spanning both legs and the next hold."},
         "maxPositionSampleAgeMicroseconds": {"type": "integer", "minimum": 0, "maximum": 9007199254740991,
