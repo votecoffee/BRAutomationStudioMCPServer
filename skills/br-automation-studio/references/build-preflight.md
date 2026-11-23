@@ -28,6 +28,12 @@ With br-studio 0.93.0 or later, set `expectedControllerType` in a `build_preflig
 
 Read `preflight.controllerHardware` for the saved revision, catalog path and catalog revision. The project and Studio read sets include the files used. A different saved model produces `controller_type_missing`. A missing exact catalog revision or mismatched XML revision produces a separate diagnostic. Use the active physical configuration for this review. Verify the assembly's controller assignment, POWERLINK node, I/O map and delivered hardware through the native configuration workflow.
 
+### Check the saved 6D communication mapping
+
+With br-studio 0.94.0 or later, add `controllerIoAssembly` with the assembly ID and keep `expectedControllerType` in the same preflight request. Use this check for the AS4 200-word communication array layout. It follows the saved assembly's Input and Output references to registered `Mc6DControllerFBIOType` variables and reads the selected CPU's registered `.iom` file. The selected configuration needs one matching controller for this comparison. [B&R hardware-specific configuration topic](https://help.br-automation.com/#/en/4/motion/mapp_6d/leitfaden/getting_started_mapp_6d/50_making_hardware-specific_configuration.html)
+
+Read `controllerIoReview` for the device, paths, variables and counts. The check compares each required array index, word access and channel ID against the exact catalog's SG4 input and output words. It identifies duplicates, missing indices and invalid rows. Task qualifiers are recorded as saved. Confirm the intended cyclic assignment, enabled channels and physical network settings in Automation Studio.
+
 ## Check package Runtime requirements
 
 With br-studio 0.86.0 or later, preflight compares the selected CPU's saved Automation Runtime with the Runtime dependencies and lockouts declared in each selected package's installed `TP.cfg`. The result appears under the corresponding package in Markdown and in `preflight.technologyPackages[].constraints` in JSON. The receipt records the manifest path, the inclusive bounds, `selectedVersion` and `state`.

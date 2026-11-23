@@ -94,9 +94,13 @@ def run_widget_package_review(arguments, request_directory):
 
 
 def preflight(arguments, request_directory):
+    assembly = arguments.get("controllerIoAssembly")
+    controller = arguments.get("expectedControllerType")
+    if assembly is not None and controller is None:
+        raise InvalidRequest("controllerIoAssembly needs expectedControllerType")
     return build_preflight(*build_inputs(arguments, request_directory),
                            verify_motion_declarations=arguments.get("verifyMotionDeclarations", False),
-                           expected_controller_type=arguments.get("expectedControllerType"))
+                           expected_controller_type=controller, controller_io_assembly=assembly)
 
 
 def run_motion_interface_review(arguments, request_directory):
@@ -494,6 +498,8 @@ BUILD_PREFLIGHT = Operation(
         **BUILD_PREFLIGHT_INPUTS,
         "expectedControllerType": {"type": "string", "minLength": 1,
                                    "description": "Require this Hardware.hw Module Type and its exact installed hardware revisions."},
+        "controllerIoAssembly": {"type": "string", "minLength": 1,
+                                 "description": "Check this assembly's saved 200-word input and output mapping. Requires expectedControllerType."},
     },
     required=("project", "studioRoot"),
     handler=preflight,

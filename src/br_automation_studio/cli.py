@@ -115,6 +115,18 @@ def markdown(response):
                 lines.append(f"- {text(module['name'])} · Saved revision {text(module['savedVersion'])}"
                              f" · Catalog revision {text(module['catalogVersion'])} · {text(module['state'])}"
                              f" · {text(module['catalog'])}")
+    if controller_io := report.get("controllerIoReview"):
+        lines.extend(["", "## Controller communication I/O mapping", "",
+                      f"- Assembly {text(controller_io['assembly'])} · {text(controller_io['state'])}"
+                      f" · Mapping {text(controller_io['map'])}"])
+        for role, stats in controller_io.get("directions", {}).items():
+            lines.append(f"- {text(role)} {text(controller_io['variables'][role])}"
+                         f" · {stats['matchedRows']} matched · {len(stats['missingIndices'])} unmapped")
+        if "taskClasses" in controller_io:
+            tasks = ", ".join(map(str, controller_io["taskClasses"])) or "none specified"
+            lines.append(f"- Cyclic class {tasks} · {controller_io['unqualifiedRows']} rows without a task qualifier")
+        for row in controller_io.get("invalidRows", [])[:6]:
+            lines.append(f"- Line {row['line']} · {text(row['reason'])}")
     if simulation := report.get("simulationPreflight"):
         lines.extend(markdown_simulation_prerequisites(simulation, text))
         if export := simulation["launchPadExport"]:

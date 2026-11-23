@@ -195,6 +195,67 @@ class BuildPreflightTests(unittest.TestCase):
         self.assertIn(exact.as_posix(), {row["path"] for row in result["preflight"]["studioSnapshot"]["files"]})
         self.assertIn("Saved revision 1.0.0.1 · Catalog revision 1.0.0.1", markdown(matched))
 
+    def test_controller_map_requires_each_word_for_the_assembly_and_saved_device(self):
+        self.local_core("5.29.1")
+        module_type = "8FLM11.0000.00I-2"
+        self.put(self.project / "Physical/ARsim/Hardware.hw",
+                 f'<Hardware><Module Name="PlanarController" Type="{module_type}" Version="1.0.0.1" /></Hardware>')
+        map_path = self.project / "Physical/ARsim/PC/IoMap.iom"
+        cpu = map_path.with_name("Cpu.pkg")
+        cpu.write_bytes(cpu.read_bytes().replace(b"</Objects>", b'<Object Type="File">IoMap.iom</Object></Objects>'))
+        assembly = map_path.parent / "mapp6D/FixtureAssembly.assembly6d"
+        assembly.write_bytes(assembly.read_bytes().replace(
+            b'<Group ID="Layout">',
+            b'<Group ID="IOMapp"><Property ID="Input" Value="gInput"/>'
+            b'<Property ID="Output" Value="gOutput"/></Group><Group ID="Layout">'))
+        package = self.project / "Logical/Package.pkg"
+        package.write_bytes(package.read_bytes().replace(
+            b"</Objects>", b'<Object Type="File">Global.var</Object></Objects>', 1))
+        self.put(package.with_name("Global.var"),
+                 "VAR\ngInput : Mc6DControllerFBIOType;\ngOutput : Mc6DControllerFBIOType;\nEND_VAR\n")
+        hwx = self.studio / f"AS/Hardware/Modules/{module_type}/1.0.0.1/{module_type}.hwx"
+        channels, rows = [], []
+        for role, direction, obj, access, suffix in (("Input", "IN", "2007", "IW", ""),
+                                                      ("Output", "OUT", "2008", "QW", "Out")):
+            for index in range(200):
+                channel = f"EPL_FB_{direction}_{index}_I{obj}_S{index + 1:02X}{suffix}"
+                channels.append(f'<Channel ID="{channel}">'
+                                f'<Parameter ID="Address" Value="{index * 2:#x}" />'
+                                f'<Parameter ID="Direction" Value="{direction}" />'
+                                '<Parameter ID="Type" Value="UINT" /></Channel>')
+                rows.append(f'Cyclic#1.::g{role}.Array[{index}] AT %{access}."PlanarController".{channel};')
+        catalog = '<Module Version="1.0.0.1"><Channels Target="SG4">' + "".join(channels) + "</Channels></Module>"
+        self.put(hwx, catalog)
+        iom = "VAR_CONFIG\n(* " + rows[0] + " *)\n" + "\n".join(rows) + "\nEND_VAR\n"
+        self.put(map_path, iom)
+        args = {"expectedControllerType": module_type, "controllerIoAssembly": "FixtureAssembly"}
+        response = self.inspect(**args)
+        self.assertEqual(response["status"], "complete", response["result"]["diagnostics"])
+        verified = response["result"]["controllerIoReview"]
+        self.assertEqual(verified["state"], "matched")
+        self.assertEqual(verified["taskClasses"], [1])
+        self.assertEqual({role: value["matchedRows"] for role, value in verified["directions"].items()},
+                         {"Input": 200, "Output": 200})
+        self.assertIn("gOutput · 200 matched", markdown(response))
+
+        for changed, count, missing in (
+            (iom.replace(rows[-1], rows[-1].replace("%QW", "%IW")), 1, 1),
+            (iom.replace(rows[-1], rows[-1].replace("PlanarController", "WrongDevice")), 1, 1),
+            (iom.replace(rows[-1], rows[-2]), 1, 1),
+            (iom.replace(rows[-1], ""), 0, 1),
+        ):
+            with self.subTest(invalid=count, same_length=len(changed) == len(iom)):
+                self.put(map_path, changed)
+                mismatch = self.inspect(**args)["result"]["controllerIoReview"]
+                self.assertEqual(mismatch["state"], "mismatched")
+                self.assertEqual(len(mismatch["invalidRows"]), count)
+                self.assertEqual(len(mismatch["directions"]["Output"]["missingIndices"]), missing)
+
+        self.put(map_path, iom)
+        self.put(hwx, catalog.replace('Value="0x2"', 'Value="0x6"', 1))
+        catalog_issue = self.inspect(**args)["result"]["diagnostics"]
+        self.assertEqual([issue["code"] for issue in catalog_issue], ["controller_io_catalog_unverified"])
+
     def test_missing_exact_version_identifies_other_catalog_versions(self):
         apj = self.project / "Loop.apj"
         apj.write_bytes(apj.read_bytes().replace(b'mapp6D Version="2.2.0"', b'mapp6D Version="2.4.1"'))

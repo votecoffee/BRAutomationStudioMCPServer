@@ -5,6 +5,7 @@ from collections import defaultdict
 from pathlib import Path
 import re
 
+from .controller_io import review_controller_map
 from .inspection import inspect_saved
 from .motion_declarations import review_motion_declarations
 from .project import SavedFiles, children, tag
@@ -338,11 +339,14 @@ def check_library_dependencies(providers):
 
 def build_preflight(path, studio_root, runtime_root=None, configuration=None, cpu=None, *,
                     verify_motion_declarations=False, include_layout=False, geometry_manager=None, recovery_managers=(),
-                    include_motion=False, include_io=False, expected_controller_type=None):
+                    include_motion=False, include_io=False, expected_controller_type=None, controller_io_assembly=None):
+    if controller_io_assembly is not None and expected_controller_type is None:
+        raise ValueError("The controller I/O review needs an expected controller type")
     saved = SavedFiles(path.parent)
     report = inspect_saved(saved, Path(path.name), configuration, cpu,
                            include_layout=include_layout, geometry_manager=geometry_manager,
-                           recovery_managers=recovery_managers, include_motion=include_motion, include_io=include_io)
+                           recovery_managers=recovery_managers, include_motion=include_motion,
+                           include_io=include_io or controller_io_assembly is not None)
     studio = SavedFiles(studio_root)
     runtimes = SavedFiles(runtime_root if runtime_root is not None else studio.root.parent / "AS/System")
 
@@ -384,6 +388,8 @@ def build_preflight(path, studio_root, runtime_root=None, configuration=None, cp
         report["motionDeclarations"] = review_motion_declarations(saved, studio, report, packages)
     controller = (controller_hardware(saved, studio, report["selectedConfiguration"], expected_controller_type)
                   if expected_controller_type is not None else None)
+    if controller_io_assembly is not None:
+        report["controllerIoReview"] = review_controller_map(saved, studio, report, controller, controller_io_assembly)
     report["snapshot"] = saved.snapshot()
     report["evidence"] = "saved_files_and_installation_metadata"
     report["preflight"] = {
