@@ -28,24 +28,37 @@ def numeric_version(value):
     return parts + (0,) * (4 - len(parts))
 
 
-def within(value, lower, upper):
-    actual = numeric_version(value)
-    floor = numeric_version(lower)
-    ceiling = numeric_version(upper)
+def runtime_order(version):
+    match = RUNTIME_VERSION.fullmatch(version or "")
+    if match:
+        grade, major, minor = match.groups()
+        return int(major), int(minor), grade.upper()
+    return None
+
+
+def within(value, lower, upper, *, version_key=numeric_version):
+    actual = version_key(value)
+    floor = version_key(lower)
+    ceiling = version_key(upper)
     if actual is None or (lower and floor is None) or (upper and ceiling is None):
+        return None
+    if floor is not None and ceiling is not None and floor > ceiling:
         return None
     return (floor is None or actual >= floor) and (ceiling is None or actual <= ceiling)
 
 
-def check_range(source, path, name, value, lower, upper, *, lockout=False):
-    valid = within(value, lower, upper)
+def check_range(source, path, name, value, lower, upper, *, lockout=False, version_key=numeric_version):
+    valid = within(value, lower, upper, version_key=version_key)
     limits = f"{lower or 'any'} to {upper or 'any'}"
     if valid is None or (not lower and not upper):
         source.issue("warning", "unverified_version_range", path, f"Could not evaluate {name} {value!r} against {limits}")
-    elif valid == lockout:
+        return "unverified"
+    if valid == lockout:
         code = "package_lockout" if lockout else "version_out_of_range"
         message = f"{name} {value} matches lockout" if lockout else f"{name} {value} falls outside required range"
         source.issue("error", code, path, f"{message} {limits}")
+        return "mismatched"
+    return "matched"
 
 
 def engine(source, saved_studio=None):
@@ -296,12 +309,23 @@ def build_preflight(path, studio_root, runtime_root=None, configuration=None, cp
             if not identifier.startswith(("Dependency", "Lockout")):
                 continue
             limits = properties(group)
-            entry["constraints"].append({"id": identifier, **limits})
+            constraint = {"id": identifier, **limits}
+            entry["constraints"].append(constraint)
             target = limits.get("VersionType")
-            selected_version = studio_version if target == "AutomationStudio" else selections.get(target)
-            if selected_version:
-                check_range(studio, manifest, target, selected_version, limits.get("FromVersion"),
-                            limits.get("ToVersion"), lockout=identifier.startswith("Lockout"))
+            lower, upper = limits.get("FromVersion"), limits.get("ToVersion")
+            lockout = identifier.startswith("Lockout")
+            if target == "AutomationRuntime":
+                selected_version = runtime_check["version"]
+                constraint["selectedVersion"] = selected_version
+                constraint["state"] = (
+                    check_range(studio, manifest, target, selected_version, lower, upper,
+                                lockout=lockout, version_key=runtime_order)
+                    if report["selectedCpu"] else "unverified"
+                )
+            else:
+                selected_version = studio_version if target == "AutomationStudio" else selections.get(target)
+                if selected_version:
+                    check_range(studio, manifest, target, selected_version, lower, upper, lockout=lockout)
     configured_libraries(saved, report, providers)
     dependencies = check_library_dependencies(providers)
     if verify_motion_declarations:

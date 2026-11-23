@@ -22,6 +22,12 @@ Discover the installed request contract with `br-studio operation-help build_pre
 
 On the observed AS4 layout, the shared Runtime catalog is the sibling `AS/System` tree under the parent of `studioRoot`. Set `runtimeRoot` to the exact `AS/System` catalog path if the installation uses another location. A selected version such as `J4.93` maps to `J0493/SG4/Config.xml`. This confirms a catalog record. CPU-specific Runtime image selection remains a native check.
 
+## Check package Runtime requirements
+
+With br-studio 0.86.0 or later, preflight compares the selected CPU's saved Automation Runtime with the Runtime dependencies and lockouts declared in each selected package's installed `TP.cfg`. The result appears under the corresponding package in Markdown and in `preflight.technologyPackages[].constraints` in JSON. The receipt records the manifest path, the inclusive bounds, `selectedVersion` and `state`.
+
+The comparison orders AS4 versions by the numeric release and then by the letter revision within that release. For example, `J4.93` meets a `C4.90` minimum and falls below a `K4.93` minimum. `version_out_of_range` flags an unmet dependency. `package_lockout` flags a Runtime inside an excluded range. Either error blocks the saved-project simulation preflight and native build plan. An unreadable bound is `unverified` and produces a warning when a CPU is selected. [B&R Automation Runtime 4.93 revision catalog](https://www.br-automation.com/en-us/products/software/automation-runtime/automation-runtime-versions/1swaremb493/)
+
 ## Verify mapp 6D IEC declarations
 
 With br-studio 0.42.0 or later, set `verifyMotionDeclarations` to `true` in a `build_preflight` or `simulation_preflight` request. The check resolves the selected mapp 6D package's `McAcp6D` and `MpTraffic` descriptors and their listed `.fun`, `.typ` and `.var` files. When a library is registered in the saved project's Libraries package, its local descriptor must select the same version and list the same IEC files with matching bytes. When a library is selected from catalog alone, the result records its declared file hashes.
@@ -67,7 +73,7 @@ The report retains each declaration file hash and member's source line. An ambig
 | --- | --- |
 | Studio build tools | The reported `BR.AS.Build.exe` files exist and are hashed. On Windows, the preflight reads the AS build version from `BR.AS.BuildBase.dll` without running either file. The build wrapper's own version can differ from the AS build. |
 | Technology package | The project selector must match the directory and `TP.cfg` identity under `AS/TechnologyPackages`. For example, `2.2.0` is the selector and `2.2.0.9` is the internal package build. `catalogDirectories` is an inventory of candidate folders. |
-| Component selection and constraints | Versioned library descriptors and module payload candidates are located from the matching manifest. Declared numeric Studio and package ranges and lockouts are evaluated where the other version is known. Transfer modules such as `mvLoader` can expose a payload path without enough metadata to verify the selected component version. AR compatibility ranges are reported as declared. |
+| Component selection and constraints | Versioned library descriptors and module payload candidates are located from the matching manifest. Declared Studio, Runtime and package ranges and lockouts are evaluated where the selected version can be compared. Transfer modules such as `mvLoader` can expose a payload path without enough metadata to verify the selected component version. |
 | Libraries | The preflight checks dependencies for descriptors read from selected technology-package libraries and explicit `Cpu.sw` library references in the supported `Package.Name.lby` form. It reports missing providers or selected versions outside the descriptor's range. A saved or installed library file needs a supported selected reference to count as a provider. |
 | CPU and Runtime | The hardware result lists catalog entries matching the selected CPU module ID. The Runtime result identifies its AS4 catalog marker. |
 

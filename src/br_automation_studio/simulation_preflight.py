@@ -6,7 +6,7 @@ from pathlib import Path
 
 from .launchpad_export import inventory_export
 from .mptraffic_definition import check_installed_definition
-from .preflight import PACKAGE_ROOT, RUNTIME_VERSION, build_preflight, engine, numeric_version, selected_package, within
+from .preflight import PACKAGE_ROOT, build_preflight, engine, numeric_version, runtime_order, selected_package, within
 from .project import SavedFiles
 from .windows_msi import INSTALLSTATE_DEFAULT, installed_product
 
@@ -71,14 +71,6 @@ MSI_STATES = {-1: "unknown_product", 1: "advertised", 2: "different_user", INSTA
 def same_family(selector, family):
     version = numeric_version(selector)
     return version is not None and version[:2] == numeric_version(family)[:2]
-
-
-def runtime_order(version):
-    match = RUNTIME_VERSION.fullmatch(version or "")
-    if match:
-        grade, major, minor = match.groups()
-        return int(major), int(minor), grade.upper()
-    return None
 
 
 def describe_file(path, suffix):

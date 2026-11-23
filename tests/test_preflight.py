@@ -105,6 +105,50 @@ class BuildPreflightTests(unittest.TestCase):
         self.assertIn("Logical/Libraries/McBase/binary.lby", {row["path"] for row in result["snapshot"]["files"]})
         self.assertEqual((self.project / "Loop.apj").read_bytes(), original)
 
+    def test_saved_runtime_is_checked_against_package_dependencies_and_lockouts(self):
+        self.prepare_simulation()
+        for name, lower, upper, state, code in (
+            ("DependencyRuntime", "C4.90", "J4.93", "matched", None),
+            ("DependencyRuntime", "K4.93", None, "mismatched", "version_out_of_range"),
+            ("LockoutRuntime", None, "J4.93", "mismatched", "package_lockout"),
+            ("LockoutRuntime", None, "I4.93", "matched", None),
+            ("DependencyRuntime", "4.93", None, "unverified", "unverified_version_range"),
+            ("DependencyRuntime", "K4.93", "I4.93", "unverified", "unverified_version_range"),
+        ):
+            with self.subTest(name=name, lower=lower, upper=upper):
+                limits = {"VersionType": "AutomationRuntime"}
+                if lower is not None:
+                    limits["FromVersion"] = lower
+                if upper is not None:
+                    limits["ToVersion"] = upper
+                self.manifest("mapp6D", "2.7.0", "2.7.0.10",
+                              self.six_d_components().replace("2.02", "2.07") + group(name, **limits), "4.9")
+
+                response = self.inspect()
+                result = response["result"]
+                self.assertEqual(result["preflight"]["runtime"]["manifest"], "J0493/SG4/Config.xml")
+                package = result["preflight"]["technologyPackages"][0]
+                self.assertEqual(package["constraints"][-1],
+                                 {"id": name, **limits, "selectedVersion": "J4.93", "state": state})
+                issues = result["diagnostics"]
+                if code is None:
+                    self.assertEqual(issues, [])
+                else:
+                    issue, = issues
+                    self.assertEqual(issue["code"], code)
+                    self.assertEqual(issue["path"], package["manifest"])
+                self.assertIn(f"selected J4.93 · {state}", markdown(response))
+
+                if state == "mismatched":
+                    with patch("br_automation_studio.simulation_preflight.installed_product",
+                               return_value={"stateCode": 5, "version": "1.25.53"}):
+                        simulated = self.simulation()["result"]
+                    self.assertEqual(simulated["simulationPreflight"]["state"], "blocked")
+                    self.assertEqual(simulated["diagnostics"][0]["code"], code)
+                    plan = self.native_request("build_plan")["result"]
+                    self.assertIsNone(plan["buildPlan"])
+                    self.assertEqual(plan["diagnostics"][0]["code"], code)
+
     def test_missing_exact_version_identifies_other_catalog_versions(self):
         apj = self.project / "Loop.apj"
         apj.write_bytes(apj.read_bytes().replace(b'mapp6D Version="2.2.0"', b'mapp6D Version="2.4.1"'))

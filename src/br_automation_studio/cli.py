@@ -97,6 +97,13 @@ def markdown(response):
         lines.append(f"- Runtime {text(runtime['version'])} · catalog {text(runtime['manifest'])}")
         for item in preflight["technologyPackages"]:
             lines.append(f"- {text(item['name'])} {text(item['version'])} · internal build {text(item['internalVersion'])}")
+            for constraint in item["constraints"]:
+                if constraint.get("VersionType") != "AutomationRuntime":
+                    continue
+                lower = constraint.get("FromVersion") or "any"
+                upper = constraint.get("ToVersion") or "any"
+                lines.append(f"  - Runtime {text(constraint['id'])} {text(lower)} to {text(upper)}"
+                             f" · selected {text(constraint['selectedVersion'])} · {text(constraint['state'])}")
         for dependency in preflight["libraryDependencies"]:
             versions = ", ".join(dependency["selectedVersions"]) or "unresolved"
             lines.append(f"- {text(dependency['library'])} requires {text(dependency['requires'])} · {text(versions)}")
