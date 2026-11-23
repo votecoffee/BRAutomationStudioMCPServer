@@ -115,6 +115,14 @@ def markdown(response):
                 lines.append(f"- {text(module['name'])} · Saved revision {text(module['savedVersion'])}"
                              f" · Catalog revision {text(module['catalogVersion'])} · {text(module['state'])}"
                              f" · {text(module['catalog'])}")
+    if powerlink := report.get("controllerPowerlinkReview"):
+        lines.extend(["", "## Controller POWERLINK timing", "",
+                      f"- {text(powerlink['connector'])} · {text(powerlink['state'])}"
+                      f" · Saved hardware {text(powerlink['hardware'])}",
+                      f"- Controller {text(powerlink['controller'])} · Port {text(powerlink['controllerPort'])}"
+                      f" · CPU catalog {text(powerlink['cpuCatalog'])}",
+                      f"- Timer {text(powerlink['timerType'])} · Device {text(powerlink['timerDevice'])}"
+                      f" · Cycle {text(powerlink['cycleMicroseconds'])} µs"])
     if controller_io := report.get("controllerIoReview"):
         lines.extend(["", "## Controller communication I/O mapping", "",
                       f"- Assembly {text(controller_io['assembly'])} · {text(controller_io['state'])}"

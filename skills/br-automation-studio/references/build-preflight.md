@@ -38,6 +38,14 @@ With br-studio 0.95.0 or later, set `controllerIoTaskClass` to the intended clas
 
 Read `controllerIoReview.taskTiming` for the selected CPU's explicit `Cyclic<n>Duration` and `Cyclic<n>Tolerance` values in `Hardware.hw`. The report uses microseconds, matching the X20 CPU catalog fields. Omitted or ambiguous values are reported as `unverified` and produce a warning. Review effective defaults, POWERLINK timing and system timer source in Automation Studio. Use the native I/O Mapping view to confirm enabled channels. [B&R ACOPOS 6D timing configuration](https://help.br-automation.com/#/en/4/motion/mapp_6d/konfiguration/timing_konfiguration.html)
 
+### Check the saved POWERLINK timing
+
+With br-studio 0.96.0 or later, add `controllerPowerlinkConnector` and `expectedControllerType` to check a direct saved link from one 6D controller to the selected CPU. For example, use `"controllerPowerlinkConnector": "IF3"` for an X20CP1684 using its onboard POWERLINK port. The exact CPU and controller catalog revisions establish the supported connector names. The saved controller `Connection` supplies the destination CPU and port. [B&R X20CP1684 port specifications](https://www.br-automation.com/en-ca/products/plc-systems/x20-system/x20-plc/x20cp1684/) · [B&R saved 6D sample](https://github.com/br-automation-community/mapp6D-SampleProject/blob/891da6f6e64dca737406e1f301e581c464f9d310/mapp6d_SampleProject/Physical/Config1/Hardware.hw#L4-L25)
+
+Read `controllerPowerlinkReview` for the matching controller port, the explicit `TimerDeviceType` and `TimerDevice`, and the CPU connector's `CycleTime` in microseconds. The CPU timer must select `EPLX2X` and name the selected interface. An explicit conflicting port, timer, operating mode or activation setting produces `controller_powerlink_mismatch`. An absent cycle value, unresolved direct connection or ambiguous selector produces `controller_powerlink_unverified`. Daisy chains and separate interface modules require native review.
+
+When also checking `controllerIoTaskClass`, compare its saved duration and tolerance with the reported POWERLINK cycle using the applicable mapp 6D timing topic. Confirm effective port settings, synchronized system tick and observed task margin in Automation Studio. [B&R ACOPOS 6D timing configuration](https://help.br-automation.com/#/en/4/motion/mapp_6d/konfiguration/timing_konfiguration.html)
+
 ## Check package Runtime requirements
 
 With br-studio 0.86.0 or later, preflight compares the selected CPU's saved Automation Runtime with the Runtime dependencies and lockouts declared in each selected package's installed `TP.cfg`. The result appears under the corresponding package in Markdown and in `preflight.technologyPackages[].constraints` in JSON. The receipt records the manifest path, the inclusive bounds, `selectedVersion` and `state`.

@@ -5,6 +5,7 @@ import re
 
 from .assembly_io import assembly_io_values, match_declaration
 from .global_variables import IDENTIFIER
+from .hardware_timing import parameter_values, selected_cpu_module, single_value, unsigned_value
 from .project import children, package_files
 
 
@@ -110,21 +111,19 @@ def check_map(raw, device, variables, words):
 
 def review_task_timing(saved, hardware_path, cpu_name, cpu_type, task_class):
     hardware, _ = saved.xml(hardware_path, "Hardware")
-    cpus = [module for module in children(hardware, "Module")
-            if module.get("Name") == cpu_name and module.get("Type") == cpu_type]
+    cpu = selected_cpu_module(hardware, cpu_name, cpu_type)
     result = {"state": "unverified", "hardware": hardware_path.as_posix(),
               "durationMicroseconds": None, "toleranceMicroseconds": None}
-    if len(cpus) != 1:
+    if cpu is None:
         saved.issue("warning", "controller_io_timing_unverified", hardware_path,
                     "Could not identify one top-level hardware module for the selected CPU")
         return result
 
-    params = children(cpus[0], "Parameter")
     for field in ("Duration", "Tolerance"):
         key = f"Cyclic{task_class}{field}"
-        values = [param.get("Value") for param in params if param.get("ID") == key]
-        if len(values) == 1 and re.fullmatch(r"[0-9]{1,10}", values[0] or "") and int(values[0]) <= 0xFFFFFFFF:
-            result[f"{field.lower()}Microseconds"] = int(values[0])
+        value = unsigned_value(single_value(parameter_values(cpu, key)))
+        if value is not None:
+            result[f"{field.lower()}Microseconds"] = value
         else:
             saved.issue("warning", "controller_io_timing_unverified", hardware_path,
                         f"{key} has no single explicit unsigned 32-bit value on the selected CPU")

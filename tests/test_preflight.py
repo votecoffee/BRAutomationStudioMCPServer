@@ -195,6 +195,65 @@ class BuildPreflightTests(unittest.TestCase):
         self.assertIn(exact.as_posix(), {row["path"] for row in result["preflight"]["studioSnapshot"]["files"]})
         self.assertIn("Saved revision 1.0.0.1 · Catalog revision 1.0.0.1", markdown(matched))
 
+    def test_powerlink_binds_the_direct_6d_controller_and_cpu_system_timer(self):
+        self.local_core("5.29.1")
+        model = "8FLM11.0000.00I-2"
+        cpu_catalog = "AS/Hardware/Modules/PC_any/1.1.1.0/PC_any.hwx"
+        device_catalog = f"AS/Hardware/Modules/{model}/1.0.0.1/{model}.hwx"
+        for path, version, port in ((cpu_catalog, "1.1.1.0", "IF3"), (device_catalog, "1.0.0.1", "PLK1")):
+            self.put(self.studio / path, f'<Module Version="{version}"><Connectors>'
+                     f'<Connector Name="{port}"><Connections><Connection Name="Powerlink" />'
+                     '</Connections></Connector></Connectors></Module>')
+
+        hardware = self.project / "Physical/ARsim/Hardware.hw"
+        cycle = '<Parameter ID="CycleTime" Value="1000" />'
+        link = '<Connection Connector="PLK1" TargetModule="PC" TargetConnector="IF3" NodeNumber="16" />'
+        target = ('<Hardware xmlns="http://br-automation.co.at/AS/Hardware">'
+                  f'<Module Name="Planar" Type="{model}" Version="1.0.0.1">{link}</Module>'
+                  '<Module Name="PC" Type="PC_any" Version="1.1.1.0">'
+                  f'<Connector Name="IF3">{cycle}</Connector>'
+                  '<Connector Name="IF6"><Parameter ID="CycleTime" Value="400" /></Connector>'
+                  '<Parameter ID="TimerDeviceType" Value="EPLX2X" />'
+                  '<Parameter ID="TimerDevice" Value="PC.IF3" /></Module></Hardware>')
+        self.put(hardware, target)
+        options = {"expectedControllerType": model, "controllerPowerlinkConnector": "IF3"}
+
+        response = self.inspect(**options)
+        self.assertEqual(response["status"], "complete", response["result"]["diagnostics"])
+        self.assertEqual(response["result"]["controllerPowerlinkReview"],
+                         {"state": "matched", "hardware": "Physical/ARsim/Hardware.hw", "connector": "IF3",
+                          "controller": "Planar", "controllerPort": "PLK1", "cpuCatalog": cpu_catalog,
+                          "timerType": "EPLX2X", "timerDevice": "PC.IF3", "cycleMicroseconds": 1000})
+        self.assertIn("Timer EPLX2X · Device PC.IF3 · Cycle 1000 µs", markdown(response))
+        self.assertNotIn("controllerPowerlinkReview", self.inspect(expectedControllerType=model)["result"])
+
+        for changed, status, state in (
+            (target.replace("PC.IF3", "PC.IF6"), "issues", "mismatched"),
+            (target.replace("EPLX2X", "SWIOTIMER"), "issues", "mismatched"),
+            (target.replace('TargetConnector="IF3"', 'TargetConnector="IF6"'), "issues", "mismatched"),
+            (target.replace(cycle, cycle + '<Parameter ID="Operation" Value="EthOnly" />'), "issues", "mismatched"),
+            (target.replace(cycle, cycle + '<Parameter ID="Mode" Value="CN" />'), "issues", "mismatched"),
+            (target.replace(cycle, cycle + '<Parameter ID="ActivatePowerlink" Value="0" />'), "issues", "mismatched"),
+            (target.replace(cycle, ""), "partial", "unverified"),
+            (target.replace(cycle, cycle * 2), "partial", "unverified"),
+            (target.replace(link, link.replace('TargetModule="PC"', 'TargetModule="Coupler"')), "partial", "unverified"),
+            (target.replace('Version="1.1.1.0"', 'Version="1.2.0.0"'), "partial", "unverified"),
+        ):
+            with self.subTest(changed=changed):
+                self.put(hardware, changed)
+                reviewed = self.inspect(**options)
+                self.assertEqual(reviewed["status"], status)
+                self.assertEqual(reviewed["result"]["controllerPowerlinkReview"]["state"], state)
+                code = "controller_powerlink_mismatch" if status == "issues" else "controller_powerlink_unverified"
+                self.assertEqual([row["code"] for row in reviewed["result"]["diagnostics"]], [code])
+
+        self.put(hardware, target)
+        wrong_interface = self.inspect(**{**options, "controllerPowerlinkConnector": "IF6"})
+        self.assertEqual(wrong_interface["status"], "issues")
+        self.assertEqual(wrong_interface["result"]["controllerPowerlinkReview"]["state"], "mismatched")
+        with self.assertRaisesRegex(InvalidRequest, "controllerPowerlinkConnector needs expectedControllerType"):
+            self.inspect(controllerPowerlinkConnector="IF3")
+
     def test_controller_map_requires_each_word_for_the_assembly_and_saved_device(self):
         self.local_core("5.29.1")
         module_type = "8FLM11.0000.00I-2"

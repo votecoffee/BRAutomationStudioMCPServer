@@ -6,6 +6,7 @@ from pathlib import Path
 import re
 
 from .controller_io import review_controller_map
+from .hardware_timing import review_powerlink
 from .inspection import inspect_saved
 from .motion_declarations import review_motion_declarations
 from .project import SavedFiles, children, tag
@@ -340,11 +341,13 @@ def check_library_dependencies(providers):
 def build_preflight(path, studio_root, runtime_root=None, configuration=None, cpu=None, *,
                     verify_motion_declarations=False, include_layout=False, geometry_manager=None, recovery_managers=(),
                     include_motion=False, include_io=False, expected_controller_type=None, controller_io_assembly=None,
-                    controller_io_task_class=None):
+                    controller_io_task_class=None, controller_powerlink_connector=None):
     if controller_io_assembly is not None and expected_controller_type is None:
         raise ValueError("The controller I/O review needs an expected controller type")
     if controller_io_task_class is not None and controller_io_assembly is None:
         raise ValueError("The controller I/O task class check needs an assembly")
+    if controller_powerlink_connector is not None and expected_controller_type is None:
+        raise ValueError("The controller POWERLINK review needs an expected controller type")
     saved = SavedFiles(path.parent)
     report = inspect_saved(saved, Path(path.name), configuration, cpu,
                            include_layout=include_layout, geometry_manager=geometry_manager,
@@ -394,6 +397,9 @@ def build_preflight(path, studio_root, runtime_root=None, configuration=None, cp
     if controller_io_assembly is not None:
         report["controllerIoReview"] = review_controller_map(saved, studio, report, controller, controller_io_assembly,
                                                              controller_io_task_class)
+    if controller_powerlink_connector is not None:
+        report["controllerPowerlinkReview"] = review_powerlink(saved, studio, report, controller, hardware,
+                                                               controller_powerlink_connector)
     report["snapshot"] = saved.snapshot()
     report["evidence"] = "saved_files_and_installation_metadata"
     report["preflight"] = {
