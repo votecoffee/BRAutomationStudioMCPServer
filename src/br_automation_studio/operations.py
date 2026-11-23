@@ -246,7 +246,8 @@ def run_assembly_io_review(arguments, request_directory):
 def saved_assembly_widget_review(arguments, request_directory):
     return review_saved_assembly_widget(project_path(arguments, request_directory), arguments.get("configuration"),
                                        arguments.get("cpu"), arguments.get("startPageWidgetId"),
-                                       arguments["assemblyId"], arguments["managerId"])
+                                       arguments["assemblyId"], arguments["managerId"],
+                                       require_traffic_details=arguments.get("requireTrafficDetails", False))
 
 
 def run_layout_device_review(arguments, request_directory):
@@ -675,6 +676,8 @@ SAVED_ASSEMBLY_WIDGET_REVIEW = Operation(
         "startPageWidgetId": RUC_REVIEW.arguments["startPageWidgetId"],
         "assemblyId": ASSEMBLY_IO_REVIEW.arguments["assemblyId"],
         "managerId": {"type": "string", "minLength": 1, "description": "Expected saved Traffic Manager element ID."},
+        "requireTrafficDetails": {"type": "boolean", "default": False,
+                                  "description": "Require the selected Assembly6D widget to enable its additional Traffic Manager details."},
     },
     required=("project", "assemblyId", "managerId"),
     handler=saved_assembly_widget_review,

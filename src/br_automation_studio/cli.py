@@ -127,6 +127,10 @@ def markdown(response):
             route = " → ".join(text(placement[key]) for key in
                                ("visualizationId", "pageId", "layoutId", "areaId", "contentId"))
             lines.append(f"- {route}")
+        if traffic := assembly_widget.get("trafficDetails"):
+            enabled = {True: "enabled", False: "disabled"}.get(traffic.get("enabled"), "unverified")
+            lines.append(f"- Traffic Manager details {enabled} · {text(traffic.get('source'))}"
+                         f" · {text(traffic.get('path'))}")
     if binding := report.get("savedBindingReview"):
         details = binding["saved"]
         lines.extend(["", "## PLC value binding", "",

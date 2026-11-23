@@ -194,6 +194,76 @@ class RucReviewTests(unittest.TestCase):
         self.assertEqual(self.codes(misplaced), ["saved_assembly_widget_mismatch"])
         self.assertIn("start page assignment", misplaced["result"]["diagnostics"][0]["message"])
 
+    def test_saved_assembly_widget_resolves_traffic_details_from_content_or_library(self):
+        self.add_start_page()
+        args = {"project": "Loop/Loop.apj", "assemblyId": "FixtureAssembly", "managerId": "DemoTraffic",
+                "startPageWidgetId": "DemoOverview_LoopOverview"}
+        request = {"schemaVersion": 1, "workspace": "saved-widget", "operation": "saved_assembly_widget_review",
+                   "arguments": args}
+        review = execute(request, self.root)["result"]["savedAssemblyWidgetReview"]
+        self.assertNotIn("trafficDetails", review)
+
+        args["requireTrafficDetails"] = True
+        unresolved = execute(request, self.root)
+        self.assertEqual(unresolved["status"], "partial")
+        self.assertEqual(self.codes(unresolved), ["saved_assembly_traffic_details_unverified"])
+        self.assertEqual(unresolved["result"]["savedAssemblyWidgetReview"]["saved"]["areaId"], "Main")
+
+        manifest = self.project / "Logical/mappView/Package.pkg"
+        manifest.write_bytes(manifest.read_bytes().replace(
+            b"</Objects>", b'<Object Type="Package">Widgets</Object></Objects>'))
+        widgets = manifest.parent / "Widgets"
+        library = widgets / "mapp6D"
+        meta = library / "Assembly6D/meta/Assembly6D.widget"
+        meta.parent.mkdir(parents=True)
+        (widgets / "Package.pkg").write_bytes(
+            b'<Package PackageType="WidgetsPackage"><Objects><Object Type="Package">mapp6D</Object></Objects></Package>')
+        (library / "Package.pkg").write_bytes(
+            b'<Package PackageType="WidgetLibrary"><Objects><Object Type="File">Description.widgetlibrary</Object>'
+            b'</Objects></Package>')
+        (library / "Description.widgetlibrary").write_bytes(
+            b'<WidgetLibrary xmlns="http://www.br-automation.com/iat2018/widgetlibraryDefinition/v1"'
+            b' id="mapp6DWidgetLibrary" />')
+        metadata = (b'<WidgetLibrary xmlns="http://www.br-automation.com/iat2014/widget">'
+                    b'<Widget name="widgets.mapp6D.Assembly6D"><Properties>'
+                    b'<Property name="showAdditionalTrafficManagerInfo" type="Boolean" defaultValue="false" />'
+                    b'</Properties></Widget></WidgetLibrary>')
+        meta.write_bytes(metadata)
+        default_off = execute(request, self.root)
+        self.assertEqual(default_off["status"], "issues")
+        self.assertEqual(self.codes(default_off), ["saved_assembly_traffic_details_disabled"])
+        details = default_off["result"]["savedAssemblyWidgetReview"]["trafficDetails"]
+        self.assertEqual(details, {"state": "mismatched", "enabled": False, "source": "widget_default",
+                                   "path": "Logical/mappView/Widgets/mapp6D/Assembly6D/meta/Assembly6D.widget"})
+        self.assertIn(details["path"], {row["path"] for row in default_off["result"]["snapshot"]["files"]})
+        self.assertIn("Traffic Manager details disabled · widget_default", markdown(default_off))
+
+        content = manifest.with_name("Overview.content")
+        original = content.read_bytes()
+        anchor = b'mpLinkTrafficManager="mapp6D::DemoTraffic"'
+        self.assertEqual(original.count(anchor), 1)
+        content.write_bytes(original.replace(anchor, anchor + b' showAdditionalTrafficManagerInfo="true"'))
+        saved_on = execute(request, self.root)
+        self.assertEqual(saved_on["status"], "complete")
+        details = saved_on["result"]["savedAssemblyWidgetReview"]["trafficDetails"]
+        self.assertEqual(details, {"state": "matched", "enabled": True, "source": "saved",
+                                   "path": "Logical/mappView/Overview.content"})
+        self.assertNotIn(meta.relative_to(self.project).as_posix(),
+                         {row["path"] for row in saved_on["result"]["snapshot"]["files"]})
+
+        meta.write_bytes(metadata.replace(b'defaultValue="false"', b'defaultValue="true"'))
+        for setting, status, code in ((b"false", "issues", "saved_assembly_traffic_details_disabled"),
+                                      (b"unknown", "partial", "saved_assembly_traffic_details_unverified")):
+            with self.subTest(setting=setting):
+                content.write_bytes(original.replace(anchor, anchor + b' showAdditionalTrafficManagerInfo="' + setting + b'"'))
+                overridden = execute(request, self.root)
+                self.assertEqual(overridden["status"], status)
+                self.assertEqual(self.codes(overridden), [code])
+        content.write_bytes(original)
+        default_on = execute(request, self.root)
+        self.assertEqual(default_on["status"], "complete")
+        self.assertEqual(default_on["result"]["savedAssemblyWidgetReview"]["trafficDetails"]["source"], "widget_default")
+
     def test_widget_options_cannot_substitute_for_the_generated_placement_or_dom(self):
         client = self.add_start_page()
         path = f"{VIEW}/CounterPanel.json"

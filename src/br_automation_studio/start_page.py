@@ -11,7 +11,7 @@ from .binding_review import (
 )
 from .inspection import inspect_saved, registered_assembly
 from .json_io import invalid_constant, unique_object
-from .project import SavedFiles, children, package_files, tag
+from .project import SavedFiles, children, choices, objects, package_files, tag
 from .ruc_review import VIEW, blank_equivalent
 
 
@@ -20,6 +20,8 @@ PAGE = "{http://www.br-automation.com/iat2015/pageDefinition/v2}Page"
 LAYOUT = "{http://www.br-automation.com/iat2015/layoutDefinition/v2}Layout"
 WIDGET_TYPE = "widgets/mapp6D/Assembly6D"
 SAVED_CONTENT = "{http://www.br-automation.com/iat2015/contentDefinition/v2}Content"
+TRAFFIC_DETAILS = "showAdditionalTrafficManagerInfo"
+XML_BOOLEANS = {"true": True, "false": False, "1": True, "0": False}
 
 
 def resource_id(value, path, label):
@@ -209,22 +211,85 @@ def check_start_widget_content(source, widget):
     paths = package_files(source, Path("Logical/Package.pkg"), "Package", {"content"})
     path, content = saved_resource(source, paths, ".content", SAVED_CONTENT, content_id, widget["path"])
     require(path.as_posix() == widget["path"], path, "The start page content differs from the selected widget's content")
-    one((node for node in content.iter() if tag(node) == "Widget" and node.get("id") == widget_id),
-        path, f"widget {widget_id!r} in its saved content")
+    return one((node for node in content.iter() if tag(node) == "Widget" and node.get("id") == widget_id),
+               path, f"widget {widget_id!r} in its saved content")
 
 
-def review_saved_assembly_widget(path, configuration, cpu, widget_id, assembly_id, manager_id):
+def saved_traffic_details_default(source):
+    from .widget_packages import registered_widgets
+
+    manifest = registered_widgets(source)
+    require(manifest is not None, Path("Logical/Package.pkg"), "Expected a registered mapp View Widgets package")
+    widgets, _ = source.xml(manifest, "Package")
+    require(widgets is not None, manifest, "Could not read the Widgets package")
+    library = choices(source, manifest, widgets, "Package").get("mapp6d")
+    require(library is not None, manifest, "Expected the registered project mapp6D widget library")
+
+    library_pkg = library / "Package.pkg"
+    package, _ = source.xml(library_pkg, "Package")
+    require(package is not None and "widgetlibrary" in {(package.get(key) or "").casefold()
+                                                       for key in ("PackageType", "SubType")},
+            library_pkg, "Expected a saved WidgetLibrary package")
+    file = one((item.text for item in objects(package, "File")
+                if Path((item.text or "").strip()).suffix.casefold() == ".widgetlibrary"), library_pkg,
+               "registered widget library description")
+    descriptor = source.member(library_pkg, file)
+    require(descriptor is not None, library_pkg, "Invalid widget library description path")
+    identity, _ = source.xml(descriptor, "WidgetLibrary")
+    require(identity is not None and identity.get("id") == "mapp6DWidgetLibrary", descriptor,
+            "Expected the mapp6D widget library identity")
+
+    metadata = library / "Assembly6D/meta/Assembly6D.widget"
+    root, _ = source.xml(metadata, "WidgetLibrary", optional=True)
+    require(root is not None, metadata, "Could not read the registered project's Assembly6D metadata")
+    widget = one((node for node in children(root, "Widget") if node.get("name") == WIDGET_TYPE.replace("/", ".")),
+                 metadata, "Assembly6D widget declaration")
+    prop = one((node for group in children(widget, "Properties") for node in children(group, "Property")
+                if node.get("name") == TRAFFIC_DETAILS), metadata, TRAFFIC_DETAILS)
+    require(prop.get("type") == "Boolean", metadata, f"Expected a Boolean {TRAFFIC_DETAILS} default")
+    return prop.get("defaultValue"), metadata
+
+
+def review_traffic_details(source, node, path, result):
+    result.update(enabled=None, source=None, path=None)
+    try:
+        value = node.get(TRAFFIC_DETAILS)
+        if value is None:
+            value, path = saved_traffic_details_default(source)
+            result["source"] = "widget_default"
+        else:
+            result["source"] = "saved"
+        result["path"] = path.as_posix()
+        enabled = XML_BOOLEANS.get((value or "").casefold())
+        require(enabled is not None, path, f"Expected a Boolean value for {TRAFFIC_DETAILS}")
+    except BindingProblem as error:
+        source.issue("warning", "saved_assembly_traffic_details_unverified", error.path, str(error))
+        return
+
+    result["enabled"] = enabled
+    if enabled:
+        result["state"] = "matched"
+    else:
+        result["state"] = "mismatched"
+        source.issue("error", "saved_assembly_traffic_details_disabled", path,
+                     "The selected Assembly6D widget has its additional Traffic Manager details disabled")
+
+
+def review_saved_assembly_widget(path, configuration, cpu, widget_id, assembly_id, manager_id, *,
+                                 require_traffic_details=False):
     source = SavedFiles(path.parent)
     result = inspect_saved(source, Path(path.name), configuration, cpu)
     review = {"state": "unverified", "domId": widget_id, "expectedAssembly": assembly_id,
               "expectedManager": manager_id, "saved": {}}
     result["savedAssemblyWidgetReview"] = review
+    if require_traffic_details:
+        review["trafficDetails"] = {"state": "unverified"}
     if result["selectedCpu"]:
         try:
             dom_id, widget = select_saved_widget(result["widgets"], widget_id)
             review["domId"] = dom_id
             review["widget"] = widget
-            check_start_widget_content(source, widget)
+            node = check_start_widget_content(source, widget)
             selection = {"configuration": result["selectedConfiguration"], "cpu": result["selectedCpu"]}
             review["saved"] = saved_start(source, selection, widget)
             require_widget_links(dom_id, widget, assembly_id, manager_id)
@@ -236,6 +301,11 @@ def review_saved_assembly_widget(path, configuration, cpu, widget_id, assembly_i
             review["state"] = "mismatched"
             source.issue("error", "saved_assembly_widget_mismatch", error.path, str(error))
         else:
-            review["state"] = "matched"
+            if require_traffic_details:
+                details = review["trafficDetails"]
+                review_traffic_details(source, node, Path(widget["path"]), details)
+                review["state"] = details["state"]
+            else:
+                review["state"] = "matched"
     result["snapshot"] = source.snapshot()
     return result

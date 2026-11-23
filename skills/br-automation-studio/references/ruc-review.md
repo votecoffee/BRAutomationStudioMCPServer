@@ -26,6 +26,12 @@ With br-studio 0.102.0 or later, run `saved_assembly_widget_review` with the sav
 
 Read `savedAssemblyWidgetReview` for the widget links, placement and registered assembly and manager paths. A conflict or unresolved reference produces `saved_assembly_widget_mismatch`. Carry the selected widget ID into the RUC and browser checks to verify the generated and running HMI.
 
+### Check the Traffic Manager display option
+
+With br-studio 0.103.0 or later, add `"requireTrafficDetails": true` when the selected widget should display additional Traffic Manager information. The review reads the saved `showAdditionalTrafficManagerInfo` property first. If that property is omitted, it reads the Boolean default from the registered project's `mapp6D` widget metadata. Read `savedAssemblyWidgetReview.trafficDetails` for the value and its source.
+
+Disabled details produce `saved_assembly_traffic_details_disabled`. Missing or unsupported evidence produces `saved_assembly_traffic_details_unverified`. Confirm the rendered traffic information on the deployed browser page with a known Traffic Manager state.
+
 ## Verify the default page placement of Assembly6D
 
 With br-studio 0.39.0 or later, add `"startPageWidgetId": "Overview_PlanarDisplay"` to the `ruc_review` request arguments. Use the exact `ContentId_WidgetId` of the Assembly6D widget expected on the default page. The review follows the selected CPU's registered mapp View server configuration and visualization to the saved start page, layout, and area with a direct content assignment.
