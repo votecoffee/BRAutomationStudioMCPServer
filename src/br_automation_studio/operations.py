@@ -96,11 +96,15 @@ def run_widget_package_review(arguments, request_directory):
 def preflight(arguments, request_directory):
     assembly = arguments.get("controllerIoAssembly")
     controller = arguments.get("expectedControllerType")
+    task_class = arguments.get("controllerIoTaskClass")
     if assembly is not None and controller is None:
         raise InvalidRequest("controllerIoAssembly needs expectedControllerType")
+    if task_class is not None and assembly is None:
+        raise InvalidRequest("controllerIoTaskClass needs controllerIoAssembly")
     return build_preflight(*build_inputs(arguments, request_directory),
                            verify_motion_declarations=arguments.get("verifyMotionDeclarations", False),
-                           expected_controller_type=controller, controller_io_assembly=assembly)
+                           expected_controller_type=controller, controller_io_assembly=assembly,
+                           controller_io_task_class=task_class)
 
 
 def run_motion_interface_review(arguments, request_directory):
@@ -500,6 +504,8 @@ BUILD_PREFLIGHT = Operation(
                                    "description": "Require this Hardware.hw Module Type and its exact installed hardware revisions."},
         "controllerIoAssembly": {"type": "string", "minLength": 1,
                                  "description": "Check this assembly's saved 200-word input and output mapping. Requires expectedControllerType."},
+        "controllerIoTaskClass": {"type": "integer", "minimum": 1, "maximum": 8,
+                                  "description": "Require this Cyclic class on all communication rows and read its saved CPU timing. Requires controllerIoAssembly."},
     },
     required=("project", "studioRoot"),
     handler=preflight,

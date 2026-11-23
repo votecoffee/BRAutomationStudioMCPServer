@@ -32,7 +32,11 @@ Read `preflight.controllerHardware` for the saved revision, catalog path and cat
 
 With br-studio 0.94.0 or later, add `controllerIoAssembly` with the assembly ID and keep `expectedControllerType` in the same preflight request. Use this check for the AS4 200-word communication array layout. It follows the saved assembly's Input and Output references to registered `Mc6DControllerFBIOType` variables and reads the selected CPU's registered `.iom` file. The selected configuration needs one matching controller for this comparison. [B&R hardware-specific configuration topic](https://help.br-automation.com/#/en/4/motion/mapp_6d/leitfaden/getting_started_mapp_6d/50_making_hardware-specific_configuration.html)
 
-Read `controllerIoReview` for the device, paths, variables and counts. The check compares each required array index, word access and channel ID against the exact catalog's SG4 input and output words. It identifies duplicates, missing indices and invalid rows. Task qualifiers are recorded as saved. Confirm the intended cyclic assignment, enabled channels and physical network settings in Automation Studio.
+Read `controllerIoReview` for the device, paths, variables and counts. The check compares each required array index, word access and channel ID against the exact catalog's SG4 input and output words. It identifies duplicates, missing indices and invalid rows. Task qualifiers are recorded as saved.
+
+With br-studio 0.95.0 or later, set `controllerIoTaskClass` to the intended class number, from 1 through 8, in the same request. For example, `"controllerIoTaskClass": 1` requires every input and output row to carry `Cyclic#1.`. A complete map with mixed or missing qualifiers produces `controller_io_task_class_mismatch`.
+
+Read `controllerIoReview.taskTiming` for the selected CPU's explicit `Cyclic<n>Duration` and `Cyclic<n>Tolerance` values in `Hardware.hw`. The report uses microseconds, matching the X20 CPU catalog fields. Omitted or ambiguous values are reported as `unverified` and produce a warning. Review effective defaults, POWERLINK timing and system timer source in Automation Studio. Use the native I/O Mapping view to confirm enabled channels. [B&R ACOPOS 6D timing configuration](https://help.br-automation.com/#/en/4/motion/mapp_6d/konfiguration/timing_konfiguration.html)
 
 ## Check package Runtime requirements
 

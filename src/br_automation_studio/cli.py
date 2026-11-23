@@ -125,6 +125,12 @@ def markdown(response):
         if "taskClasses" in controller_io:
             tasks = ", ".join(map(str, controller_io["taskClasses"])) or "none specified"
             lines.append(f"- Cyclic class {tasks} · {controller_io['unqualifiedRows']} rows without a task qualifier")
+        if expected := controller_io.get("expectedTaskClass"):
+            lines.append(f"- Expected mapping qualifier Cyclic#{expected}")
+        if timing := controller_io.get("taskTiming"):
+            lines.append(f"- Cyclic#{expected} timing · {text(timing['state'])}"
+                         f" · Duration {text(timing['durationMicroseconds'])} µs"
+                         f" · Tolerance {text(timing['toleranceMicroseconds'])} µs · {text(timing['hardware'])}")
         for row in controller_io.get("invalidRows", [])[:6]:
             lines.append(f"- Line {row['line']} · {text(row['reason'])}")
     if simulation := report.get("simulationPreflight"):

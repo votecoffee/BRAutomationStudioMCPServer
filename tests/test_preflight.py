@@ -198,8 +198,15 @@ class BuildPreflightTests(unittest.TestCase):
     def test_controller_map_requires_each_word_for_the_assembly_and_saved_device(self):
         self.local_core("5.29.1")
         module_type = "8FLM11.0000.00I-2"
-        self.put(self.project / "Physical/ARsim/Hardware.hw",
-                 f'<Hardware><Module Name="PlanarController" Type="{module_type}" Version="1.0.0.1" /></Hardware>')
+        hardware = self.project / "Physical/ARsim/Hardware.hw"
+        duration = '<Parameter ID="Cyclic1Duration" Value="1000" />'
+        tolerance = '<Parameter ID="Cyclic1Tolerance" Value="0" />'
+        target = ('<Hardware xmlns="http://br-automation.co.at/AS/Hardware">'
+                  '<Module Name="OtherCPU" Type="PC_any"><Parameter ID="Cyclic1Duration" Value="10000" /></Module>'
+                  f'<Module Name="PC" Type="PC_any">{duration}{tolerance}<Connector Name="IF3">'
+                  f'<Module Name="PlanarController" Type="{module_type}" Version="1.0.0.1" /></Connector>'
+                  '</Module></Hardware>')
+        self.put(hardware, target)
         map_path = self.project / "Physical/ARsim/PC/IoMap.iom"
         cpu = map_path.with_name("Cpu.pkg")
         cpu.write_bytes(cpu.read_bytes().replace(b"</Objects>", b'<Object Type="File">IoMap.iom</Object></Objects>'))
@@ -237,6 +244,50 @@ class BuildPreflightTests(unittest.TestCase):
         self.assertEqual({role: value["matchedRows"] for role, value in verified["directions"].items()},
                          {"Input": 200, "Output": 200})
         self.assertIn("gOutput · 200 matched", markdown(response))
+        self.assertNotIn("taskTiming", verified)
+
+        timed_args = {**args, "controllerIoTaskClass": 1}
+        timed = self.inspect(**timed_args)
+        self.assertEqual(timed["status"], "complete", timed["result"]["diagnostics"])
+        timing = timed["result"]["controllerIoReview"]
+        self.assertEqual(timing["state"], "matched")
+        self.assertEqual(timing["expectedTaskClass"], 1)
+        self.assertEqual(timing["taskTiming"], {"state": "saved", "hardware": "Physical/ARsim/Hardware.hw",
+                                                "durationMicroseconds": 1000, "toleranceMicroseconds": 0})
+        self.assertIn("Cyclic#1 timing · saved · Duration 1000 µs · Tolerance 0 µs", markdown(timed))
+
+        for qualifier, classes, unqualified in (("Cyclic#2.", [1, 2], 0), ("", [1], 1)):
+            with self.subTest(qualifier=qualifier):
+                self.put(map_path, iom.replace(rows[-1], rows[-1].replace("Cyclic#1.", qualifier)))
+                self.assertEqual(self.inspect(**args)["status"], "complete")
+                wrong_task = self.inspect(**timed_args)
+                self.assertEqual(wrong_task["status"], "issues")
+                summary = wrong_task["result"]["controllerIoReview"]
+                self.assertEqual(summary["state"], "mismatched")
+                self.assertEqual(summary["taskClasses"], classes)
+                self.assertEqual(summary["unqualifiedRows"], unqualified)
+                self.assertEqual([row["code"] for row in wrong_task["result"]["diagnostics"]],
+                                 ["controller_io_task_class_mismatch"])
+        self.put(map_path, iom)
+
+        for replacement in ("", duration * 2, duration.replace("1000", "-1"),
+                            duration.replace("1000", "4294967296")):
+            with self.subTest(timing_override=replacement):
+                self.put(hardware, target.replace(duration, replacement))
+                review = self.inspect(**timed_args)["result"]
+                self.assertEqual(review["controllerIoReview"]["state"], "matched")
+                self.assertEqual(review["controllerIoReview"]["taskTiming"],
+                                 {"state": "unverified", "hardware": "Physical/ARsim/Hardware.hw",
+                                  "durationMicroseconds": None, "toleranceMicroseconds": 0})
+                self.assertEqual([(row["severity"], row["code"]) for row in review["diagnostics"]],
+                                 [("warning", "controller_io_timing_unverified")])
+        self.put(hardware, target)
+
+        with self.assertRaisesRegex(InvalidRequest, "controllerIoTaskClass needs controllerIoAssembly"):
+            self.inspect(expectedControllerType=module_type, controllerIoTaskClass=1)
+        for task_class in (0, 9, True, "1"):
+            with self.subTest(invalid_class=task_class), self.assertRaisesRegex(InvalidRequest, "integer between 1 and 8"):
+                self.inspect(**args, controllerIoTaskClass=task_class)
 
         for changed, count, missing in (
             (iom.replace(rows[-1], rows[-1].replace("%QW", "%IW")), 1, 1),

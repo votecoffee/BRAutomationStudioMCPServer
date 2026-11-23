@@ -108,8 +108,35 @@ def check_map(raw, device, variables, words):
     return {"directions": groups, "invalidRows": invalid, "taskClasses": sorted(tasks), "unqualifiedRows": unqualified}
 
 
-def review_controller_map(saved, studio, report, hardware, assembly):
+def review_task_timing(saved, hardware_path, cpu_name, cpu_type, task_class):
+    hardware, _ = saved.xml(hardware_path, "Hardware")
+    cpus = [module for module in children(hardware, "Module")
+            if module.get("Name") == cpu_name and module.get("Type") == cpu_type]
+    result = {"state": "unverified", "hardware": hardware_path.as_posix(),
+              "durationMicroseconds": None, "toleranceMicroseconds": None}
+    if len(cpus) != 1:
+        saved.issue("warning", "controller_io_timing_unverified", hardware_path,
+                    "Could not identify one top-level hardware module for the selected CPU")
+        return result
+
+    params = children(cpus[0], "Parameter")
+    for field in ("Duration", "Tolerance"):
+        key = f"Cyclic{task_class}{field}"
+        values = [param.get("Value") for param in params if param.get("ID") == key]
+        if len(values) == 1 and re.fullmatch(r"[0-9]{1,10}", values[0] or "") and int(values[0]) <= 0xFFFFFFFF:
+            result[f"{field.lower()}Microseconds"] = int(values[0])
+        else:
+            saved.issue("warning", "controller_io_timing_unverified", hardware_path,
+                        f"{key} has no single explicit unsigned 32-bit value on the selected CPU")
+    if result["durationMicroseconds"] is not None and result["toleranceMicroseconds"] is not None:
+        result["state"] = "saved"
+    return result
+
+
+def review_controller_map(saved, studio, report, hardware, assembly, expected_task_class=None):
     result = {"state": "unverified", "assembly": assembly, "controller": None, "map": None, "variables": {}}
+    if expected_task_class is not None:
+        result["expectedTaskClass"] = expected_task_class
     if hardware["state"] != "matched" or not report["selectedCpu"]:
         return result
     cpu = Path("Physical", report["selectedConfiguration"], report["selectedCpu"], "Cpu.pkg")
@@ -166,6 +193,14 @@ def review_controller_map(saved, studio, report, hardware, assembly):
         result["state"] = "mismatched"
         saved.issue("error", "controller_io_map_mismatch", mapping,
                     f"The communication map has {invalid} invalid rows and {missing} unmapped array indices")
+    elif (expected_task_class is not None
+          and (result["taskClasses"] != [expected_task_class] or result["unqualifiedRows"])):
+        result["state"] = "mismatched"
+        saved.issue("error", "controller_io_task_class_mismatch", mapping,
+                    f"All communication rows must explicitly use Cyclic#{expected_task_class} for this check")
     else:
         result["state"] = "matched"
+    if expected_task_class is not None:
+        result["taskTiming"] = review_task_timing(saved, Path(hardware["hardware"]), report["selectedCpu"],
+                                                  report["cpu"].get("moduleId"), expected_task_class)
     return result
