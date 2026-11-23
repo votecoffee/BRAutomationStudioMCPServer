@@ -107,6 +107,14 @@ def markdown(response):
         for dependency in preflight["libraryDependencies"]:
             versions = ", ".join(dependency["selectedVersions"]) or "unresolved"
             lines.append(f"- {text(dependency['library'])} requires {text(dependency['requires'])} · {text(versions)}")
+        if controller := preflight.get("controllerHardware"):
+            lines.extend(["", "## Configured controller hardware", "",
+                          f"- {text(controller['expectedType'])} · {text(controller['state'])}"
+                          f" · Saved hardware {text(controller['hardware'])}"])
+            for module in controller["modules"]:
+                lines.append(f"- {text(module['name'])} · Saved revision {text(module['savedVersion'])}"
+                             f" · Catalog revision {text(module['catalogVersion'])} · {text(module['state'])}"
+                             f" · {text(module['catalog'])}")
     if simulation := report.get("simulationPreflight"):
         lines.extend(markdown_simulation_prerequisites(simulation, text))
         if export := simulation["launchPadExport"]:

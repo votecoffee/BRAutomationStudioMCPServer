@@ -95,7 +95,8 @@ def run_widget_package_review(arguments, request_directory):
 
 def preflight(arguments, request_directory):
     return build_preflight(*build_inputs(arguments, request_directory),
-                           verify_motion_declarations=arguments.get("verifyMotionDeclarations", False))
+                           verify_motion_declarations=arguments.get("verifyMotionDeclarations", False),
+                           expected_controller_type=arguments.get("expectedControllerType"))
 
 
 def run_motion_interface_review(arguments, request_directory):
@@ -479,15 +480,20 @@ WIDGET_PACKAGE_REVIEW = Operation(
     required=("project",),
     handler=run_widget_package_review,
 )
+BUILD_PREFLIGHT_INPUTS = {
+    **PROJECT_INSPECT.arguments,
+    "studioRoot": {"type": "string", "minLength": 1, "description": "Automation Studio installation root."},
+    "verifyMotionDeclarations": {"type": "boolean", "default": False,
+                                 "description": "Verify descriptor-listed IEC declarations for selected McAcp6D and MpTraffic."},
+    "runtimeRoot": {"type": "string", "minLength": 1, "description": "Override the AS4 Runtime catalog under AS/System."},
+}
 BUILD_PREFLIGHT = Operation(
     name="build_preflight",
     summary="Compare a saved project with a selected AS4 installation and Runtime catalog.",
     arguments={
-        **PROJECT_INSPECT.arguments,
-        "studioRoot": {"type": "string", "minLength": 1, "description": "Automation Studio installation root."},
-        "verifyMotionDeclarations": {"type": "boolean", "default": False,
-                                     "description": "Verify descriptor-listed IEC declarations for selected McAcp6D and MpTraffic."},
-        "runtimeRoot": {"type": "string", "minLength": 1, "description": "Override the AS4 Runtime catalog under AS/System."},
+        **BUILD_PREFLIGHT_INPUTS,
+        "expectedControllerType": {"type": "string", "minLength": 1,
+                                   "description": "Require this Hardware.hw Module Type and its exact installed hardware revisions."},
     },
     required=("project", "studioRoot"),
     handler=preflight,
@@ -496,7 +502,7 @@ MOTION_INTERFACE_REVIEW = Operation(
     name="motion_interface_review",
     summary="Read public pins, STRUCT fields and enum values from verified AS4 McAcp6D and MpTraffic declarations.",
     arguments={
-        **{key: value for key, value in BUILD_PREFLIGHT.arguments.items() if key != "verifyMotionDeclarations"},
+        **{key: value for key, value in BUILD_PREFLIGHT_INPUTS.items() if key != "verifyMotionDeclarations"},
         "blocks": {"type": "array", "minItems": 1, "maxItems": 32,
                    "items": {"type": "string", "minLength": 1, "maxLength": 128},
                    "description": "Distinct IEC function-block names in McAcp6D or MpTraffic."},
@@ -511,7 +517,7 @@ MOTION_INTERFACE_REVIEW = Operation(
     handler=run_motion_interface_review,
 )
 SIMULATION_ARGUMENTS = {
-    "studioRoot": BUILD_PREFLIGHT.arguments["studioRoot"],
+    "studioRoot": BUILD_PREFLIGHT_INPUTS["studioRoot"],
     "targetMapp6D": {"type": "string", "minLength": 3, "description": "Reviewed AS4 family, 2.4 or 2.7."},
     "simulatorZip": {"type": "string", "minLength": 1, "description": "Optional B&R simulator ZIP to match by SHA-256."},
     **{role: {"type": "string", "minLength": 1,
@@ -534,7 +540,7 @@ SIMULATION_PREFLIGHT = Operation(
     name="simulation_preflight",
     summary="Check a saved AS4 project, workstation and native export prerequisites for matched ACOPOS 6D simulation.",
     arguments={
-        **BUILD_PREFLIGHT.arguments,
+        **BUILD_PREFLIGHT_INPUTS,
         **SIMULATION_ARGUMENTS,
         "launchPadExport": {"type": "string", "minLength": 1, "description": "Native LaunchPad .x6d for the intended route."},
         "environmentReport": {"type": "string", "minLength": 1,
@@ -551,7 +557,7 @@ BUILD_PLAN = Operation(
     name="build_plan",
     summary="Pin an offline AS4 PC_any simulation build to the source and installation read sets.",
     arguments={
-        **BUILD_PREFLIGHT.arguments,
+        **BUILD_PREFLIGHT_INPUTS,
         **LAUNCHPAD_ROUTE_INPUTS,
         "launchPadExport": SIMULATION_PREFLIGHT.arguments["launchPadExport"],
         "environmentReport": SIMULATION_PREFLIGHT.arguments["environmentReport"],

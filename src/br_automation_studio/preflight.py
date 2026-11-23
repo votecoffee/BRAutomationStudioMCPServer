@@ -7,11 +7,11 @@ import re
 
 from .inspection import inspect_saved
 from .motion_declarations import review_motion_declarations
-from .project import SavedFiles, children
+from .project import SavedFiles, children, tag
 from .windows_version import product_version
 
 PACKAGE_ROOT = Path("AS/TechnologyPackages")
-CPU_ROOT = Path("AS/Hardware/Modules")
+HARDWARE_ROOT = Path("AS/Hardware/Modules")
 STUDIO_VERSION = re.compile(r"AS(4(?:\.\d+){2,3})", re.IGNORECASE)
 CATALOG_VERSION = re.compile(r"(?:\d+(?:\.\d+){1,3}|n\.d)")
 RUNTIME_VERSION = re.compile(r"([A-Z])(\d{1,2})\.(\d{2})", re.IGNORECASE)
@@ -116,7 +116,7 @@ def runtime(source, version, selected_cpu):
 def cpu_catalog(source, module_id, selected_cpu):
     if not selected_cpu:
         return []
-    directory = source.member(CPU_ROOT / "_", module_id)
+    directory = source.member(HARDWARE_ROOT / "_", module_id)
     if directory is None:
         return []
     configs = sorted(path / f"{module_id}.hwx" for path in (source.root / directory).glob("*")
@@ -130,6 +130,60 @@ def cpu_catalog(source, module_id, selected_cpu):
     if not configs:
         source.issue("error", "cpu_catalog_missing", directory, f"No hardware catalog entries for {module_id!r}")
     return entries
+
+
+def controller_hardware(saved, studio, configuration, module_type):
+    result = {"state": "unverified", "expectedType": module_type, "hardware": None, "modules": []}
+    if configuration is None:
+        return result
+
+    hardware_path = Path("Physical", configuration, "Hardware.hw")
+    result["hardware"] = hardware_path.as_posix()
+    hardware, _ = saved.xml(hardware_path, "Hardware")
+    if hardware is None:
+        return result
+
+    modules = [node for node in hardware.iter() if tag(node) == "Module" and node.get("Type") == module_type]
+    if not modules:
+        saved.issue("error", "controller_type_missing", hardware_path,
+                    f"The saved configuration has no hardware module of type {module_type!r}")
+        return result
+
+    catalog = studio.member(HARDWARE_ROOT / "_", module_type)
+    if catalog is None:
+        return result
+
+    for module in modules:
+        name, version = module.get("Name"), module.get("Version")
+        entry = {"name": name, "type": module_type, "savedVersion": version, "catalog": None,
+                 "catalogVersion": None, "state": "unverified"}
+        result["modules"].append(entry)
+        if not name or numeric_version(version) is None:
+            saved.issue("error", "controller_hardware_unverified", hardware_path,
+                        f"Controller {name!r} needs a saved name and numeric hardware revision")
+            continue
+
+        path = catalog / version / f"{module_type}.hwx"
+        entry["catalog"] = path.as_posix()
+        before = len(studio.diagnostics)
+        definition, _ = studio.xml(path, "Module", optional=True)
+        if definition is None:
+            if len(studio.diagnostics) == before:
+                studio.issue("error", "controller_catalog_missing", path,
+                             f"Install the catalog definition for {module_type} revision {version}")
+            continue
+        entry["catalogVersion"] = definition.get("Version")
+        if entry["catalogVersion"] != version:
+            entry["state"] = "mismatched"
+            studio.issue("error", "controller_catalog_revision_mismatch", path,
+                         f"Catalog revision {entry['catalogVersion']!r} differs from the saved revision {version}")
+        else:
+            entry["state"] = "matched"
+    if all(entry["state"] == "matched" for entry in result["modules"]):
+        result["state"] = "matched"
+    elif any(entry["state"] == "mismatched" for entry in result["modules"]):
+        result["state"] = "mismatched"
+    return result
 
 
 def selected_package(source, selection):
@@ -284,7 +338,7 @@ def check_library_dependencies(providers):
 
 def build_preflight(path, studio_root, runtime_root=None, configuration=None, cpu=None, *,
                     verify_motion_declarations=False, include_layout=False, geometry_manager=None, recovery_managers=(),
-                    include_motion=False, include_io=False):
+                    include_motion=False, include_io=False, expected_controller_type=None):
     saved = SavedFiles(path.parent)
     report = inspect_saved(saved, Path(path.name), configuration, cpu,
                            include_layout=include_layout, geometry_manager=geometry_manager,
@@ -328,12 +382,15 @@ def build_preflight(path, studio_root, runtime_root=None, configuration=None, cp
     dependencies = check_library_dependencies(providers)
     if verify_motion_declarations:
         report["motionDeclarations"] = review_motion_declarations(saved, studio, report, packages)
+    controller = (controller_hardware(saved, studio, report["selectedConfiguration"], expected_controller_type)
+                  if expected_controller_type is not None else None)
     report["snapshot"] = saved.snapshot()
     report["evidence"] = "saved_files_and_installation_metadata"
     report["preflight"] = {
         "buildTools": builders, "studioRoot": str(studio.root), "studioSnapshot": studio.snapshot(),
         "runtimeRoot": str(runtimes.root), "runtimeSnapshot": runtimes.snapshot(), "runtime": runtime_check,
         "cpuCatalog": hardware, "technologyPackages": packages, "libraryDependencies": dependencies,
+        **({"controllerHardware": controller} if controller is not None else {}),
     }
     for scope, reader in (("project", saved), ("studio", studio), ("runtime", runtimes)):
         for issue in reader.diagnostics:

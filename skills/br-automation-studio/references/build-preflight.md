@@ -22,6 +22,12 @@ Discover the installed request contract with `br-studio operation-help build_pre
 
 On the observed AS4 layout, the shared Runtime catalog is the sibling `AS/System` tree under the parent of `studioRoot`. Set `runtimeRoot` to the exact `AS/System` catalog path if the installation uses another location. A selected version such as `J4.93` maps to `J0493/SG4/Config.xml`. This confirms a catalog record. CPU-specific Runtime image selection remains a native check.
 
+## Check the saved controller revision
+
+With br-studio 0.93.0 or later, set `expectedControllerType` in a `build_preflight` request to require the exact controller model in the selected configuration's `Hardware.hw`. For example, set it to `8FLM11.0000.00I-2` for that ACOPOS 6D controller. The check reads each matching module's saved name and version and verifies the exact `AS/Hardware/Modules/<Type>/<Version>/<Type>.hwx` from the selected Studio catalog. [B&R controller hardware upgrades](https://www.br-automation.com/en-us/products/mechatronic-systems/acopos-6d/controller/8flm11000000i-2/)
+
+Read `preflight.controllerHardware` for the saved revision, catalog path and catalog revision. The project and Studio read sets include the files used. A different saved model produces `controller_type_missing`. A missing exact catalog revision or mismatched XML revision produces a separate diagnostic. Use the active physical configuration for this review. Verify the assembly's controller assignment, POWERLINK node, I/O map and delivered hardware through the native configuration workflow.
+
 ## Check package Runtime requirements
 
 With br-studio 0.86.0 or later, preflight compares the selected CPU's saved Automation Runtime with the Runtime dependencies and lockouts declared in each selected package's installed `TP.cfg`. The result appears under the corresponding package in Markdown and in `preflight.technologyPackages[].constraints` in JSON. The receipt records the manifest path, the inclusive bounds, `selectedVersion` and `state`.

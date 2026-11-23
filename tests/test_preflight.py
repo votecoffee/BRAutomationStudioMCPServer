@@ -151,6 +151,50 @@ class BuildPreflightTests(unittest.TestCase):
                     self.assertIsNone(plan["buildPlan"])
                     self.assertEqual(plan["diagnostics"][0]["code"], code)
 
+    def test_expected_controller_uses_the_saved_type_and_exact_catalog_revision(self):
+        self.local_core("5.29.1")
+        hardware = Path("Physical/ARsim/Hardware.hw")
+        module_type = "8FLM11.0000.00I-2"
+        folder = Path("AS/Hardware/Modules") / module_type
+        exact = folder / "1.0.0.1" / f"{module_type}.hwx"
+        other = folder / "1.0.0.2" / f"{module_type}.hwx"
+        self.put(self.studio / other, '<Module Version="1.0.0.2" />')
+        saved = ('<Hardware xmlns="http://br-automation.co.at/AS/Hardware">'
+                 '<Module Name="PC" Type="PC_any" Version="1.1.1.0"><Connector Name="IF3">'
+                 '<Module Name="PlanarController" Type="8FLM01.0000.00I-1" Version="1.0.0.1" />'
+                 '</Connector></Module></Hardware>')
+        self.put(self.project / hardware, saved)
+        args = {"expectedControllerType": module_type}
+        ordinary = self.inspect()["result"]
+        self.assertNotIn("controllerHardware", ordinary["preflight"])
+        self.assertNotIn(hardware.as_posix(), {row["path"] for row in ordinary["snapshot"]["files"]})
+
+        wrong = self.inspect(**args)["result"]
+        self.assertEqual(wrong["diagnostics"][0]["code"], "controller_type_missing")
+        self.put(self.project / hardware, saved.replace("8FLM01.0000.00I-1", module_type))
+        absent = self.inspect(**args)["result"]
+        self.assertEqual(absent["diagnostics"][0]["code"], "controller_catalog_missing")
+        self.assertEqual(absent["diagnostics"][0]["path"], exact.as_posix())
+
+        self.put(self.studio / exact, '<Module Version="1.0.0.2" />')
+        mismatch = self.inspect(**args)["result"]
+        self.assertEqual(mismatch["preflight"]["controllerHardware"]["state"], "mismatched")
+        self.assertEqual(mismatch["diagnostics"][0]["code"], "controller_catalog_revision_mismatch")
+
+        self.put(self.studio / exact, '<Module xmlns="http://br-automation.co.at/AS/HardwareModule" Version="1.0.0.1" />')
+        matched = self.inspect(**args)
+        self.assertEqual(matched["status"], "complete", matched["result"]["diagnostics"])
+        result = matched["result"]
+        controller = result["preflight"]["controllerHardware"]
+        self.assertEqual(controller["state"], "matched")
+        self.assertEqual(controller["modules"], [
+            {"name": "PlanarController", "type": module_type, "savedVersion": "1.0.0.1",
+             "catalog": exact.as_posix(), "catalogVersion": "1.0.0.1", "state": "matched"},
+        ])
+        self.assertIn(hardware.as_posix(), {row["path"] for row in result["snapshot"]["files"]})
+        self.assertIn(exact.as_posix(), {row["path"] for row in result["preflight"]["studioSnapshot"]["files"]})
+        self.assertIn("Saved revision 1.0.0.1 · Catalog revision 1.0.0.1", markdown(matched))
+
     def test_missing_exact_version_identifies_other_catalog_versions(self):
         apj = self.project / "Loop.apj"
         apj.write_bytes(apj.read_bytes().replace(b'mapp6D Version="2.2.0"', b'mapp6D Version="2.4.1"'))

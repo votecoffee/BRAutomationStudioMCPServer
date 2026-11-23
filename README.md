@@ -66,7 +66,7 @@ $brStudio = '.\.local\venv\Scripts\br-studio.exe'
 
 The example reads a synthetic project. The result lists declared package versions, selected configuration and CPU, layout and assembly references, Traffic Manager endpoints, and Assembly6D widget links. It records SHA-256 hashes for the files read. Use the result as saved-file evidence. Native compilation and ARsim behavior need their own checks.
 
-For an installed AS4 toolchain, `build_preflight` compares the project with the selected Studio, Runtime, CPU and technology-package catalogs. It checks the saved CPU's Runtime against each selected package's declared requirements and lockouts. [Build preflight workflow](skills/br-automation-studio/references/build-preflight.md)
+For an installed AS4 toolchain, `build_preflight` compares the project with the selected Studio, Runtime, CPU and technology-package catalogs. It checks the saved CPU's Runtime against each selected package's declared requirements and lockouts. Set `expectedControllerType` to check the saved controller and its exact installed hardware definition. [Build preflight workflow](skills/br-automation-studio/references/build-preflight.md)
 
 Use `widget_package_review` to inventory saved mapp View widget library entries before a build or join them to a retained build log and RUC. [Widget package review](skills/br-automation-studio/references/widget-package-review.md)
 
