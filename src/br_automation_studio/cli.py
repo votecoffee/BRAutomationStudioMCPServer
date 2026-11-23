@@ -115,6 +115,12 @@ def markdown(response):
                 lines.append(f"- {text(module['name'])} · Saved revision {text(module['savedVersion'])}"
                              f" · Catalog revision {text(module['catalogVersion'])} · {text(module['state'])}"
                              f" · {text(module['catalog'])}")
+    if physical := report.get("physicalAssemblyReview"):
+        lines.extend(["", "## Physical 6D assembly mode", "",
+                      f"- Assembly {text(physical['assembly'])} · {text(physical['state'])}"
+                      f" · Simulation6D {text(physical['assemblySimulation'])} · {text(physical['assemblyPath'])}",
+                      f"- CPU {text(physical['cpuModuleId'])} · Simulation {text(physical['cpuSimulation'])}"
+                      f" · {text(physical['cpuSimulationSource'])} · {text(physical['cpuSimulationSourcePath'])}"])
     if powerlink := report.get("controllerPowerlinkReview"):
         lines.extend(["", "## Controller POWERLINK timing", "",
                       f"- {text(powerlink['connector'])} · {text(powerlink['state'])}"

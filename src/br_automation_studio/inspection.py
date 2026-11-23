@@ -8,6 +8,18 @@ from .links import MotionLinks
 from .project import MOTION_TYPES, SavedFiles, children, choices, package_files, select, tag
 
 
+def registered_assembly(source, report, identity):
+    matches = [module for module in report["motionModules"]
+               if module["type"] == "assembly6d" and module["id"] == identity]
+    if len(matches) != 1:
+        return None, None
+    path = Path(matches[0]["path"])
+    configuration, _ = source.xml(path, "Configuration")
+    assembly = next(node for node in children(configuration, "Element")
+                    if node.get("Type") == "assembly6d" and node.get("ID") == identity)
+    return path, assembly
+
+
 def inspect_project(path, configuration=None, cpu=None, *, geometry_manager=None, include_layout=False,
                     recovery_managers=(), include_motion=False, include_io=False, include_layout_device=False):
     path = Path(path)

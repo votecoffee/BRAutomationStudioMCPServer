@@ -5,6 +5,7 @@ from collections import defaultdict
 from pathlib import Path
 import re
 
+from .assembly_mode import review_physical_assembly
 from .controller_io import review_controller_map
 from .hardware_timing import review_powerlink
 from .inspection import inspect_saved
@@ -342,7 +343,7 @@ def build_preflight(path, studio_root, runtime_root=None, configuration=None, cp
                     verify_motion_declarations=False, include_layout=False, geometry_manager=None, recovery_managers=(),
                     include_motion=False, include_io=False, expected_controller_type=None, controller_io_assembly=None,
                     controller_io_task_class=None, controller_powerlink_connector=None,
-                    controller_powerlink_assembly=None):
+                    controller_powerlink_assembly=None, physical_assembly=None):
     if controller_io_assembly is not None and expected_controller_type is None:
         raise ValueError("The controller I/O review needs an expected controller type")
     if controller_io_task_class is not None and controller_io_assembly is None:
@@ -404,6 +405,12 @@ def build_preflight(path, studio_root, runtime_root=None, configuration=None, cp
         report["controllerPowerlinkReview"] = review_powerlink(saved, studio, report, controller, hardware,
                                                                controller_powerlink_connector,
                                                                controller_powerlink_assembly)
+    if physical_assembly is not None:
+        def runtime_supports(lower, upper):
+            return within(runtime_check["version"], lower, upper, version_key=runtime_order) is True
+
+        report["physicalAssemblyReview"] = review_physical_assembly(saved, studio, report, hardware,
+                                                                   physical_assembly, runtime_supports)
     report["snapshot"] = saved.snapshot()
     report["evidence"] = "saved_files_and_installation_metadata"
     report["preflight"] = {

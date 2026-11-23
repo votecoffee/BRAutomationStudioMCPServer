@@ -3,6 +3,7 @@
 from pathlib import Path
 import re
 
+from .inspection import registered_assembly
 from .project import children
 
 
@@ -10,6 +11,13 @@ def selected_cpu_module(hardware, name, module_id):
     cpus = [node for node in children(hardware, "Module")
             if node.get("Name") == name and node.get("Type") == module_id]
     return cpus[0] if len(cpus) == 1 else None
+
+
+def exact_cpu_catalog(cpu, entries):
+    revision = cpu.get("Version")
+    matches = [row["path"] for row in entries if row["version"] == revision
+               and Path(row["path"]).parent.name == revision]
+    return Path(matches[0]) if len(matches) == 1 else None
 
 
 def single_value(values):
@@ -41,17 +49,13 @@ def controlled_node(value):
 def review_assembly_address(saved, project, assembly, connector, hardware_path, node_values):
     result = {"assembly": assembly, "state": "unverified", "assemblyPath": None,
               "assemblyInterface": None, "assemblyNodeNumber": None, "hardwareNodeNumber": None}
-    entries = [row for row in project["motionModules"] if row["type"] == "assembly6d" and row["id"] == assembly]
-    if len(entries) != 1:
+    path, element = registered_assembly(saved, project, assembly)
+    if path is None:
         saved.issue("warning", "controller_powerlink_address_unverified", Path(project["project"]),
                     f"Could not identify one registered 6D assembly {assembly!r} for the selected CPU")
         return result
 
-    path = Path(entries[0]["path"])
     result["assemblyPath"] = path.as_posix()
-    config, _ = saved.xml(path, "Configuration")
-    element = next(node for node in children(config, "Element")
-                   if node.get("Type") == "assembly6d" and node.get("ID") == assembly)
     groups = [group for group in children(element, "Group") if group.get("ID") == "Fieldbus6D"]
     fields = children(groups[0], "Property") if len(groups) == 1 else []
     interface = single_value([field.get("Value") for field in fields if field.get("ID") == "IFName"])
@@ -116,13 +120,12 @@ def review_powerlink(saved, studio, project, hardware, cpu_catalog, connector, a
         issue("Could not identify one top-level hardware module for the selected CPU")
         return result
 
-    version = cpu.get("Version")
-    exact = [row for row in cpu_catalog if row["version"] == version and Path(row["path"]).parent.name == version]
-    if len(exact) != 1:
+    exact = exact_cpu_catalog(cpu, cpu_catalog)
+    if exact is None:
         issue("Could not verify the CPU connector against its exact saved hardware revision")
         return result
-    result["cpuCatalog"] = exact[0]["path"]
-    cpu_definition, _ = studio.xml(Path(result["cpuCatalog"]), "Module")
+    result["cpuCatalog"] = exact.as_posix()
+    cpu_definition, _ = studio.xml(exact, "Module")
     if powerlink_ports(cpu_definition).count(connector) != 1:
         issue(f"The exact CPU catalog does not declare one POWERLINK connector named {connector!r}", "error")
         return result

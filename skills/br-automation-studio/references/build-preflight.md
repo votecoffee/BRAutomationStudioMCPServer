@@ -52,6 +52,12 @@ With br-studio 0.97.0 or later, add `controllerPowerlinkAssembly` with the regis
 
 Read `controllerPowerlinkReview.assemblyAddress` for the saved assembly path, interface and both node numbers. An explicit disagreement produces `controller_powerlink_address_mismatch`. A missing or ambiguous value produces `controller_powerlink_address_unverified`. Older saves can omit `IFName`, including B&R's sample. Check the effective interface in Automation Studio when the report is unverified, and confirm the controller's commissioned node number on the live segment. [B&R saved 6D assembly example](https://github.com/br-automation-community/mapp6D-SampleProject/blob/891da6f6e64dca737406e1f301e581c464f9d310/mapp6d_SampleProject/Physical/Config1/X20CP3586/mapp6D/Config_1.assembly6d#L47-L50)
 
+### Review simulation settings for a physical handoff
+
+With br-studio 0.98.0 or later, set `physicalAssembly` to the registered assembly ID in the selected physical configuration. This check can run before the controller mapping exists. It requires the explicit assembly property `Simulation6D=SimOff` and checks the selected CPU's independent `Simulation` flag. A saved `SimOn`, `Simulation=1` or simulated `PC_any` CPU produces `physical_assembly_mode_mismatch`. [B&R assembly settings](https://help.br-automation.com/#/en/4/motion/mapp_6d/konfiguration/komponenten/assembly.html) · [B&R CPU simulation settings](https://help.br-automation.com/#/en/4/projectmanagement/hwmanagement/simulationmode.html)
+
+Read `physicalAssemblyReview` for the settings and sources. A saved CPU flag takes precedence. When the CPU omits it, the review can use the applicable `ArCfgGroupSimulation.xml` default referenced by the exact selected CPU catalog. The result identifies that catalog and includes the definition in the installation read set. Missing, conflicting or unsupported settings produce `physical_assembly_mode_unverified`. Check the active target and connection in Automation Studio before the physical handoff.
+
 ## Check package Runtime requirements
 
 With br-studio 0.86.0 or later, preflight compares the selected CPU's saved Automation Runtime with the Runtime dependencies and lockouts declared in each selected package's installed `TP.cfg`. The result appears under the corresponding package in Markdown and in `preflight.technologyPackages[].constraints` in JSON. The receipt records the manifest path, the inclusive bounds, `selectedVersion` and `state`.

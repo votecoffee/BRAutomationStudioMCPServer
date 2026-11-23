@@ -195,6 +195,84 @@ class BuildPreflightTests(unittest.TestCase):
         self.assertIn(exact.as_posix(), {row["path"] for row in result["preflight"]["studioSnapshot"]["files"]})
         self.assertIn("Saved revision 1.0.0.1 · Catalog revision 1.0.0.1", markdown(matched))
 
+    def test_physical_assembly_review_checks_independent_simulation_settings(self):
+        self.local_core("5.29.1")
+        folder = self.project / "Physical/ARsim/PC"
+        assembly = folder / "mapp6D/FixtureAssembly.assembly6d"
+        sim_off = prop("Simulation6D", "SimOff")
+        physical = assembly.read_text(encoding="utf-8").replace('<Group ID="Layout">', sim_off + '<Group ID="Layout">')
+        self.put(assembly, physical)
+
+        options = {"physicalAssembly": "FixtureAssembly"}
+        simulated_cpu = self.inspect(**options)
+        self.assertEqual(simulated_cpu["status"], "issues")
+        self.assertEqual(simulated_cpu["result"]["physicalAssemblyReview"]["cpuSimulationSource"], "cpu_type")
+
+        cpu = folder / "Cpu.pkg"
+        cpu.write_bytes(cpu.read_bytes().replace(b'ModuleId="PC_any"', b'ModuleId="X20CP1684"'))
+        hardware = folder.parent / "Hardware.hw"
+        target = ('<Hardware xmlns="http://br-automation.co.at/AS/Hardware">'
+                  '<Module Name="PC" Type="X20CP1684" Version="1.5.0.0" /></Hardware>')
+        self.put(hardware, target)
+        catalog = "AS/Hardware/Modules/X20CP1684/1.5.0.0/X20CP1684.hwx"
+        simulation = "AS/Hardware/ArCfgGroupSimulation.xml"
+        self.put(self.studio / catalog, '<Module Version="1.5.0.0"><Properties Target="SG4">'
+                 '<Include File="ArCfgGroupSimulation" /></Properties></Module>')
+        group = ('<Configuration xmlns="http://br-automation.co.at/AS/XmlPropertyGrid">'
+                 '<Group ID="AR000" FromVersion="A4.04"><Parameter ID="Simulation" Value="0" />'
+                 '</Group></Configuration>')
+        self.put(self.studio / simulation, group)
+
+        matching = self.inspect(**options)
+        self.assertEqual(matching["status"], "complete", matching["result"]["diagnostics"])
+        reviewed = matching["result"]["physicalAssemblyReview"]
+        self.assertEqual(reviewed["state"], "matched")
+        self.assertEqual(reviewed["assemblySimulation"], "SimOff")
+        self.assertEqual(reviewed["cpuSimulation"], "0")
+        self.assertEqual(reviewed["cpuSimulationSource"], "catalog_default")
+        self.assertEqual(reviewed["cpuCatalog"], catalog)
+        self.assertEqual(reviewed["cpuSimulationSourcePath"], simulation)
+        self.assertIn(simulation, {row["path"] for row in matching["result"]["preflight"]["studioSnapshot"]["files"]})
+        self.assertIn("CPU X20CP1684 · Simulation 0 · catalog_default", markdown(matching))
+        self.assertNotIn("physicalAssemblyReview", self.inspect()["result"])
+
+        cpu_on = '<Parameter ID="Simulation" Value="1" />'
+        cpu_off = '<Parameter ID="Simulation" Value="0" />'
+        for assembly_text, cpu_setting, status, expected_source in (
+            (physical, cpu_on, "issues", "saved"),
+            (physical, cpu_off, "complete", "saved"),
+            (physical.replace(sim_off, prop("Simulation6D", "SimOn")), "", "issues", "catalog_default"),
+            (physical.replace(sim_off, ""), "", "partial", "catalog_default"),
+            (physical.replace(sim_off, sim_off + prop("Simulation6D", "SimOn")), "", "partial", "catalog_default"),
+            (physical, cpu_off + cpu_on, "partial", "saved"),
+        ):
+            with self.subTest(assembly=assembly_text, cpu=cpu_setting):
+                self.put(assembly, assembly_text)
+                self.put(hardware, target.replace('Version="1.5.0.0" />', f'Version="1.5.0.0">{cpu_setting}</Module>'))
+                response = self.inspect(**options)
+                self.assertEqual(response["status"], status, response["result"]["diagnostics"])
+                result = response["result"]["physicalAssemblyReview"]
+                self.assertEqual(result["cpuSimulationSource"], expected_source)
+                self.assertEqual(result["state"], {"complete": "matched", "partial": "unverified",
+                                                  "issues": "mismatched"}[status])
+
+        self.put(assembly, physical)
+        self.put(hardware, target)
+        self.put(self.studio / simulation, group.replace("A4.04", "A4.95"))
+        unknown_default = self.inspect(**options)
+        self.assertEqual(unknown_default["status"], "partial")
+        self.assertIsNone(unknown_default["result"]["physicalAssemblyReview"]["cpuSimulation"])
+        self.put(self.studio / simulation, group.replace('Value="0"', 'Value="1"'))
+        enabled_default = self.inspect(**options)
+        self.assertEqual(enabled_default["status"], "issues")
+        self.assertEqual(enabled_default["result"]["diagnostics"][0]["scope"], "studio")
+        self.assertEqual(enabled_default["result"]["physicalAssemblyReview"]["cpuSimulationSource"], "catalog_default")
+        self.put(self.studio / simulation, group)
+        self.put(hardware, target.replace('Version="1.5.0.0"', 'Version="1.5.0.1"'))
+        missing_revision = self.inspect(**options)
+        self.assertEqual(missing_revision["status"], "partial")
+        self.assertIsNone(missing_revision["result"]["physicalAssemblyReview"]["cpuSimulation"])
+
     def test_powerlink_binds_the_direct_6d_controller_and_cpu_system_timer(self):
         self.local_core("5.29.1")
         model = "8FLM11.0000.00I-2"

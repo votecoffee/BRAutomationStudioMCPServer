@@ -111,7 +111,8 @@ def preflight(arguments, request_directory):
                            verify_motion_declarations=arguments.get("verifyMotionDeclarations", False),
                            expected_controller_type=controller, controller_io_assembly=assembly,
                            controller_io_task_class=task_class, controller_powerlink_connector=powerlink,
-                           controller_powerlink_assembly=powerlink_assembly)
+                           controller_powerlink_assembly=powerlink_assembly,
+                           physical_assembly=arguments.get("physicalAssembly"))
 
 
 def run_motion_interface_review(arguments, request_directory):
@@ -517,6 +518,8 @@ BUILD_PREFLIGHT = Operation(
                                          "description": "Check a direct 6D connection, system timer and saved cycle time on this CPU connector. Requires expectedControllerType."},
         "controllerPowerlinkAssembly": {"type": "string", "minLength": 1,
                                         "description": "Compare this assembly's saved interface and node number with the direct connection. Requires controllerPowerlinkConnector."},
+        "physicalAssembly": {"type": "string", "minLength": 1,
+                             "description": "Check that this selected 6D assembly and CPU have simulation disabled for physical handoff."},
     },
     required=("project", "studioRoot"),
     handler=preflight,
