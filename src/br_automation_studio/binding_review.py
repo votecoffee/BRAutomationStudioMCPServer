@@ -10,8 +10,10 @@ from xml.etree import ElementTree as ET
 from zlib import error as CompressionError
 
 from .global_variables import GLOBAL_LIMIT
+from .hardware_timing import parameter_values, selected_cpu_module, single_value, unsigned_value
+from .inspection import inspect_saved
 from .motion_interfaces import declared_members, lexical_view
-from .project import ProjectXml, XML_LIMIT, children, choices, package_files
+from .project import ProjectXml, SavedFiles, XML_LIMIT, children, choices, package_files
 from .ruc_review import CONTENT, DATA, VIEW, open_configuration
 
 SERVER = VIEW.removesuffix("/wwwRoot") + "/server"
@@ -268,51 +270,56 @@ class BindingTarget:
         require(default_visualizations(root) == [self.visualization], path,
                 f"The default visualization must be {self.visualization!r} for the browser check")
 
+    def task_reference(self):
+        reference = TASK_VARIABLE.fullmatch(self.identifier)
+        require(reference is not None, ".", "Select a V1 OPC UA task scalar in ::Task:Variable form")
+        for value in (self.visualization, self.content, self.widget):
+            require(re.fullmatch(r"[a-zA-Z0-9_-]+", value), ".", f"Unsupported resource ID {value!r}")
+        return reference.groups()
+
+    def check_saved(self, source, cpu, saved, task, variable):
+        extensions = {"vis", "binding", "uaserver", "uad"}
+        if self.require_default:
+            extensions.add("mappviewcfg")
+        paths = package_files(source, cpu, "Cpu", extensions)
+        self.saved_binding(source, paths, saved)
+        contents = package_files(source, Path("Logical/Package.pkg"), "Package", {"content"})
+        path, content = one(((path, node) for path, node in saved_documents(source, contents, ".content", "Content")
+                             if node.get("id") == self.content), cpu, f"saved content {self.content!r}")
+        widget = one((item for item in nested(content, "Widgets", "Widget") if item.get("id") == self.widget),
+                     path, f"saved widget {self.widget!r}")
+        widget_type = widget.get(XSI_TYPE, "")
+        require(widget_type.startswith("widgets."), path, "Missing supported saved widget type")
+        saved.update(content=path.as_posix(), widgetType=widget_type)
+        conn_path, conn_root = one(saved_documents(source, paths, ".uaserver", "Configuration"),
+                                   cpu, "saved OPC UA connection document")
+        saved.update(connection=conn_path.as_posix(), endpoint=connection(conn_root, conn_path))
+        map_path, task_node, field = one(((path, item, field)
+                                         for path, root in saved_documents(source, paths, ".uad", "OpcUaSource")
+                                         for item, field in variable_matches(root, task, variable)),
+                                        cpu, f"saved default-view task variable {self.identifier!r}")
+        require(task_node.get("Enable") == field.get("Enable") == "True", map_path, "Saved task variable is disabled")
+        saved["nodeMap"] = map_path.as_posix()
+        if self.verify_iec_type:
+            saved["iecDeclaration"] = saved_task_declaration(source, cpu, task, variable)
+        if self.require_default:
+            config, root = one(saved_documents(source, paths, ".mappviewcfg", "Configuration"),
+                               cpu, "saved mapp View configuration")
+            self.check_default(root, config)
+            saved.update(defaultVisualization=self.visualization, serverConfig=config.as_posix())
+
     def check(self, archive, source, manifest, report):
         try:
-            reference = TASK_VARIABLE.fullmatch(self.identifier)
-            require(reference is not None, ".", "Select a V1 OPC UA task scalar in ::Task:Variable form")
-            task, variable = reference.groups()
-            for value in (self.visualization, self.content, self.widget):
-                require(re.fullmatch(r"[a-zA-Z0-9_-]+", value), ".", f"Unsupported resource ID {value!r}")
+            task, variable = self.task_reference()
             cpu = Path("Physical", manifest["configuration"], manifest["cpu"], "Cpu.pkg")
-            extensions = {"vis", "binding", "uaserver", "uad"}
-            if self.require_default:
-                extensions.add("mappviewcfg")
-            paths = package_files(source, cpu, "Cpu", extensions)
             saved, compiled = report["saved"], report["compiled"]
-
             report["state"] = "checking_saved"
-            self.saved_binding(source, paths, saved)
-            contents = package_files(source, Path("Logical/Package.pkg"), "Package", {"content"})
-            path, content = one(((path, node) for path, node in saved_documents(source, contents, ".content", "Content")
-                                 if node.get("id") == self.content), cpu, f"saved content {self.content!r}")
-            widget = one((item for item in nested(content, "Widgets", "Widget") if item.get("id") == self.widget),
-                         path, f"saved widget {self.widget!r}")
-            widget_type = widget.get(XSI_TYPE, "")
-            require(widget_type.startswith("widgets."), path, "Missing supported saved widget type")
-            saved.update(content=path.as_posix(), widgetType=widget_type)
-            conn_path, conn_root = one(saved_documents(source, paths, ".uaserver", "Configuration"),
-                                       cpu, "saved OPC UA connection document")
-            saved.update(connection=conn_path.as_posix(), endpoint=connection(conn_root, conn_path))
-            map_path, task_node, field = one(((path, item, field)
-                                             for path, root in saved_documents(source, paths, ".uad", "OpcUaSource")
-                                             for item, field in variable_matches(root, task, variable)),
-                                            cpu, f"saved default-view task variable {self.identifier!r}")
-            require(task_node.get("Enable") == field.get("Enable") == "True", map_path, "Saved task variable is disabled")
-            saved["nodeMap"] = map_path.as_posix()
-            if self.verify_iec_type:
-                saved["iecDeclaration"] = saved_task_declaration(source, cpu, task, variable)
-            if self.require_default:
-                config, root = one(saved_documents(source, paths, ".mappviewcfg", "Configuration"),
-                                   cpu, "saved mapp View configuration")
-                self.check_default(root, config)
-                saved.update(defaultVisualization=self.visualization, serverConfig=config.as_posix())
+            self.check_saved(source, cpu, saved, task, variable)
 
             report["state"] = "checking_compiled"
             self.compiled_binding(archive, compiled)
             if self.require_default:
-                server_config = f"{SERVER}/{config.name}"
+                server_config = f"{SERVER}/{Path(saved['serverConfig']).name}"
                 candidates = [name for name in archive.members
                               if name.startswith(f"{SERVER.casefold()}/") and name.endswith(".mappviewcfg")]
                 require(candidates == [server_config.casefold()], server_config,
@@ -325,7 +332,7 @@ class BindingTarget:
             widget_parser.feed(packaged_bytes(archive, html_path).decode("utf-8-sig"))
             widget_parser.close()
             class_name = one(widget_parser.matches, html_path, f"rendered widget {self.dom_id!r}")
-            require(class_name == widget_type.replace(".", "/"), html_path, "Compiled widget type differs")
+            require(class_name == saved["widgetType"].replace(".", "/"), html_path, "Compiled widget type differs")
             compiled.update(content=html_path, widgetType=class_name)
             conn_path = f"{DATA}/OpcUaSrv.br"
             try:
@@ -334,7 +341,7 @@ class BindingTarget:
                 raise BindingProblem(conn_path, f"Could not read packaged OPC UA configuration: {error}") from error
             compiled.update(connection=conn_path, endpoint=connection(conn_root, conn_path))
             require(compiled["endpoint"] == saved["endpoint"], conn_path, "Compiled default OPC UA endpoint differs")
-            map_member = f"{NODESETS}/{map_path.stem}.uar.gz"
+            map_member = f"{NODESETS}/{Path(saved['nodeMap']).stem}.uar.gz"
             try:
                 with GzipFile(fileobj=BytesIO(packaged_bytes(archive, map_member))) as stream:
                     xml = stream.read(XML_LIMIT + 1)
@@ -356,3 +363,54 @@ class BindingTarget:
         except BindingProblem as error:
             diagnostics = archive.diagnostics if report["state"] == "checking_compiled" else source
             diagnostics.issue("error", "binding_readback_mismatch", error.path, str(error))
+
+
+def check_saved_cpu_endpoint(source, project, cpu, saved, review):
+    path = cpu.parent.parent / "Hardware.hw"
+    settings = {"path": path.as_posix(), "enabled": None, "port": None}
+    saved["cpuOpcUa"] = settings
+    hardware, _ = source.xml(path, "Hardware", optional=True)
+    if hardware is None:
+        source.issue("warning", "saved_binding_endpoint_unverified", path, "Could not read the saved CPU OPC UA settings")
+        return
+    module = selected_cpu_module(hardware, project["selectedCpu"], project["cpu"].get("moduleId"))
+    if module is None:
+        source.issue("warning", "saved_binding_endpoint_unverified", path, "Could not identify the selected CPU module")
+        return
+
+    flag = single_value(parameter_values(module, "ActivateOpcUa"))
+    port = unsigned_value(single_value(parameter_values(module, "OpcUaPort")))
+    settings["enabled"] = {"0": False, "1": True}.get(flag)
+    settings["port"] = port if port is not None and 1 <= port <= 65535 else None
+    if settings["enabled"] is False:
+        review["state"] = "mismatched"
+        source.issue("error", "saved_binding_endpoint_mismatch", path, "The selected CPU has its OPC UA server disabled")
+    elif settings["enabled"] is None or settings["port"] is None:
+        source.issue("warning", "saved_binding_endpoint_unverified", path,
+                     "Could not verify explicit ActivateOpcUa and OpcUaPort values on the selected CPU")
+    elif settings["port"] != saved["endpoint"]["port"]:
+        review["state"] = "mismatched"
+        source.issue("error", "saved_binding_endpoint_mismatch", path,
+                     f"The CPU OPC UA port is {settings['port']} and mapp View uses {saved['endpoint']['port']}")
+    else:
+        review["state"] = "matched"
+
+
+def review_saved_binding(path, configuration, cpu, target):
+    source = SavedFiles(path.parent)
+    result = inspect_saved(source, Path(path.name), configuration, cpu)
+    review = target.receipt()
+    review.pop("compiled")
+    review["state"] = "unverified"
+    result["savedBindingReview"] = review
+    if result["selectedCpu"]:
+        selected = Path("Physical", result["selectedConfiguration"], result["selectedCpu"], "Cpu.pkg")
+        try:
+            target.check_saved(source, selected, review["saved"], *target.task_reference())
+        except BindingProblem as error:
+            review["state"] = "mismatched"
+            source.issue("error", "saved_binding_mismatch", error.path, str(error))
+        else:
+            check_saved_cpu_endpoint(source, result, selected, review["saved"], review)
+    result["snapshot"] = source.snapshot()
+    return result

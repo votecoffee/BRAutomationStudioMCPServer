@@ -26,6 +26,14 @@ Use `br-studio operation-help ruc_binding_review` for the request schema.
 
 Run `br-studio run --request <binding-request.json>`. Add `--format markdown` for the readable report.
 
+## Check the saved binding before build
+
+With br-studio 0.100.0 or later, run `saved_binding_review` against the saved AS4 project. Use the same four binding identifiers shown above and select the saved `configuration` and `cpu` when needed. This request uses the project files directly. Add `requireDefaultVisualization` to verify that the selected visualization is the saved mapp View default. [B&R OPC UA variable referencing](https://help.br-automation.com/#/en/4/visualization/mappview/engineering/cv_variables_data/cv_opcua_variables/cv_opcua_referencing.html)
+
+Read `savedBindingReview.saved` for the visualization, active one-way binding, widget, enabled default-view task variable and its registered IEC declaration. The review also compares the explicit local `.uaserver` port with the CPU's saved `ActivateOpcUa` and `OpcUaPort` settings. A disabled server or conflicting saved port produces `saved_binding_endpoint_mismatch`. Omitted or ambiguous CPU endpoint settings leave a partial result and retain the saved binding evidence. [B&R OPC UA server configuration](https://help.br-automation.com/#/en/4/visualization/mappview/engineering/lv_organization/configurationview/cv_opcuaserver_config.html)
+
+After build, use `ruc_binding_review` to confirm the generated node's type and read access. The saved trace establishes the browser binding direction and source. Verify effective OPC UA access and changing values during the runtime check.
+
 ## Verify the saved IEC type
 
 With br-studio 0.47.0 or later, set `verifyIecType` to `true` in the request arguments. The check follows the task in the selected `Cpu.sw` through the registered Logical packages to its `IEC.prg` and local `.var` files. Read `bindingReview.saved.iecDeclaration` for the task class, program, IEC type, source line, file hash and expected OPC UA type. The saved declarations join the pinned source read set.

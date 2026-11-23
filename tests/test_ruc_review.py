@@ -1003,8 +1003,7 @@ END_VAR
         self.assertEqual(report["compiled"]["accessLevel"], "0x01")
         self.assertIn("::Pulse:Count → DemoOverview_CountView", markdown(response))
 
-    def test_typed_binding_uses_registered_iec_program_and_checks_signedness(self):
-        node_map = self.configure_display()
+    def configure_counter_declaration(self):
         package = self.project / "Logical/Package.pkg"
         package.write_bytes(package.read_bytes().replace(
             b"</Objects>", b'<Object Type="Package">Tasks</Object></Objects>'))
@@ -1022,6 +1021,10 @@ END_VAR
         software.write_bytes(b'<SwConfiguration><TaskClass Name="Cyclic#4">'
                              b'<Task Name="Pulse" Language="IEC" Source="Tasks.Counter.prg"/>'
                              b'</TaskClass></SwConfiguration>')
+
+    def test_typed_binding_uses_registered_iec_program_and_checks_signedness(self):
+        node_map = self.configure_display()
+        self.configure_counter_declaration()
         self.plan["manifest"]["inputs"] = source_tree(self.project)
         self.plan["sha256"] = identity(self.plan["manifest"])
         self.write("plan.json", self.plan)
@@ -1045,6 +1048,63 @@ END_VAR
         failed = self.binding_review(verifyIecType=True)
         self.assertEqual(self.codes(failed), ["binding_readback_mismatch"])
         self.assertIn("Compiled node type i=7 differs from saved IEC DINT", failed["result"]["diagnostics"][0]["message"])
+
+    def test_saved_binding_reads_task_and_checks_the_local_cpu_endpoint(self):
+        self.configure_display()
+        self.configure_counter_declaration()
+        hardware = self.project / "Physical/ARsim/Hardware.hw"
+        target = (b'<Hardware><Module Name="PC" Type="PC_any">'
+                  b'<Parameter ID="ActivateOpcUa" Value="1" /><Parameter ID="OpcUaPort" Value="14840" />'
+                  b'</Module></Hardware>')
+        hardware.write_bytes(target)
+        request = {"schemaVersion": 1, "workspace": "saved-hmi", "operation": "saved_binding_review",
+                   "arguments": {"project": "Loop/Loop.apj", "visualizationId": "CounterPanel",
+                                 "contentId": "DemoOverview", "widgetId": "CountView",
+                                 "stringIdentifier": "::Pulse:Count", "requireDefaultVisualization": True}}
+
+        result = execute(request, self.root)
+        self.assertEqual(result["status"], "complete", result["result"]["diagnostics"])
+        review = result["result"]["savedBindingReview"]
+        self.assertEqual(review["state"], "matched")
+        self.assertEqual(review["saved"]["defaultVisualization"], "CounterPanel")
+        self.assertEqual(review["saved"]["iecDeclaration"]["expectedDataType"], "i=6")
+        self.assertEqual(review["saved"]["cpuOpcUa"]["port"], 14840)
+        self.assertEqual(review["saved"]["endpoint"]["port"], 14840)
+        self.assertIn("::Pulse:Count → DemoOverview_CountView", markdown(result))
+        snapshot = {row["path"] for row in result["result"]["snapshot"]["files"]}
+        self.assertIn("Physical/ARsim/Hardware.hw", snapshot)
+        self.assertIn("Logical/Tasks/Counter/Variables.var", snapshot)
+
+        for changed, status, code in (
+            (target.replace(b"14840", b"4840"), "issues", "saved_binding_endpoint_mismatch"),
+            (target.replace(b'ActivateOpcUa" Value="1"', b'ActivateOpcUa" Value="0"'), "issues",
+             "saved_binding_endpoint_mismatch"),
+            (target.replace(b'<Parameter ID="OpcUaPort" Value="14840" />', b""), "partial",
+             "saved_binding_endpoint_unverified"),
+        ):
+            with self.subTest(hardware=changed):
+                hardware.write_bytes(changed)
+                checked = execute(request, self.root)
+                self.assertEqual(checked["status"], status)
+                self.assertEqual(self.codes(checked), [code])
+                self.assertEqual(checked["result"]["savedBindingReview"]["saved"]["iecDeclaration"]["type"], "DINT")
+
+        hardware.write_bytes(target)
+        cpu = hardware.parent / "PC"
+        for filename, expected, changed in (
+            ("Exposure.uad", b'Name="Count" Enable="True"', b'Name="Count" Enable="False"'),
+            ("Counter.binding", b'mode="oneWay"', b'mode="twoWay"'),
+            ("Display.mappviewcfg", b'Value="CounterPanel"', b'Value="OtherPanel"'),
+        ):
+            with self.subTest(source=filename):
+                path = cpu / filename
+                original = path.read_bytes()
+                self.assertEqual(original.count(expected), 1)
+                path.write_bytes(original.replace(expected, changed))
+                reviewed = execute(request, self.root)
+                self.assertEqual(reviewed["status"], "issues")
+                self.assertEqual(self.codes(reviewed), ["saved_binding_mismatch"])
+                path.write_bytes(original)
 
     def test_compiled_binding_source_is_checked_even_when_the_archive_is_valid(self):
         self.configure_display()

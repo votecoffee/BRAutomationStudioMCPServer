@@ -36,6 +36,7 @@ def markdown(response):
     titles = {
         "project_inspect": "Saved Automation Studio project inspection",
         "assembly_io_review": "Saved ACOPOS 6D assembly I/O review",
+        "saved_binding_review": "Saved mapp View value binding review",
         "layout_device_review": "Saved Assembly6D file-device review",
         "launchpad_route_review": "Saved Traffic Manager route review",
         "launchpad_station_review": "Saved Traffic Manager station review",
@@ -115,6 +116,18 @@ def markdown(response):
                 lines.append(f"- {text(module['name'])} · Saved revision {text(module['savedVersion'])}"
                              f" · Catalog revision {text(module['catalogVersion'])} · {text(module['state'])}"
                              f" · {text(module['catalog'])}")
+    if binding := report.get("savedBindingReview"):
+        details = binding["saved"]
+        lines.extend(["", "## PLC value binding", "",
+                      f"- {text(binding['stringIdentifier'])} → {text(binding['domId'])} · {text(binding['state'])}",
+                      f"- Visualization {text(binding['visualizationId'])} · Binding {text(details.get('binding'))}",
+                      f"- OPC UA exposure {text(details.get('nodeMap'))}"])
+        if declaration := details.get("iecDeclaration"):
+            lines.append(f"- IEC {text(declaration['type'])} · {text(declaration['path'])} line {declaration['line']}"
+                         f" · Expected OPC UA type {text(declaration['expectedDataType'])}")
+        if target := details.get("endpoint"):
+            cpu_port = details.get("cpuOpcUa", {}).get("port")
+            lines.append(f"- HMI OPC UA {text(target['host'])}:{target['port']} · Saved CPU port {text(cpu_port)}")
     if endpoint := report.get("mappViewEndpointReview"):
         lines.extend(["", "## Saved mapp View browser entry", "",
                       f"- Ethernet {text(endpoint['connector'])} · {text(endpoint['state'])}"

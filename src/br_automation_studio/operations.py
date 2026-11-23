@@ -7,7 +7,7 @@ from typing import Callable
 
 from .arsim_smoke import arsim_smoke
 from .assembly_io import assembly_io_review
-from .binding_review import BindingTarget
+from .binding_review import BindingTarget, review_saved_binding
 from .browser_smoke import ChromeProbe
 from .cycle_trace import RELEASE_TOTAL_EVENTS, cycle_trace_review
 from .hmi_smoke import arsim_hmi_smoke, read_status_bindings
@@ -415,7 +415,14 @@ def run_launchpad_frame_review(arguments, request_directory):
 def binding_target(arguments):
     return BindingTarget(arguments["visualizationId"], arguments["contentId"],
                          arguments["widgetId"], arguments["stringIdentifier"],
+                         require_default=arguments.get("requireDefaultVisualization", False),
                          verify_iec_type=arguments.get("verifyIecType", False))
+
+
+def saved_binding_review(arguments, request_directory):
+    target = binding_target({**arguments, "verifyIecType": True})
+    return review_saved_binding(project_path(arguments, request_directory), arguments.get("configuration"),
+                                arguments.get("cpu"), target)
 
 
 def ruc_binding_review(arguments, request_directory):
@@ -820,19 +827,34 @@ LAUNCHPAD_FRAME_REVIEW = Operation(
     required=LAUNCHPAD_ROUTE_REVIEW.required,
     handler=run_launchpad_frame_review,
 )
+BINDING_SELECTION = {
+    "visualizationId": {"type": "string", "minLength": 1, "description": "Saved visualization ID."},
+    "contentId": {"type": "string", "minLength": 1, "description": "Saved content ID."},
+    "widgetId": {"type": "string", "minLength": 1, "description": "Saved widget ID within that content."},
+    "stringIdentifier": {"type": "string", "minLength": 1, "description": "Expected V1 OPC UA ::Task:Variable identifier."},
+}
+SAVED_BINDING_REVIEW = Operation(
+    name="saved_binding_review",
+    summary="Follow a saved one-way mapp View value binding to a local CPU OPC UA endpoint and IEC task scalar.",
+    arguments={
+        **PROJECT_INSPECT.arguments,
+        **BINDING_SELECTION,
+        "requireDefaultVisualization": {"type": "boolean", "default": False,
+                                         "description": "Require the selected visualization to match the saved mapp View default."},
+    },
+    required=("project", *BINDING_SELECTION),
+    handler=saved_binding_review,
+)
 RUC_BINDING_REVIEW = Operation(
     name="ruc_binding_review",
     summary="Trace a one-way mapp View value binding from saved sources through a reviewed AS4 RUC.",
     arguments={
         **RUC_INPUTS,
-        "visualizationId": {"type": "string", "minLength": 1, "description": "Saved visualization ID."},
-        "contentId": {"type": "string", "minLength": 1, "description": "Saved content ID."},
-        "widgetId": {"type": "string", "minLength": 1, "description": "Saved widget ID within that content."},
-        "stringIdentifier": {"type": "string", "minLength": 1, "description": "Expected V1 OPC UA ::Task:Variable identifier."},
+        **BINDING_SELECTION,
         "verifyIecType": {"type": "boolean", "default": False,
                           "description": "Match the compiled OPC UA data type to the selected IEC task declaration."},
     },
-    required=(*RUC_REVIEW.required, "visualizationId", "contentId", "widgetId", "stringIdentifier"),
+    required=(*RUC_REVIEW.required, *BINDING_SELECTION),
     handler=ruc_binding_review,
 )
 ARSIM_SMOKE = Operation(
@@ -913,7 +935,7 @@ ARSIM_STATUS_SMOKE = Operation(
 )
 OPERATIONS = {item.name: item for item in (
     PROJECT_INSPECT, WIDGET_PACKAGE_REVIEW, BUILD_PREFLIGHT, MOTION_INTERFACE_REVIEW, SIMULATION_ENVIRONMENT, SIMULATION_PREFLIGHT, BUILD_PLAN, BUILD_EXECUTE, RUC_REVIEW,
-    ASSEMBLY_IO_REVIEW, LAYOUT_DEVICE_REVIEW, LAYOUT_SVG_REVIEW,
+    ASSEMBLY_IO_REVIEW, SAVED_BINDING_REVIEW, LAYOUT_DEVICE_REVIEW, LAYOUT_SVG_REVIEW,
     LAUNCHPAD_ROUTE_REVIEW, LAUNCHPAD_EXPORT_REVIEW, LAUNCHPAD_STATION_REVIEW, STATION_TRACE_REVIEW, CYCLE_TRACE_REVIEW,
     LAUNCHPAD_RECOVERY_REVIEW, LAUNCHPAD_MOTION_REVIEW,
     LAUNCHPAD_GEOMETRY_REVIEW, LAUNCHPAD_LAYOUT_REVIEW, LAUNCHPAD_FRAME_REVIEW, RUC_BINDING_REVIEW,
