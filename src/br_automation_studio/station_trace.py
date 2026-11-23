@@ -342,12 +342,17 @@ def check_leg_positions(report, trace, tolerance_um, leg, *, max_position_sample
                             max_position_sample_age_us=max_position_sample_age_us)
 
 
-def check_waypoint_positions(report, trace, rows, path, first_scan, last_scan, tolerance_um, leg):
+def check_waypoint_positions(report, trace, rows, path, first_scan, last_scan, tolerance_um, leg, *,
+                             max_position_sample_age_us=None):
     expected = path[1:-1]
     result = leg["waypointReview"] = {"state": "unverified", "toleranceMicrometres": tolerance_um,
                                      "afterScan": first_scan, "beforeScan": last_scan,
                                      "expectedWaypoints": expected, "samples": [], "ambiguousSamples": 0,
                                      "unusablePositionSamples": 0}
+    age_filter = None
+    if max_position_sample_age_us is not None:
+        age_filter = result["positionAge"] = {"maximumMicroseconds": max_position_sample_age_us,
+                                             "rejectedCandidates": 0, "firstRejectedByWaypoint": {}}
     compiled = verified_position_context(report, trace)
     centres = {name: [trace_decimal(value) for value in row["xyMetres"]] for name, row in compiled.items()}
     pending = iter(expected)
@@ -378,14 +383,28 @@ def check_waypoint_positions(report, trace, rows, path, first_scan, last_scan, t
         except DecimalException as error:
             result["state"] = "issues"
             raise TraceIssue("station_trace_position_invalid", f"Scan {scan} needs exactly comparable X and Y in metres") from error
-        result["samples"].append({"waypoint": target, "scan": scan, "observed": values,
-                                  "expectedXYMetres": compiled[target]["xyMetres"],
-                                  "deltaMicrometres": [str(value) for value in delta]})
+        witness = {"waypoint": target, "scan": scan, "observed": values,
+                   "expectedXYMetres": compiled[target]["xyMetres"], "deltaMicrometres": [str(value) for value in delta]}
+        if age_filter is not None:
+            candidate = new_position_age_review(max_position_sample_age_us)
+            try:
+                witness["positionAge"] = check_position_age(scan, row.get(POSITION_TIME), row.get(SCAN_TIME), candidate)
+            except TraceIssue as error:
+                age_filter["rejectedCandidates"] += 1
+                rejection = {"scan": scan, "code": error.code, **candidate.get("outsideLimit", {})}
+                age_filter["firstRejectedByWaypoint"].setdefault(target, rejection)
+                if error.severity == "error":
+                    result["state"] = "issues"
+                    raise
+                continue
+        result["samples"].append(witness)
         target = next(pending, None)
     if target is not None:
         result["pendingWaypoints"] = expected[len(result["samples"]):]
-        raise TraceIssue("station_trace_waypoint_incomplete",
-                         f"No unambiguous, ordered position samples for {', '.join(result['pendingWaypoints'])}", "warning")
+        required = "unambiguous, ordered position samples"
+        if age_filter is not None:
+            required += " within the age limit"
+        raise TraceIssue("station_trace_waypoint_incomplete", f"No {required} for {', '.join(result['pendingWaypoints'])}", "warning")
     result["state"] = "matched"
 
 

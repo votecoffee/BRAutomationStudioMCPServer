@@ -170,6 +170,30 @@ class StationTraceTest(unittest.TestCase):
             self.assertEqual(checked["waypointReview"]["pendingWaypoints"], missing)
         self.assertEqual(checked["waypointReview"]["ambiguousSamples"], 2)
 
+        candidates = [
+            rows[0] | {"scanTimeMicroseconds": 1000, "positionTimeMicroseconds": 850},
+            rows[0] | {"scan": 21, "positionSampleScan": 21, "scanTimeMicroseconds": 1100, "positionTimeMicroseconds": 1000},
+            rows[1] | {"scan": 22, "positionSampleScan": 22, "scanTimeMicroseconds": 1200, "positionTimeMicroseconds": 1150},
+        ]
+        check_waypoint_positions(report, self.trace, candidates, path, 19, 23, 5, checked, max_position_sample_age_us=100)
+        age_review = checked["waypointReview"]
+        self.assertEqual([(item["waypoint"], item["scan"]) for item in age_review["samples"]], [("Gate1", 21), ("Gate2", 22)])
+        self.assertEqual(age_review["samples"][0]["positionAge"]["ageMicroseconds"], 100)
+        rejected = age_review["positionAge"]["firstRejectedByWaypoint"]["Gate1"]
+        self.assertEqual((rejected["scan"], rejected["ageMicroseconds"]), (20, 150))
+
+        with self.assertRaises(TraceIssue) as old:
+            check_waypoint_positions(report, self.trace, [candidates[0], candidates[-1]], path, 19, 23, 5, checked,
+                                     max_position_sample_age_us=100)
+        self.assertEqual(old.exception.code, "station_trace_waypoint_incomplete")
+        self.assertEqual(checked["waypointReview"]["pendingWaypoints"], ["Gate1", "Gate2"])
+
+        candidates[0]["positionTimeMicroseconds"] = 1001
+        with self.assertRaises(TraceIssue) as future:
+            check_waypoint_positions(report, self.trace, candidates, path, 19, 23, 5, checked, max_position_sample_age_us=100)
+        self.assertEqual(future.exception.code, "station_trace_position_time_after_scan")
+        self.assertEqual(checked["waypointReview"]["state"], "issues")
+
     def test_sampled_speed_uses_elapsed_time_and_compares_diagonal_motion_at_the_limit(self):
         pinned = {"manager": "Traffic", "files": {"project": {"sha256": "a" * 64}, "readback": {"sha256": "c" * 64}},
                   "positions": {"state": "matched", "compiled": {}},

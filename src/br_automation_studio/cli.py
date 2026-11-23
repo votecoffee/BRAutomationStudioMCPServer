@@ -659,7 +659,15 @@ def markdown_position_review(label, positions, text):
 def markdown_waypoint_review(review, text):
     lines = [f"- Waypoint positions {text(review['state'])} · Tolerance {review['toleranceMicrometres']} µm per axis"]
     for witness in review["samples"]:
-        lines.append(f"- Waypoint {text(witness['waypoint'])} · Scan {witness['scan']}")
+        line = f"- Waypoint {text(witness['waypoint'])} · Scan {witness['scan']}"
+        if age := witness.get("positionAge"):
+            line += f" · Sample age {age['ageMicroseconds']} µs"
+        lines.append(line)
+    if age_filter := review.get("positionAge"):
+        lines.append(f"- Maximum waypoint sample age {age_filter['maximumMicroseconds']} µs"
+                     f" · Rejected candidates {age_filter['rejectedCandidates']}")
+        for waypoint, rejected in age_filter["firstRejectedByWaypoint"].items():
+            lines.append(f"  - {text(waypoint)} · First rejection at scan {rejected['scan']} · {text(rejected['code'])}")
     if pending := review.get("pendingWaypoints"):
         lines.append(f"- Pending waypoint observations {text(', '.join(pending))}")
     return lines

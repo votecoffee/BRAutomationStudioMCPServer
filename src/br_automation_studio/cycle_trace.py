@@ -397,10 +397,12 @@ def cycle_trace_review(project, configuration, cpu, manager_id, lpj, readback, n
             inspection = trace["inspectionLeg"]
             result["phase"] = "outbound_waypoints"
             check_waypoint_positions(report, inspection, inspection["scans"], outbound, leg["releaseScans"][0],
-                                     leg["arrival"]["scan"], waypoint_tolerance_um, leg)
+                                     leg["arrival"]["scan"], waypoint_tolerance_um, leg,
+                                     max_position_sample_age_us=max_position_sample_age_us)
             result["phase"] = "return_waypoints"
             check_waypoint_positions(report, inspection, trace["returnLeg"]["scans"], inbound, returned["occupiedScan"],
-                                     returned["arrival"]["scan"], waypoint_tolerance_um, returned)
+                                     returned["arrival"]["scan"], waypoint_tolerance_um, returned,
+                                     max_position_sample_age_us=max_position_sample_age_us)
         if verify_sampled_speed:
             evidence_path = scan_csv_path or trace_path
             leg, returned = result["outbound"], result["returnLeg"]

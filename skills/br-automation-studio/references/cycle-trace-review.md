@@ -40,6 +40,8 @@ Inspect `sampledSpeedReview.positionAge` on each leg for the approved maximum an
 
 With br-studio 0.83.0 or later, the age limit also applies to requested station positions. Set `positionToleranceMicrometres` for Release and outbound arrival and `returnPositionToleranceMicrometres` for return source occupancy, return arrival and the next hold. Station-only requests can use the age limit with `verifyScanClock`. Read `outbound.positionReview.positionAge` and `returnPositionReview.positionAge` for the aggregate results, and `samples` within each position review for each accepted sample's age. Missing position time leaves the station witness incomplete even when its coordinates match.
 
+With br-studio 0.84.0 or later, use the age limit and `verifyScanClock` with `waypointToleranceMicrometres` to check the ordered waypoint witnesses. An otherwise matching position with missing acquisition time or excessive age leaves the search open for a later fresh sample. A position timestamp after its scan record fails the review. Read `waypointReview.samples` on each leg for the selected witnesses and `waypointReview.positionAge` for the rejected candidate count and first rejection at each waypoint. A waypoint remains pending when no qualifying fresh sample was observed.
+
 ## Record the return leg
 
 Use the same PLC scan index as the outbound trace. Start while the inspected shuttle occupies the return source station. This may overlap the outbound capture from its accepted arrival onward. A return starting after the outbound interval must begin at the next scan.
