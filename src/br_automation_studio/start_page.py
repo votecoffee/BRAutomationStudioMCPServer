@@ -12,7 +12,7 @@ from .binding_review import (
 from .inspection import inspect_saved, registered_assembly
 from .json_io import invalid_constant, unique_object
 from .project import SavedFiles, children, choices, objects, package_files, tag
-from .ruc_review import VIEW, blank_equivalent
+from .ruc_review import TRAFFIC_DETAILS, VIEW, blank_equivalent
 
 
 RESOURCE_ID = re.compile(r"[a-zA-Z0-9_-]+")
@@ -20,7 +20,6 @@ PAGE = "{http://www.br-automation.com/iat2015/pageDefinition/v2}Page"
 LAYOUT = "{http://www.br-automation.com/iat2015/layoutDefinition/v2}Layout"
 WIDGET_TYPE = "widgets/mapp6D/Assembly6D"
 SAVED_CONTENT = "{http://www.br-automation.com/iat2015/contentDefinition/v2}Content"
-TRAFFIC_DETAILS = "showAdditionalTrafficManagerInfo"
 XML_BOOLEANS = {"true": True, "false": False, "1": True, "0": False}
 
 
@@ -151,12 +150,22 @@ def require_widget_links(dom_id, widget, assembly, manager):
             f"Assembly6D widget {dom_id!r} must show reviewed Traffic Manager {manager!r} and assembly {assembly!r}")
 
 
+def widget_read_set_matches(source, manifest, report):
+    pinned = {row["path"]: row["sha256"] for row in manifest["inputs"]["files"]}
+    snapshot = report["savedReadSet"] = source.snapshot()
+    return all(pinned.get(row["path"]) == row["sha256"] for row in snapshot["files"])
+
+
 @dataclass(frozen=True)
 class StartPageWidget:
     dom_id: str | None
+    require_traffic_details: bool = False
 
     def receipt(self):
-        return {"state": "not_checked", "domId": self.dom_id}
+        report = {"state": "not_checked", "domId": self.dom_id}
+        if self.require_traffic_details:
+            report["trafficDetails"] = {"state": "unverified", "saved": {"state": "unverified"}, "compiled": {}}
+        return report
 
     def check_saved(self, source, manifest, widgets, report, route_manager=None):
         dom_id, widget = select_saved_widget(widgets, self.dom_id)
@@ -164,9 +173,7 @@ class StartPageWidget:
         if route_manager is not None:
             require_widget_links(dom_id, widget, route_manager["assembly"], route_manager["manager"])
         report["saved"] = saved_start(source, manifest, widget)
-        pinned = {row["path"]: row["sha256"] for row in manifest["inputs"]["files"]}
-        snapshot = report["savedReadSet"] = source.snapshot()
-        require(not source.diagnostics and all(pinned.get(row["path"]) == row["sha256"] for row in snapshot["files"]),
+        require(widget_read_set_matches(source, manifest, report) and not source.diagnostics,
                 ".", "Saved start page metadata could not be verified against the build manifest")
         return widget
 
@@ -182,7 +189,11 @@ class StartPageWidget:
                     all(compiled[key] in blank_equivalent(widget[key]) for key in ("assembly", "manager")),
                     compiled["path"], "Rendered Assembly6D class or links differ from the saved widget")
             report["compiled"] = compiled_start(archive, report["saved"], compiled, dom_id)
-            report["state"] = "matched"
+            if self.require_traffic_details:
+                compare_compiled_traffic_details(archive, source, manifest, widget, compiled, report)
+                report["state"] = report["trafficDetails"]["state"]
+            else:
+                report["state"] = "matched"
         except BindingProblem as error:
             archive.diagnostics.issue("error", "start_page_widget_mismatch", error.path, str(error))
         archive.diagnostics.diagnostics.extend(dict(issue, scope="start_page_source") for issue in source.diagnostics)
@@ -273,6 +284,32 @@ def review_traffic_details(source, node, path, result):
         result["state"] = "mismatched"
         source.issue("error", "saved_assembly_traffic_details_disabled", path,
                      "The selected Assembly6D widget has its additional Traffic Manager details disabled")
+
+
+def compare_compiled_traffic_details(archive, source, manifest, widget, rendered, report):
+    traffic = report["trafficDetails"]
+    saved = traffic["saved"]
+    node = check_start_widget_content(source, widget)
+    require(not source.diagnostics, widget["path"], "Could not verify one saved widget for the detail comparison")
+    review_traffic_details(source, node, Path(widget["path"]), saved)
+    require(widget_read_set_matches(source, manifest, report), widget["path"],
+            "Saved Traffic Manager detail evidence differs from the build manifest")
+    if saved["state"] == "matched":
+        require(not source.diagnostics, widget["path"], "Could not verify the saved detail setting")
+
+    path = Path(rendered["path"])
+    compiled = traffic["compiled"] = {**rendered["trafficDetails"], "path": path.as_posix()}
+    if compiled["enabled"] is False:
+        archive.diagnostics.issue("error", "ruc_traffic_details_disabled", path,
+                                  f"The selected rendered widget has {TRAFFIC_DETAILS} disabled")
+        traffic["state"] = "mismatched"
+    elif compiled["enabled"] is None:
+        archive.diagnostics.issue("warning", "ruc_traffic_details_unverified", path,
+                                  f"The selected rendered widget needs an explicit Boolean {TRAFFIC_DETAILS} option")
+    elif saved["state"] == "matched":
+        traffic["state"] = "matched"
+    if saved["state"] == "mismatched":
+        traffic["state"] = "mismatched"
 
 
 def review_saved_assembly_widget(path, configuration, cpu, widget_id, assembly_id, manager_id, *,

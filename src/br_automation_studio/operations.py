@@ -231,9 +231,10 @@ def build_execute(arguments, request_directory):
 
 def ruc_review(arguments, request_directory):
     widget = arguments.get("startPageWidgetId")
-    return review_ruc(project_path(arguments, request_directory),
-                      request_directory / arguments["jobDirectory"],
-                      start_widget=StartPageWidget(widget) if widget is not None else None)
+    require_traffic_details = arguments.get("requireTrafficDetails", False)
+    start = StartPageWidget(widget, require_traffic_details) if widget is not None or require_traffic_details else None
+    return review_ruc(project_path(arguments, request_directory), request_directory / arguments["jobDirectory"],
+                      start_widget=start)
 
 
 def run_assembly_io_review(arguments, request_directory):
@@ -653,6 +654,8 @@ RUC_REVIEW = Operation(
         **RUC_INPUTS,
         "startPageWidgetId": {"type": "string", "minLength": 1,
                               "description": "Optional Assembly6D DOM ID to verify on the default visualization's start page."},
+        "requireTrafficDetails": {"type": "boolean", "default": False,
+                                  "description": "Require additional Traffic Manager details in the saved and rendered startup widget."},
     },
     required=("project", "jobDirectory"),
     handler=ruc_review,

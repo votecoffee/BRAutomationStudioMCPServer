@@ -135,6 +135,46 @@ class RucReviewTests(unittest.TestCase):
         self.assertEqual(found["compiled"]["assembly"], "FixtureAssembly")
         self.assertIn("CounterPanel → Overview → Panel → Main → DemoOverview", markdown(response))
 
+    def test_ruc_checks_the_explicit_rendered_traffic_detail_option(self):
+        self.add_start_page()
+        content = self.project / "Logical/mappView/Overview.content"
+        saved = content.read_bytes()
+        anchor = b'mpLinkTrafficManager="mapp6D::DemoTraffic"'
+        content.write_bytes(saved.replace(anchor, anchor + b' showAdditionalTrafficManagerInfo="true"'))
+        self.plan["manifest"]["inputs"] = source_tree(self.project)
+        self.plan["sha256"] = identity(self.plan["manifest"])
+        self.write("plan.json", self.plan)
+        rendered = self.members[WIDGET]
+        option = b'"mpLinkTrafficManager":"mapp6D::DemoTraffic"'
+
+        self.members[WIDGET] = rendered.replace(option, option + b',"showAdditionalTrafficManagerInfo":true')
+        self.package()
+        response = self.review(requireTrafficDetails=True)
+        self.assertEqual(response["status"], "complete", response["result"]["diagnostics"])
+        widget = response["result"]["rucReview"]["startPageWidget"]
+        details = widget["trafficDetails"]
+        self.assertEqual(widget["domId"], "DemoOverview_LoopOverview")
+        self.assertEqual(widget["state"], "matched")
+        self.assertEqual(details["state"], "matched")
+        self.assertEqual(details["saved"]["source"], "saved")
+        self.assertEqual(details["compiled"], {"present": True, "enabled": True, "path": WIDGET})
+        self.assertIn("Traffic Manager details matched · Saved True (saved) · Generated True", markdown(response))
+
+        for value, status, code in ((b"false", "issues", "ruc_traffic_details_disabled"),
+                                    (b'"true"', "partial", "ruc_traffic_details_unverified"),
+                                    (b"", "partial", "ruc_traffic_details_unverified")):
+            with self.subTest(compiled=value):
+                self.members[WIDGET] = (rendered.replace(option, option + b',"showAdditionalTrafficManagerInfo":' + value)
+                                        if value else rendered)
+                self.package()
+                reviewed = self.review(startPageWidgetId="DemoOverview_LoopOverview", requireTrafficDetails=True)
+                self.assertEqual(reviewed["status"], status)
+                self.assertEqual(self.codes(reviewed), [code])
+                start = reviewed["result"]["rucReview"]["startPageWidget"]
+                self.assertEqual(start["trafficDetails"]["compiled"]["present"], bool(value))
+                self.assertEqual(start["saved"]["areaId"], "Main")
+                self.assertEqual(self.review(startPageWidgetId="DemoOverview_LoopOverview")["status"], "complete")
+
     def test_saved_assembly_widget_checks_start_page_and_expected_manager_base(self):
         self.add_start_page()
         args = {"project": "Loop/Loop.apj", "assemblyId": "FixtureAssembly", "managerId": "DemoTraffic",

@@ -40,6 +40,12 @@ The report at `rucReview.startPageWidget` identifies the saved files and the mat
 
 A build planned with `launchPadWidgetId` automatically checks its pinned widget and requires the saved and compiled links to identify the assembly and Traffic Manager of the reviewed route. Read `rucReview.startPageWidget.launchPadManager` for that manager ID. If you also supply `startPageWidgetId`, use the same widget ID as the build plan. [Plan the widget check](native-build.md#check-the-default-assembly6d-widget)
 
+### Verify the generated Traffic Manager display option
+
+With br-studio 0.104.0 or later, add `"requireTrafficDetails": true` to the `ruc_review` request. Use `startPageWidgetId` to select one widget when several exist. The check reads the saved Traffic Manager detail setting and the literal Boolean option in the generated widget's `brease.setOptions` object. Read `rucReview.startPageWidget.trafficDetails` for both values, their paths and the comparison state.
+
+A compiled `false` produces `ruc_traffic_details_disabled`. An absent option or a value outside the Boolean format produces `ruc_traffic_details_unverified`. Retain the RUC with the verified source read set and confirm the displayed information in the browser when the intended Traffic Manager is running.
+
 ## Evidence in the result
 
 | Check | Evidence |

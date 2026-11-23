@@ -592,6 +592,11 @@ def markdown_ruc(response, text):
         if compiled := start.get("compiled"):
             lines.append(f"- Generated client map {text(compiled['clientMap'])}")
             lines.append(f"- Generated content {text(compiled['contentUrl'])}")
+        if traffic := start.get("trafficDetails"):
+            saved, generated = traffic["saved"], traffic["compiled"]
+            lines.append(f"- Traffic Manager details {text(traffic['state'])}"
+                         f" · Saved {text(saved.get('enabled'))} ({text(saved.get('source'))})"
+                         f" · Generated {text(generated.get('enabled'))}")
     if layout_device := report.get("layoutDeviceReview"):
         lines.extend(markdown_layout_device(layout_device, text))
     if layout_svg := report.get("layoutSvgReview"):

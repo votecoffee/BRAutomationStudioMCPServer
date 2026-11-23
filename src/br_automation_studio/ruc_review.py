@@ -2,6 +2,7 @@
 """Review saved AS4 RUC contents against a linked native build plan."""
 
 from collections import Counter, defaultdict
+from dataclasses import replace
 from hashlib import file_digest
 import json
 from pathlib import Path
@@ -26,6 +27,7 @@ DATA = "FilesToTransfer/Data0"
 VIEW = "FilesToTransfer/AddonsData/IAT_Data/wwwRoot"
 CONTENT = f"{VIEW}/contents/mappView"
 WIDGET_SCRIPT = f"{VIEW}/BRVisu/widgets/mapp6D/Assembly6D/Assembly6D.js"
+TRAFFIC_DETAILS = "showAdditionalTrafficManagerInfo"
 OPTIONS = re.compile(r'brease\.setOptions\(\s*("(?:[^"\\]|\\.)*")\s*,\s*')
 DIGEST = re.compile(r"[0-9a-f]{64}")
 RECEIPT_LIMIT = 16 * 1024 * 1024
@@ -254,7 +256,7 @@ def blank_equivalent(value):
     return (None, "") if value in (None, "") else (value,)
 
 
-def read_widgets(archive, saved, reader):
+def read_widgets(archive, saved, reader, *, include_traffic_details=False):
     expected = defaultdict(list)
     for item in saved["widgets"]:
         content, widget = item["contentId"], item["id"]
@@ -310,6 +312,10 @@ def read_widgets(archive, saved, reader):
             comparison = {"id": item["id"], "contentId": content, "path": member.filename,
                           "className": options.get("className"), "assembly": options.get("mpLink"),
                           "manager": options.get("mpLinkTrafficManager")}
+            if include_traffic_details:
+                value = options.get(TRAFFIC_DETAILS)
+                comparison["trafficDetails"] = {"present": TRAFFIC_DETAILS in options,
+                                                "enabled": value if type(value) is bool else None}
             output.append(comparison)
             if (comparison["className"] != "widgets/mapp6D/Assembly6D"
                     or comparison["assembly"] not in blank_equivalent(item["assembly"])
@@ -439,7 +445,8 @@ def review_ruc(path, job_directory, binding=None, *, geometry_manager=None, incl
                         raise ValueError("The LaunchPad plan has no usable start page widget ID")
                     if start_widget is not None and start_widget.dom_id not in (None, dom_id):
                         raise ValueError(f"The LaunchPad build plan requires start page widget {dom_id!r}")
-                    start_widget = StartPageWidget(dom_id)
+                    start_widget = (replace(start_widget, dom_id=dom_id) if start_widget is not None
+                                    else StartPageWidget(dom_id))
                     review["startPageWidget"] = start_widget.receipt()
                     review["startPageWidget"]["launchPadManager"] = launchpad["manager"]
                 if include_layout_device:
@@ -530,7 +537,9 @@ def review_ruc(path, job_directory, binding=None, *, geometry_manager=None, incl
                                     reader.issue("error", "ruc_launchpad_positions_mismatch",
                                                  Path(positions["compiled"][name]["path"]),
                                                  f"{name!r} compiled XY {after} m differs from the planned {before} m")
-                review["widgets"] = read_widgets(archive, saved, reader)
+                review["widgets"] = read_widgets(archive, saved, reader,
+                                                 include_traffic_details=(start_widget is not None
+                                                                          and start_widget.require_traffic_details))
                 if start_widget is not None:
                     manager = selected_manager(launchpad["manager"], managers) if pinned_widget else None
                     start_widget.check(archive, path.parent, manifest, saved["widgets"], review["widgets"],
