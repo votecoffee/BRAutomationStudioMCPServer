@@ -98,16 +98,20 @@ def preflight(arguments, request_directory):
     controller = arguments.get("expectedControllerType")
     task_class = arguments.get("controllerIoTaskClass")
     powerlink = arguments.get("controllerPowerlinkConnector")
+    powerlink_assembly = arguments.get("controllerPowerlinkAssembly")
     if assembly is not None and controller is None:
         raise InvalidRequest("controllerIoAssembly needs expectedControllerType")
     if task_class is not None and assembly is None:
         raise InvalidRequest("controllerIoTaskClass needs controllerIoAssembly")
     if powerlink is not None and controller is None:
         raise InvalidRequest("controllerPowerlinkConnector needs expectedControllerType")
+    if powerlink_assembly is not None and powerlink is None:
+        raise InvalidRequest("controllerPowerlinkAssembly needs controllerPowerlinkConnector")
     return build_preflight(*build_inputs(arguments, request_directory),
                            verify_motion_declarations=arguments.get("verifyMotionDeclarations", False),
                            expected_controller_type=controller, controller_io_assembly=assembly,
-                           controller_io_task_class=task_class, controller_powerlink_connector=powerlink)
+                           controller_io_task_class=task_class, controller_powerlink_connector=powerlink,
+                           controller_powerlink_assembly=powerlink_assembly)
 
 
 def run_motion_interface_review(arguments, request_directory):
@@ -511,6 +515,8 @@ BUILD_PREFLIGHT = Operation(
                                   "description": "Require this Cyclic class on all communication rows and read its saved CPU timing. Requires controllerIoAssembly."},
         "controllerPowerlinkConnector": {"type": "string", "minLength": 1,
                                          "description": "Check a direct 6D connection, system timer and saved cycle time on this CPU connector. Requires expectedControllerType."},
+        "controllerPowerlinkAssembly": {"type": "string", "minLength": 1,
+                                        "description": "Compare this assembly's saved interface and node number with the direct connection. Requires controllerPowerlinkConnector."},
     },
     required=("project", "studioRoot"),
     handler=preflight,

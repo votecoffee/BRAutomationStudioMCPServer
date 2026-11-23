@@ -123,6 +123,12 @@ def markdown(response):
                       f" · CPU catalog {text(powerlink['cpuCatalog'])}",
                       f"- Timer {text(powerlink['timerType'])} · Device {text(powerlink['timerDevice'])}"
                       f" · Cycle {text(powerlink['cycleMicroseconds'])} µs"])
+        if address := powerlink.get("assemblyAddress"):
+            lines.append(f"- Assembly {text(address['assembly'])} · Address {text(address['state'])}"
+                         f" · Interface {text(address.get('assemblyInterface'))}"
+                         f" · Assembly node {text(address.get('assemblyNodeNumber'))}"
+                         f" · Hardware node {text(address.get('hardwareNodeNumber'))}"
+                         f" · {text(address.get('assemblyPath'))}")
     if controller_io := report.get("controllerIoReview"):
         lines.extend(["", "## Controller communication I/O mapping", "",
                       f"- Assembly {text(controller_io['assembly'])} · {text(controller_io['state'])}"

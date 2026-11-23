@@ -46,6 +46,12 @@ Read `controllerPowerlinkReview` for the matching controller port, the explicit 
 
 When also checking `controllerIoTaskClass`, compare its saved duration and tolerance with the reported POWERLINK cycle using the applicable mapp 6D timing topic. Confirm effective port settings, synchronized system tick and observed task margin in Automation Studio. [B&R ACOPOS 6D timing configuration](https://help.br-automation.com/#/en/4/motion/mapp_6d/konfiguration/timing_konfiguration.html)
 
+### Compare the saved assembly and hardware addresses
+
+With br-studio 0.97.0 or later, add `controllerPowerlinkAssembly` with the registered assembly ID to the same POWERLINK request. The check compares the assembly's `Fieldbus6D/IFName` and `Fieldbus6D/NodeNumber` with the matched direct CPU connector and controller node in `Hardware.hw`. Supported node values are decimal controlled-node numbers from 1 through 239. The hardware node may be saved on the direct `Connection` or on its controller `Module`. When both supply a node, their values must agree. [B&R controller setup topic](https://help.br-automation.com/#/en/4/motion/mapp_6d/leitfaden/getting_started_mapp_6d/40_adding_acopos_6d_controller.html)
+
+Read `controllerPowerlinkReview.assemblyAddress` for the saved assembly path, interface and both node numbers. An explicit disagreement produces `controller_powerlink_address_mismatch`. A missing or ambiguous value produces `controller_powerlink_address_unverified`. Older saves can omit `IFName`, including B&R's sample. Check the effective interface in Automation Studio when the report is unverified, and confirm the controller's commissioned node number on the live segment. [B&R saved 6D assembly example](https://github.com/br-automation-community/mapp6D-SampleProject/blob/891da6f6e64dca737406e1f301e581c464f9d310/mapp6d_SampleProject/Physical/Config1/X20CP3586/mapp6D/Config_1.assembly6d#L47-L50)
+
 ## Check package Runtime requirements
 
 With br-studio 0.86.0 or later, preflight compares the selected CPU's saved Automation Runtime with the Runtime dependencies and lockouts declared in each selected package's installed `TP.cfg`. The result appears under the corresponding package in Markdown and in `preflight.technologyPackages[].constraints` in JSON. The receipt records the manifest path, the inclusive bounds, `selectedVersion` and `state`.

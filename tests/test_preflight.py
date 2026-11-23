@@ -254,6 +254,56 @@ class BuildPreflightTests(unittest.TestCase):
         with self.assertRaisesRegex(InvalidRequest, "controllerPowerlinkConnector needs expectedControllerType"):
             self.inspect(controllerPowerlinkConnector="IF3")
 
+        assembly = self.project / "Physical/ARsim/PC/mapp6D/FixtureAssembly.assembly6d"
+        bare = assembly.read_text(encoding="utf-8")
+        fieldbus = group("Fieldbus6D", IFName="IF3", NodeNumber="16")
+        configured = bare.replace('<Group ID="Layout">', fieldbus + '<Group ID="Layout">')
+        self.put(assembly, configured)
+        args = {**options, "controllerPowerlinkAssembly": "FixtureAssembly"}
+        response = self.inspect(**args)
+        self.assertEqual(response["status"], "complete")
+        self.assertEqual(response["result"]["controllerPowerlinkReview"]["assemblyAddress"],
+                         {"state": "matched", "assembly": "FixtureAssembly", "assemblyInterface": "IF3",
+                          "assemblyPath": "Physical/ARsim/PC/mapp6D/FixtureAssembly.assembly6d",
+                          "assemblyNodeNumber": 16, "hardwareNodeNumber": 16})
+        self.assertIn("Interface IF3 · Assembly node 16 · Hardware node 16", markdown(response))
+        self.assertNotIn("assemblyAddress", self.inspect(**options)["result"]["controllerPowerlinkReview"])
+
+        module_level = target.replace(' NodeNumber="16"', '').replace(
+            f'Name="Planar" Type="{model}" Version="1.0.0.1"', f'Name="Planar" Type="{model}" Version="1.0.0.1" NodeNumber="16"')
+        both_levels = module_level.replace(link.replace(' NodeNumber="16"', ''), link)
+        for hardware_text, assembly_text, status in (
+            (module_level, configured, "complete"),
+            (both_levels, configured, "complete"),
+            (both_levels.replace('NodeNumber="16" />', 'NodeNumber="17" />'), configured, "issues"),
+            (target, configured.replace('ID="NodeNumber" Value="16"', 'ID="NodeNumber" Value="17"'), "issues"),
+            (target, configured.replace('ID="IFName" Value="IF3"', 'ID="IFName" Value="IF6"'), "issues"),
+            (target, configured.replace(prop("IFName", "IF3"), ""), "partial"),
+            (target, configured.replace(fieldbus, fieldbus * 2), "partial"),
+            (target, configured.replace(prop("NodeNumber", "16"), prop("NodeNumber", "240")), "partial"),
+            (target.replace(' NodeNumber="16"', ''), configured, "partial"),
+        ):
+            with self.subTest(address_status=status, hardware=hardware_text, assembly=assembly_text):
+                self.put(hardware, hardware_text)
+                self.put(assembly, assembly_text)
+                checked = self.inspect(**args)
+                self.assertEqual(checked["status"], status, checked["result"]["diagnostics"])
+                expected = {"complete": "matched", "issues": "mismatched", "partial": "unverified"}[status]
+                powerlink = checked["result"]["controllerPowerlinkReview"]
+                self.assertEqual(powerlink["state"], expected)
+                self.assertEqual(powerlink["assemblyAddress"]["state"], expected)
+
+        self.put(hardware, target.replace(f'<Connector Name="IF3">{cycle}</Connector>', ""))
+        self.put(assembly, configured)
+        partial = self.inspect(**args)
+        self.assertEqual(partial["status"], "partial")
+        self.assertEqual(partial["result"]["controllerPowerlinkReview"]["state"], "unverified")
+        self.assertEqual(partial["result"]["controllerPowerlinkReview"]["assemblyAddress"]["state"], "matched")
+        reference = self.inspect(**{**args, "controllerPowerlinkAssembly": "NotRegistered"})
+        self.assertIn("controller_powerlink_address_unverified", [row["code"] for row in reference["result"]["diagnostics"]])
+        with self.assertRaisesRegex(InvalidRequest, "controllerPowerlinkAssembly needs controllerPowerlinkConnector"):
+            self.inspect(expectedControllerType=model, controllerPowerlinkAssembly="FixtureAssembly")
+
     def test_controller_map_requires_each_word_for_the_assembly_and_saved_device(self):
         self.local_core("5.29.1")
         module_type = "8FLM11.0000.00I-2"

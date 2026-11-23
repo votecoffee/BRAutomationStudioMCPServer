@@ -33,10 +33,66 @@ def powerlink_ports(definition):
                    for link in children(protocol, "Connection"))]
 
 
-def review_powerlink(saved, studio, project, hardware, cpu_catalog, connector):
+def controlled_node(value):
+    number = unsigned_value(value)
+    return number if number is not None and 1 <= number <= 239 else None
+
+
+def review_assembly_address(saved, project, assembly, connector, hardware_path, node_values):
+    result = {"assembly": assembly, "state": "unverified", "assemblyPath": None,
+              "assemblyInterface": None, "assemblyNodeNumber": None, "hardwareNodeNumber": None}
+    entries = [row for row in project["motionModules"] if row["type"] == "assembly6d" and row["id"] == assembly]
+    if len(entries) != 1:
+        saved.issue("warning", "controller_powerlink_address_unverified", Path(project["project"]),
+                    f"Could not identify one registered 6D assembly {assembly!r} for the selected CPU")
+        return result
+
+    path = Path(entries[0]["path"])
+    result["assemblyPath"] = path.as_posix()
+    config, _ = saved.xml(path, "Configuration")
+    element = next(node for node in children(config, "Element")
+                   if node.get("Type") == "assembly6d" and node.get("ID") == assembly)
+    groups = [group for group in children(element, "Group") if group.get("ID") == "Fieldbus6D"]
+    fields = children(groups[0], "Property") if len(groups) == 1 else []
+    interface = single_value([field.get("Value") for field in fields if field.get("ID") == "IFName"])
+    node = controlled_node(single_value([field.get("Value") for field in fields if field.get("ID") == "NodeNumber"]))
+    result["assemblyInterface"] = interface
+    result["assemblyNodeNumber"] = node
+
+    numbers = {controlled_node(value) for value in node_values}
+    if len(numbers - {None}) > 1:
+        result["state"] = "mismatched"
+        saved.issue("error", "controller_powerlink_address_mismatch", hardware_path,
+                    "The controller module and its direct connection declare different node numbers")
+        return result
+    if len(numbers) == 1:
+        result["hardwareNodeNumber"], = numbers
+
+    hardware_node = result["hardwareNodeNumber"]
+    interface_recognized = interface == connector or re.fullmatch(r"IF[0-9]+", interface or "") is not None
+    mismatch = []
+    if interface_recognized and interface != connector:
+        mismatch.append(f"The assembly interface is {interface!r} and the hardware connection uses {connector!r}.")
+    if node is not None and hardware_node is not None and node != hardware_node:
+        mismatch.append(f"The assembly node number is {node} and the saved hardware node is {hardware_node}.")
+    if mismatch:
+        result["state"] = "mismatched"
+        saved.issue("error", "controller_powerlink_address_mismatch", path, " ".join(mismatch))
+    elif node is None or hardware_node is None or not interface_recognized:
+        saved.issue("warning", "controller_powerlink_address_unverified", path,
+                    "Expected an explicit Fieldbus6D IFName on the assembly and a decimal NodeNumber "
+                    "from 1 through 239 on both the assembly and its saved hardware")
+    else:
+        result["state"] = "matched"
+    return result
+
+
+def review_powerlink(saved, studio, project, hardware, cpu_catalog, connector, assembly=None):
     result = {"state": "unverified", "hardware": hardware["hardware"], "connector": connector,
               "controller": None, "controllerPort": None, "cpuCatalog": None,
               "timerType": None, "timerDevice": None, "cycleMicroseconds": None}
+    if assembly is not None:
+        result["assemblyAddress"] = {"assembly": assembly, "state": "unverified"}
     if hardware["state"] != "matched" or not project["selectedCpu"]:
         return result
 
@@ -75,17 +131,25 @@ def review_powerlink(saved, studio, project, hardware, cpu_catalog, connector):
     result["controller"] = selected["name"]
     controller_definition, _ = studio.xml(Path(selected["catalog"]), "Module")
     controller_ports = powerlink_ports(controller_definition)
-    direct = [link for node in children(root, "Module")
+    direct = [(node, link) for node in children(root, "Module")
               if node.get("Name") == selected["name"] and node.get("Type") == selected["type"]
               for link in children(node, "Connection")
               if link.get("Connector") in controller_ports and link.get("TargetModule") == cpu_name]
     if len(direct) != 1:
         issue("Could not verify one direct saved connection from the controller to the selected CPU")
-    elif direct[0].get("TargetConnector") != connector:
-        issue(f"The saved controller connection targets {direct[0].get('TargetConnector')!r} instead of {connector!r}",
-              "error")
     else:
-        result["controllerPort"] = direct[0].get("Connector")
+        (device, link), = direct
+        if link.get("TargetConnector") != connector:
+            issue(f"The saved controller connection targets {link.get('TargetConnector')!r} instead of {connector!r}",
+                  "error")
+        else:
+            result["controllerPort"] = link.get("Connector")
+            if assembly is not None:
+                numbers = [value for item in (device, link) if (value := item.get("NodeNumber")) is not None]
+                address = review_assembly_address(saved, project, assembly, connector, path, numbers)
+                result["assemblyAddress"] = address
+                if address["state"] == "mismatched":
+                    result["state"] = "mismatched"
 
     result["timerType"] = single_value(parameter_values(cpu, "TimerDeviceType"))
     result["timerDevice"] = single_value(parameter_values(cpu, "TimerDevice"))
