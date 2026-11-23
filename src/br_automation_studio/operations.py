@@ -23,10 +23,11 @@ from .links import READ_AXES
 from .motion_interfaces import FIELD_PATH, SYMBOL, review_motion_interfaces
 from .native_build import execute_build, plan_build
 from .opcua_smoke import OpcUaProbe
-from .preflight import build_preflight
+from .preflight import CATALOG_VERSION, build_preflight, numeric_version
 from .ruc_review import review_ruc
 from .runtime_capture import RuntimeScanCapture
-from .simulation_preflight import COMPANION_MEDIA_27, PAIRS, simulation_environment, simulation_preflight
+from .simulation_preflight import (COMPANION_MEDIA_27, PAIRS, SIMULATION_PACKAGES, simulation_environment,
+                                   simulation_preflight)
 from .start_page import StartPageWidget
 from .station_trace import station_trace_review, trace_decimal
 from .widget_packages import widget_package_review
@@ -119,9 +120,15 @@ def simulation_companion_media(arguments, request_directory):
 
 def run_simulation_environment(arguments, request_directory):
     media = arguments.get("simulatorZip")
+    selectors = {name: arguments[f"{name}Selector"] for name in SIMULATION_PACKAGES if f"{name}Selector" in arguments}
+    if selectors and (len(selectors) != len(SIMULATION_PACKAGES) or any(
+            CATALOG_VERSION.fullmatch(value) is None or numeric_version(value) is None for value in selectors.values())):
+        raise InvalidRequest("Supply all three numeric package selectors together: mapp6DSelector, "
+                             "mappMotionSelector and mappViewSelector")
     return simulation_environment(request_directory / arguments["studioRoot"], arguments["targetMapp6D"],
                                   request_directory / media if media is not None else None,
-                                  companion_media=simulation_companion_media(arguments, request_directory))
+                                  companion_media=simulation_companion_media(arguments, request_directory),
+                                  package_selectors=selectors or None)
 
 
 def run_simulation_preflight(arguments, request_directory):
@@ -491,16 +498,22 @@ MOTION_INTERFACE_REVIEW = Operation(
     required=BUILD_PREFLIGHT.required,
     handler=run_motion_interface_review,
 )
+SIMULATION_ARGUMENTS = {
+    "studioRoot": BUILD_PREFLIGHT.arguments["studioRoot"],
+    "targetMapp6D": {"type": "string", "minLength": 3, "description": "Reviewed AS4 family, 2.4 or 2.7."},
+    "simulatorZip": {"type": "string", "minLength": 1, "description": "Optional B&R simulator ZIP to match by SHA-256."},
+    **{role: {"type": "string", "minLength": 1,
+              "description": f"Optional {reference['release']} ZIP to compare by SHA-256."}
+       for role, reference in COMPANION_MEDIA_27.items()},
+}
 SIMULATION_ENVIRONMENT = Operation(
     name="simulation_environment",
-    summary="Check installed AS4 packages and simulator media and registration before selecting a project.",
+    summary="Check installed AS4 packages, a proposed package selection, and simulator media and registration.",
     arguments={
-        "studioRoot": BUILD_PREFLIGHT.arguments["studioRoot"],
-        "targetMapp6D": {"type": "string", "minLength": 3, "description": "Reviewed AS4 family, 2.4 or 2.7."},
-        "simulatorZip": {"type": "string", "minLength": 1, "description": "Optional B&R simulator ZIP to match by SHA-256."},
-        **{role: {"type": "string", "minLength": 1,
-                  "description": f"Optional {reference['release']} ZIP to compare by SHA-256."}
-           for role, reference in COMPANION_MEDIA_27.items()},
+        **SIMULATION_ARGUMENTS,
+        **{f"{name}Selector": {"type": "string", "minLength": 3,
+                               "description": f"Exact proposed {name} selector. Supply all three selectors together."}
+           for name in SIMULATION_PACKAGES},
     },
     required=("studioRoot", "targetMapp6D"),
     handler=run_simulation_environment,
@@ -510,7 +523,7 @@ SIMULATION_PREFLIGHT = Operation(
     summary="Check a saved AS4 project, workstation and native export prerequisites for matched ACOPOS 6D simulation.",
     arguments={
         **BUILD_PREFLIGHT.arguments,
-        **SIMULATION_ENVIRONMENT.arguments,
+        **SIMULATION_ARGUMENTS,
         "launchPadExport": {"type": "string", "minLength": 1, "description": "Native LaunchPad .x6d for the intended route."},
         "inspectLaunchPadExport": {"type": "boolean", "default": False,
                                   "description": "Inventory XML groups observed in the AS4 2.2 LaunchPad importer."},

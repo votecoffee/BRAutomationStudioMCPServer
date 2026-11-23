@@ -28,6 +28,22 @@ Use `simulation_environment` with the intended AS4 installation and target famil
 
 The workstation result covers catalog and installer metadata. Once the project exists, use `simulation_preflight` to check the exact saved package choices, selected CPU, Runtime, libraries and export.
 
+## Check a proposed package selection
+
+With br-studio 0.87.0 or later, add all three selector fields to a `simulation_environment` request. Use the selector strings from `catalogSelectors`. The following example shows the additional fields for a 2.4 connection rehearsal. Choose the corresponding family in `targetMapp6D`.
+
+```json
+{
+  "mapp6DSelector": "2.4.1",
+  "mappMotionSelector": "5.29.1",
+  "mappViewSelector": "5.24.5"
+}
+```
+
+Read `simulationEnvironment.packageSelection`. Each proposed selector needs a verified entry from the selected installation. An unavailable exact selector blocks the selection even when the catalog has another release. The report includes the package build, manifest path and evaluated dependency and lockout rules from all three proposed packages. For example, a mapp View manifest can exclude a proposed mapp Motion selector.
+
+The check compares manifest bounds with the installed Automation Studio version and the proposed package selectors. A rule from a verified manifest can still identify a conflict with a proposed selector that is missing from the installation. `deferred` marks rules for Automation Runtime or other selections that need project context. After saving the project, use `simulation_preflight` to verify the actual selectors and selected CPU's Runtime.
+
 ## Verify the 2.7 companion ZIPs
 
 With br-studio 0.48.0 or later, either simulation operation accepts these optional paths alongside `simulatorZip`.

@@ -6,7 +6,8 @@ from pathlib import Path
 
 from .launchpad_export import inventory_export
 from .mptraffic_definition import check_installed_definition
-from .preflight import PACKAGE_ROOT, build_preflight, engine, numeric_version, runtime_order, selected_package, within
+from .preflight import (PACKAGE_ROOT, build_preflight, check_range, engine, numeric_version, runtime_order,
+                        selected_package, within)
 from .project import SavedFiles
 from .windows_msi import INSTALLSTATE_DEFAULT, installed_product
 
@@ -61,6 +62,7 @@ COMPANION_MEDIA_27 = {
         "payload": "PlanarMotorTool.msi",
     },
 }
+SIMULATION_PACKAGES = ("mapp6D", "mappMotion", "mappView")
 MINIMUM_STUDIO = "4.9.2"
 MINIMUM_RUNTIME = "C4.90"
 MINIMUM_MOTION = "5.26"
@@ -115,7 +117,7 @@ def read_candidates(catalog, name, selectors, minimum=None, family=None):
                     and (family is None or same_family(build, family))
                     and within(version, minimum, None) is True and within(build, minimum, None) is True)
         candidates.append({"selector": version, "internalVersion": build, "manifest": manifest.as_posix(),
-                           "verified": verified})
+                           "verified": verified, "constraints": entry["constraints"]})
     return candidates
 
 
@@ -131,7 +133,7 @@ def check_project(reader, report, family, pair, candidates):
     preflight = report["preflight"]
     project = Path(report["project"])
     packages = report["technologyPackages"]
-    for name in ("mapp6D", "mappMotion", "mappView"):
+    for name in SIMULATION_PACKAGES:
         if sum(row["name"] == name for row in packages) > 1:
             reader.issue("error", "simulation_selection_ambiguous", project, f"Saved project declares {name} more than once")
     selections = {row["name"]: row["version"] for row in packages}
@@ -246,14 +248,48 @@ def prerequisite_state(diagnostics):
     return "blocked" if "error" in severities else "review_required" if "warning" in severities else "inputs_present"
 
 
-def simulation_environment(studio, family, simulator_zip=None, *, companion_media=None):
+def check_package_selection(reader, studio_version, installed, proposed):
+    start = len(reader.diagnostics)
+    versions = {"AutomationStudio": studio_version, **proposed}
+    packages = {}
+    constraints = []
+    for name, selector in proposed.items():
+        candidate = next((row for row in installed[name] if row["selector"] == selector), None)
+        verified = bool(candidate and candidate["verified"])
+        packages[name] = {
+            "selector": selector, "verified": verified,
+            "internalVersion": candidate["internalVersion"] if candidate else None,
+            "manifest": candidate["manifest"] if candidate else None,
+        }
+        if not verified:
+            reader.issue("error", "simulation_selector_unavailable", PACKAGE_ROOT / name,
+                         f"The proposed {name} selector {selector} has no verified catalog candidate for this check")
+            continue
+        manifest = Path(candidate["manifest"])
+        for constraint in candidate["constraints"]:
+            target = constraint.get("VersionType")
+            selected = versions.get(target)
+            state = "deferred"
+            if target in versions:
+                state = check_range(reader, manifest, target, selected, constraint.get("FromVersion"),
+                                    constraint.get("ToVersion"), lockout=constraint["id"].startswith("Lockout"))
+            elif not target:
+                reader.issue("warning", "unverified_version_range", manifest,
+                             f"{constraint['id']} does not identify a version to compare")
+                state = "unverified"
+            constraints.append({**constraint, "package": name, "manifest": manifest.as_posix(),
+                                "selectedVersion": selected, "state": state})
+    return {"state": prerequisite_state(reader.diagnostics[start:]), "packages": packages, "constraints": constraints}
+
+
+def simulation_environment(studio, family, simulator_zip=None, *, companion_media=None, package_selectors=None):
     pair = simulator_pair(family)
     reader = SavedFiles(studio)
     builders, version = engine(reader)
     if version is not None and within(version, MINIMUM_STUDIO, None) is not True:
         reader.issue("error", "simulation_studio_minimum", Path("."),
                      f"Verify installed AS4 {MINIMUM_STUDIO} or later")
-    selectors = {name: catalog_selectors(reader, name) for name in ("mapp6D", "mappMotion", "mappView")}
+    selectors = {name: catalog_selectors(reader, name) for name in SIMULATION_PACKAGES}
     candidates = check_target_catalog(reader, family, pair, selectors["mapp6D"])
     companions = {}
     for name, minimum in (("mappMotion", MINIMUM_MOTION), ("mappView", None)):
@@ -262,6 +298,9 @@ def simulation_environment(studio, family, simulator_zip=None, *, companion_medi
             version_label = f" {minimum} or later" if minimum else ""
             reader.issue("error", "simulation_companion_missing", PACKAGE_ROOT / name,
                          f"No identified AS4 {name} technology package{version_label} was found")
+    selection = None
+    if package_selectors is not None:
+        selection = check_package_selection(reader, version, {"mapp6D": candidates, **companions}, package_selectors)
     simulator = check_simulator(reader, pair)
     archive = check_simulator_media(reader, pair, simulator_zip)
     media_checks = check_companion_media(reader, family, companion_media)
@@ -273,6 +312,7 @@ def simulation_environment(studio, family, simulator_zip=None, *, companion_medi
             "studioRoot": str(reader.root), "studioVersion": version, "buildTools": builders,
             "catalogSelectors": selectors, "installedTargetCatalog": candidates, "companionCatalog": companions,
             "targetCatalogSnapshot": reader.snapshot(), "simulatorInstallation": simulator, "simulatorZip": archive,
+            **({"packageSelection": selection} if selection is not None else {}),
             **({"companionMedia": media_checks} if media_checks else {}),
         },
         "diagnostics": [dict(item, scope="simulation") for item in reader.diagnostics],

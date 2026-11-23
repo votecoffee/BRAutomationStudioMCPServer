@@ -338,6 +338,16 @@ def markdown_simulation_environment(response, text):
         for item in candidates:
             lines.append(f"- {text(name)} {text(item['selector'])} · build {text(item['internalVersion'])}"
                          f" · manifest verified {text(item['verified'])}")
+    if selection := result.get("packageSelection"):
+        lines.extend(["", "## Proposed package selection", "", f"- State **{text(selection['state'])}**"])
+        for name, package in selection["packages"].items():
+            lines.append(f"- {text(name)} {text(package['selector'])} · build {text(package['internalVersion'])}"
+                         f" · catalog candidate verified {text(package['verified'])}")
+        for rule in selection["constraints"]:
+            lower, upper = rule.get("FromVersion") or "any", rule.get("ToVersion") or "any"
+            lines.append(f"- {text(rule['package'])} {text(rule['id'])} · {text(rule.get('VersionType'))}"
+                         f" {text(lower)} to {text(upper)} · selected {text(rule['selectedVersion'])}"
+                         f" · {text(rule['state'])}")
     lines.extend(markdown_diagnostics(report["diagnostics"], text))
     return "\n".join(lines)
 

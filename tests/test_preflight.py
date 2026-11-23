@@ -925,6 +925,54 @@ class BuildPreflightTests(unittest.TestCase):
 
     @patch("br_automation_studio.simulation_preflight.installed_product",
            return_value={"stateCode": 5, "version": "1.25.53"})
+    def test_environment_checks_proposed_package_selectors_together(self, msi):
+        self.prepare_simulation()
+        self.manifest("mapp6D", "2.7.0", "2.7.0.10",
+                      group("DependencyMotion", VersionType="mappMotion", FromVersion="5.29.1")
+                      + group("DependencyRuntime", VersionType="AutomationRuntime", FromVersion="K4.93"), "4.9")
+        self.manifest("mappView", "5.24.5", "5.24.5.104",
+                      group("LockoutMotion", VersionType="mappMotion", ToVersion="5.29.1"), "4.9")
+        self.manifest("mappMotion", "5.30.0", "5.30.0.9", "", "4.12")
+        args = {"studioRoot": "Install/AS412", "targetMapp6D": "2.7",
+                "mapp6DSelector": "2.7.0", "mappViewSelector": "5.24.5", "mappMotionSelector": "5.30.0"}
+        request = {"schemaVersion": 1, "workspace": "preflight", "operation": "simulation_environment",
+                   "arguments": args}
+
+        good = execute(request, self.root)
+        report = good["result"]["simulationEnvironment"]
+        selected = report["packageSelection"]
+        self.assertEqual(report["state"], "inputs_present", good["result"]["diagnostics"])
+        self.assertEqual(selected["state"], "inputs_present")
+        self.assertEqual(selected["packages"]["mappMotion"]["internalVersion"], "5.30.0.9")
+        rules = {(row["package"], row["id"]): row for row in selected["constraints"]}
+        self.assertEqual(rules["mappMotion", "Dependency1"]["selectedVersion"], "4.12.10.39")
+        self.assertEqual(rules["mapp6D", "DependencyRuntime"]["state"], "deferred")
+        view = rules["mappView", "LockoutMotion"]
+        self.assertEqual((view["selectedVersion"], view["state"]), ("5.30.0", "matched"))
+        self.assertIn(view["manifest"], {row["path"] for row in report["targetCatalogSnapshot"]["files"]})
+        self.assertIn("mappView LockoutMotion · mappMotion any to 5.29.1 · selected 5.30.0 · matched", markdown(good))
+
+        # Both selectors are installed. Only the newer one satisfies mapp View.
+        args["mappMotionSelector"] = "5.29.1"
+        result = execute(request, self.root)["result"]
+        selection = result["simulationEnvironment"]["packageSelection"]
+        self.assertEqual(selection["state"], "blocked")
+        issue, = result["diagnostics"]
+        self.assertEqual((issue["code"], issue["path"]), ("package_lockout", view["manifest"]))
+
+        args["mappMotionSelector"] = "5.31.0"
+        result = execute(request, self.root)["result"]
+        selection = result["simulationEnvironment"]["packageSelection"]
+        self.assertEqual(selection["state"], "blocked")
+        self.assertFalse(selection["packages"]["mappMotion"]["verified"])
+        self.assertEqual(result["diagnostics"][0]["code"], "simulation_selector_unavailable")
+
+        del args["mappMotionSelector"]
+        with self.assertRaisesRegex(InvalidRequest, "Supply all three numeric package selectors"):
+            execute(request, self.root)
+
+    @patch("br_automation_studio.simulation_preflight.installed_product",
+           return_value={"stateCode": 5, "version": "1.25.53"})
     def test_simulation_checks_exact_catalog_and_fingerprints_export(self, msi):
         export = self.prepare_simulation()
         response = self.simulation()

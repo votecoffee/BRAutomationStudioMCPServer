@@ -163,6 +163,10 @@ def selected_package(source, selection):
         source.issue("error", "package_identity_mismatch", manifest, f"Manifest does not identify {name} {version}")
         return entry, None, manifest
     entry["internalVersion"] = header.get("InternalVersion")
+    for group in children(package, "Group"):
+        identifier = group.get("ID") or ""
+        if identifier.startswith(("Dependency", "Lockout")):
+            entry["constraints"].append({"id": identifier, **properties(group)})
     return entry, package, manifest
 
 
@@ -304,16 +308,10 @@ def build_preflight(path, studio_root, runtime_root=None, configuration=None, cp
             continue
         directory = manifest.parent.parent
         entry["components"] = package_components(studio, directory, manifest, row["subversions"], package, providers)
-        for group in children(package, "Group"):
-            identifier = group.get("ID") or ""
-            if not identifier.startswith(("Dependency", "Lockout")):
-                continue
-            limits = properties(group)
-            constraint = {"id": identifier, **limits}
-            entry["constraints"].append(constraint)
-            target = limits.get("VersionType")
-            lower, upper = limits.get("FromVersion"), limits.get("ToVersion")
-            lockout = identifier.startswith("Lockout")
+        for constraint in entry["constraints"]:
+            target = constraint.get("VersionType")
+            lower, upper = constraint.get("FromVersion"), constraint.get("ToVersion")
+            lockout = constraint["id"].startswith("Lockout")
             if target == "AutomationRuntime":
                 selected_version = runtime_check["version"]
                 constraint["selectedVersion"] = selected_version
