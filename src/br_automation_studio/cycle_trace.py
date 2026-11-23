@@ -1,11 +1,13 @@
 """Correlate an inspection leg, return and next hold for one shuttle in a saved trace."""
 
 from csv import Error as CsvError
+from functools import partial
 from pathlib import Path
 from stat import FILE_ATTRIBUTE_REPARSE_POINT, S_ISREG
 
 from .cycle_capture import materialize_cycle
 from .cycle_hmi import bind_session_scan_capture, review_cycle_hmi
+from .layout_svg import layout_svg_review
 from .launchpad_route import json_snapshot, launchpad_route_review
 from .mptraffic_events import read_project_events
 from .runtime_capture import CAPTURE_COPY
@@ -214,7 +216,8 @@ def cycle_trace_review(project, configuration, cpu, manager_id, lpj, readback, n
                        source_station, trace_path, *, hmi_status_path=None, scan_csv_path=None, require_session_capture=False,
                        expected_motion=None, position_tolerance_um=None, return_position_tolerance_um=None,
                        waypoint_tolerance_um=None, verify_sampled_speed=False, max_sample_interval_us=None,
-                       verify_position_time_handoff=False, require_assembly_widget=False, hmi_layout_report_path=None):
+                       verify_position_time_handoff=False, require_assembly_widget=False, hmi_layout_report_path=None,
+                       captured_layout_checks=None):
     report = launchpad_route_review(project, configuration, cpu, manager_id, lpj, readback, name_map, job_directory,
                                     include_stations=True)
     result = report["cycleTraceReview"] = {"state": "not_checked", "sourceStation": source_station}
@@ -312,7 +315,11 @@ def cycle_trace_review(project, configuration, cpu, manager_id, lpj, readback, n
         result["state"] = "matched"
         report["evidence"] = "cycle_trace_readback"
         if hmi_status_path is not None:
+            layout = None
+            if captured_layout_checks is not None:
+                layout = partial(layout_svg_review, project, job_directory, manager_id, None, None,
+                                 hmi_status_path=hmi_status_path, **captured_layout_checks)
             review_cycle_hmi(report, trace, hmi_status_path, require_session_capture=require_session_capture,
                              require_assembly_widget=require_assembly_widget, layout_report_path=hmi_layout_report_path,
-                             status_snapshot=status_snapshot)
+                             captured_layout_review=layout, status_snapshot=status_snapshot)
     return report

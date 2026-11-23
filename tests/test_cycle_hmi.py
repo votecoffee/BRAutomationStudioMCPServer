@@ -1,6 +1,8 @@
+from pathlib import Path
 import unittest
+from unittest.mock import Mock
 
-from br_automation_studio.cycle_hmi import bind_session_scan_capture, check_cycle_hmi, check_layout_svg_pairing
+from br_automation_studio.cycle_hmi import bind_session_scan_capture, check_cycle_hmi, check_layout_svg_pairing, review_cycle_hmi
 from br_automation_studio.station_trace import TraceIssue
 
 
@@ -73,11 +75,7 @@ class CycleHmiTest(unittest.TestCase):
             self.check()
         self.assertEqual(issue.exception.code, "cycle_hmi_hold_coverage")
 
-    def test_assembly_widget_needs_the_cycle_route_and_layout_in_both_documents(self):
-        route = {"managerId": "Traffic", "assembly": "Planar"}
-        with self.assertRaises(TraceIssue) as issue:
-            self.check(assembly_route=route)
-        self.assertEqual(issue.exception.code, "cycle_hmi_assembly_widget")
+    def attach_assembly_widget(self):
         kind, widget_id = "widgets/mapp6D/Assembly6D", "Main_Overview"
         client_map, content = "/main.json", "wwwRoot/contents/Main.html"
         self.ruc["widgets"] = [{"contentId": "Main", "id": "Overview", "className": kind,
@@ -95,6 +93,14 @@ class CycleHmiTest(unittest.TestCase):
                                       "assembly": {"path": "/FileDevice:6DData/Planar.svg", "httpStatus": 200},
                                       "trafficManager": {"path": "/FileDevice:6DData/Traffic.svg", "httpStatus": 304},
                                   }})
+        return {"managerId": "Traffic", "assembly": "Planar"}
+
+    def test_assembly_widget_needs_the_cycle_route_and_layout_in_both_documents(self):
+        with self.assertRaises(TraceIssue) as issue:
+            self.check(assembly_route={"managerId": "Traffic", "assembly": "Planar"})
+        self.assertEqual(issue.exception.code, "cycle_hmi_assembly_widget")
+        route = self.attach_assembly_widget()
+        browser = self.hmi["browser"]
         receipt = self.check(assembly_route=route)["assemblyWidget"]
         self.assertEqual(receipt["state"], "matched")
         self.assertEqual(receipt["documents"]["reopened"]["layoutStatuses"]["trafficManager"], 304)
@@ -105,6 +111,23 @@ class CycleHmiTest(unittest.TestCase):
         with self.assertRaises(TraceIssue) as issue:
             self.check(assembly_route=route)
         self.assertEqual(issue.exception.code, "cycle_hmi_assembly_layout")
+
+    def test_combined_review_reuses_the_status_snapshot_and_reports_unsupported_geometry(self):
+        route = self.attach_assembly_widget()
+        path = Path("session/status-response.json")
+        snapshot = (self.document, {"path": str(path), "sha256": "c" * 64})
+        layout = {"state": "unverified", "assets": {}}
+        diagnostic = {"code": "layout_svg_unverified", "severity": "warning"}
+        review_layout = Mock(return_value={"layoutSvgReview": layout, "diagnostics": [diagnostic]})
+        report = {"cycleTraceReview": self.cycle, "cycleHmiReview": {}, "rucReview": self.ruc,
+                  "routeReview": route, "diagnostics": []}
+        review_cycle_hmi(report, self.trace, path, captured_layout_review=review_layout, status_snapshot=snapshot)
+        self.assertIs(review_layout.call_args.kwargs["status_snapshot"], snapshot)
+        self.assertEqual(report["cycleHmiReview"]["assemblyWidget"]["state"], "matched")
+        self.assertEqual(report["cycleHmiReview"]["state"], "incomplete")
+        self.assertEqual(report["cycleHmiReview"]["layoutGeometry"]["state"], "unverified")
+        self.assertEqual(report["layoutSvgReview"], layout)
+        self.assertEqual(report["diagnostics"], [diagnostic])
 
     def test_layout_svg_review_matches_the_owned_capture_and_both_hashes(self):
         paths = {"assembly": "/FileDevice:6DData/Planar.svg", "trafficManager": "/FileDevice:6DData/Traffic.svg"}

@@ -270,11 +270,15 @@ def captured_layout_assets(smoke, paths):
 
 
 def check_layout_svg_pairing(ruc, smoke, response, result):
-    geometry = result["layoutGeometry"] = {"state": "issues", "assets": {}}
     if (type(response.get("schemaVersion")) is not int or response["schemaVersion"] != 1
             or response.get("operation") != "layout_svg_review" or response.get("status") != "complete"):
+        result["layoutGeometry"] = {"state": "issues", "assets": {}}
         raise TraceIssue("cycle_hmi_layout_review_invalid", "Supply a completed layout_svg_review JSON response")
-    reviewed = response["result"]
+    pair_layout_geometry(ruc, smoke, response["result"], result)
+
+
+def pair_layout_geometry(ruc, smoke, reviewed, result):
+    geometry = result["layoutGeometry"] = {"state": "issues", "assets": {}}
     svg, svg_ruc = reviewed["layoutSvgReview"], reviewed["rucReview"]
     if reviewed["evidence"] != "layout_svg_readback" or reviewed["diagnostics"] or svg["state"] != "matched":
         raise TraceIssue("cycle_hmi_layout_review_invalid", "The saved and compiled geometry must match both reviewed SVGs")
@@ -338,18 +342,31 @@ def check_cycle_hmi(cycle, trace, ruc, document, result, *, require_session_capt
 
 
 def review_cycle_hmi(report, trace, path, *, require_session_capture=False, require_assembly_widget=False,
-                     layout_report_path=None, status_snapshot=None):
+                     layout_report_path=None, captured_layout_review=None, status_snapshot=None):
     result = report["cycleHmiReview"]
     evidence_path = path
     try:
-        document, result["statusReport"] = json_snapshot(path, TRACE_LIMIT) if status_snapshot is None else status_snapshot
-        assembly_route = report["routeReview"] if require_assembly_widget or layout_report_path is not None else None
-        check_cycle_hmi(report["cycleTraceReview"], trace, report["rucReview"], document, result,
+        if status_snapshot is None:
+            status_snapshot = json_snapshot(path, TRACE_LIMIT)
+        document, result["statusReport"] = status_snapshot
+        ruc = report["rucReview"]
+        check_widget = require_assembly_widget or layout_report_path is not None or captured_layout_review is not None
+        assembly_route = report["routeReview"] if check_widget else None
+        check_cycle_hmi(report["cycleTraceReview"], trace, ruc, document, result,
                         require_session_capture=require_session_capture, assembly_route=assembly_route)
         if layout_report_path is not None:
             evidence_path = layout_report_path
             reviewed, result["layoutSvgReport"] = json_snapshot(layout_report_path, TRACE_LIMIT)
-            check_layout_svg_pairing(report["rucReview"], document["result"]["arsimSmoke"], reviewed, result)
+            check_layout_svg_pairing(ruc, document["result"]["arsimSmoke"], reviewed, result)
+        elif captured_layout_review is not None:
+            reviewed = captured_layout_review(status_snapshot=status_snapshot)
+            svg = report["layoutSvgReview"] = reviewed["layoutSvgReview"]
+            if diagnostics := reviewed["diagnostics"]:
+                result["layoutGeometry"] = {"state": svg["state"], "assets": {}}
+                result["state"] = "issues" if any(row["severity"] == "error" for row in diagnostics) else "incomplete"
+                report["diagnostics"].extend(diagnostics)
+                return
+            pair_layout_geometry(ruc, document["result"]["arsimSmoke"], reviewed, result)
     except (AttributeError, KeyError, OSError, RuntimeError, TypeError, ValueError) as error:
         code = error.code if isinstance(error, TraceIssue) else "cycle_hmi_invalid"
         message = str(error) if isinstance(error, (OSError, RuntimeError, ValueError)) else "The status or cycle evidence has missing or malformed fields"

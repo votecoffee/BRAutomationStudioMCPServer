@@ -68,8 +68,8 @@ def svg_input(path, identity, *, session_dir=None, capture=None):
     return root, {"path": path.as_posix(), "sha256": digest}
 
 
-def status_layout_inputs(path, ruc, assembly, manager):
-    document, snapshot = json_snapshot(path, TRACE_LIMIT)
+def status_layout_inputs(status_snapshot, ruc, assembly, manager):
+    document, snapshot = status_snapshot
     _, smoke = status_run(document, ruc)
     session = smoke.get("sessionId")
     if not isinstance(session, str) or not session.strip():
@@ -265,7 +265,7 @@ def check_traffic_labels(overlay, positions):
 
 
 def layout_svg_review(project, job, manager_id, assembly_svg, traffic_svg, *, hmi_status_path=None,
-                      verify_mapping_line_endpoints=False, verify_traffic_labels=False):
+                      verify_mapping_line_endpoints=False, verify_traffic_labels=False, status_snapshot=None):
     report = review_ruc(project, job, geometry_manager=manager_id, include_layout=True, include_saved_geometry=True)
     ruc = report["rucReview"]
     result = report["layoutSvgReview"] = {"state": "not_checked", "managerId": manager_id,
@@ -302,7 +302,9 @@ def layout_svg_review(project, job, manager_id, assembly_svg, traffic_svg, *, hm
         session_dir, captures = None, {}
         if hmi_status_path is not None:
             path = hmi_status_path
-            session_dir, captures, provenance = status_layout_inputs(path, ruc, assembly, manager_id)
+            if status_snapshot is None:
+                status_snapshot = json_snapshot(path, TRACE_LIMIT)
+            session_dir, captures, provenance = status_layout_inputs(status_snapshot, ruc, assembly, manager_id)
             assembly_svg = session_dir / captures["assembly"]["file"]
             traffic_svg = session_dir / captures["trafficManager"]["file"]
         path = assembly_svg

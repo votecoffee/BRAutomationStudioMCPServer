@@ -128,3 +128,8 @@ The cycle, status and geometry reports must identify the same build and RUC. The
 If the geometry review includes `verifyMappingLineEndpoints`, the paired layout receipt also carries that result. [Check the drawn mapping endpoints](layout-svg-review.md#check-the-drawn-mapping-endpoints)
 
 If the geometry review includes `verifyTrafficLabels`, the paired layout receipt carries the label count and largest anchor delta. [Check station and waypoint labels](layout-svg-review.md#check-station-and-waypoint-labels)
+## Verify the captured layout in one review
+
+With br-studio 0.77.0 or later, provide `hmiStatusReport` and set `verifyCapturedLayout: true`. Keep both SVG files in the `layout-assets/` directory beside the completed status response. The cycle reviewer uses the same status snapshot for the held-status comparison and the SVG checks. It verifies the Assembly6D widget on both documents, checks the captured SVGs against the build and includes the full result at `layoutSvgReview`. [Combined request](inspection-cycle-rehearsal.md#review-the-saved-svgs-and-plc-scans)
+
+Set `verifyMappingLineEndpoints` and `verifyTrafficLabels` when the capture supports those checks. Read `cycleHmiReview.layoutGeometry` for the pairing outcome. If an SVG check fails, `cycleTraceReview` retains the PLC cycle result and the layout diagnostic names the failed input. An unsupported SVG format leaves the combined review partial. Use `hmiLayoutSvgReport` when pairing a separate, completed layout review.

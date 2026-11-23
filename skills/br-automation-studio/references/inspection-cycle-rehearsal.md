@@ -1,6 +1,6 @@
 # Rehearse one ACOPOS 6D inspection cycle with its HMI
 
-Use this workflow with br-studio 0.76.0 or later for a saved AS4 PC simulation project, a two-station LaunchPad route and a PLC-hosted mapp View page. Work in one run directory with a reviewed project and build as inputs. Keep installation paths, project identifiers and captures in the local run directory.
+Use this workflow with br-studio 0.77.0 or later for a saved AS4 PC simulation project, a two-station LaunchPad route and a PLC-hosted mapp View page. Work in one run directory with a reviewed project and build as inputs. Keep installation paths, project identifiers and captures in the local run directory.
 
 ## Qualify the project and build
 
@@ -25,8 +25,6 @@ run/
     scan-capture.csv
     layout-assets/assembly.svg
     layout-assets/trafficManager.svg
-  svg-request.json
-  svg-response.json
   cycle-trace.json
   cycle-request.json
   cycle-response.json
@@ -93,24 +91,6 @@ Coordinate the matched Planar Motor Simulator and inspection stimuli with the ow
 
 ## Review the saved SVGs and PLC scans
 
-Save as `svg-request.json`. Point it at the same completed status response as the cycle request. The layout review finds and verifies both captured SVGs in `session/layout-assets/`. Enable the two optional SVG checks when the captured format and rehearsal objectives call for them.
-
-```json
-{
-  "schemaVersion": 1,
-  "workspace": "inspection-rehearsal",
-  "operation": "layout_svg_review",
-  "arguments": {
-    "project": "project/Example.apj",
-    "jobDirectory": "build",
-    "managerId": "ExampleTraffic",
-    "hmiStatusReport": "session/status-response.json",
-    "verifyMappingLineEndpoints": true,
-    "verifyTrafficLabels": true
-  }
-}
-```
-
 Save as `cycle-trace.json`. Use the recorded monitor baselines, captured request and shuttle IDs, imported names and actual scan windows. The `captureKind` example applies to a real ARsim acquisition. Keep the original classification when replaying evidence. The strict review takes the LaunchPad and RUC hashes from the matched pinned build. It obtains the scan hash, session ID, heartbeat and status bindings from the role-labeled status receipt and verifies the CSV bytes. [Pinned input checks](cycle-trace-review.md#use-the-pinned-build-for-inspection-hashes) · [Supply a binding map for an older receipt](cycle-trace-review.md#match-the-hmi-reopen-to-that-hold)
 
 ```json
@@ -159,13 +139,15 @@ Save as `cycle-request.json`. If the build retained a name map, supply the same 
     "launchPadReadback": "build/launchpad/readback.json",
     "trace": "cycle-trace.json",
     "hmiStatusReport": "session/status-response.json",
-    "hmiLayoutSvgReport": "svg-response.json",
+    "verifyCapturedLayout": true,
+    "verifyMappingLineEndpoints": true,
+    "verifyTrafficLabels": true,
     "requireSessionScanCapture": true
   }
 }
 ```
 
-The review uses `scan-capture.csv` beside the selected status response. Supply `scanCsv` explicitly when the retained copy is stored elsewhere. The geometry report also enables the cycle's Assembly6D widget check. Add motion checks when their source evidence is present and the test defines the expected values.
+The review uses `scan-capture.csv` and `layout-assets/` beside the selected status response. Supply `scanCsv` explicitly when the retained scan copy is stored elsewhere. `verifyCapturedLayout` enables the Assembly6D widget and SVG checks. Set the mapping endpoint and traffic label flags to match the test and captured format. Add motion checks when their source evidence is present and the test defines the expected values.
 
 | Check | Request inputs | Evidence needed |
 | --- | --- | --- |
@@ -175,11 +157,9 @@ The review uses `scan-capture.csv` beside the selected status response. Supply `
 | Timed sampled speed | `verifySampledSpeed` and optional `maxSampleIntervalMicroseconds` | Pinned positions and motion limits, explicit X/Y read axes, timed positions in both legs |
 | Shared acquisition clock | `verifyPositionTimeHandoff` with `verifySampledSpeed` | One monotonic clock across outbound arrival and return occupancy |
 
-Run the SVG comparison first, then the cycle review after the geometry response completes.
+Run the combined cycle review and save its response.
 
 ```powershell
-br-studio run --request ./svg-request.json | Set-Content -LiteralPath ./svg-response.json -Encoding utf8NoBOM
-$LASTEXITCODE
 br-studio run --request ./cycle-request.json | Set-Content -LiteralPath ./cycle-response.json -Encoding utf8NoBOM
 $LASTEXITCODE
 ```

@@ -297,6 +297,15 @@ def run_cycle_trace_review(arguments, request_directory):
     layout_report = arguments.get("hmiLayoutSvgReport")
     if layout_report and not status_report:
         raise InvalidRequest("hmiLayoutSvgReport needs hmiStatusReport")
+    verify_layout = arguments.get("verifyCapturedLayout", False)
+    if verify_layout and (not status_report or layout_report):
+        raise InvalidRequest("verifyCapturedLayout needs hmiStatusReport and cannot be used with hmiLayoutSvgReport")
+    layout_checks = {
+        "verify_mapping_line_endpoints": arguments.get("verifyMappingLineEndpoints", False),
+        "verify_traffic_labels": arguments.get("verifyTrafficLabels", False),
+    }
+    if not verify_layout and any(layout_checks.values()):
+        raise InvalidRequest("verifyMappingLineEndpoints and verifyTrafficLabels need verifyCapturedLayout in a cycle request")
     verify_time_handoff = arguments.get("verifyPositionTimeHandoff", False)
     if verify_time_handoff and not arguments.get("verifySampledSpeed", False):
         raise InvalidRequest("verifyPositionTimeHandoff requires verifySampledSpeed to be true")
@@ -311,6 +320,7 @@ def run_cycle_trace_review(arguments, request_directory):
                               verify_position_time_handoff=verify_time_handoff,
                               require_assembly_widget=require_widget,
                               hmi_layout_report_path=request_directory / layout_report if layout_report else None,
+                              captured_layout_checks=layout_checks if verify_layout else None,
                               **sampled_speed_options(arguments))
 
 
@@ -651,6 +661,10 @@ CYCLE_TRACE_REVIEW = Operation(
                                      "description": "Require the cycle's Assembly6D widget and both layout SVGs in both HMI documents."},
         "hmiLayoutSvgReport": {"type": "string", "minLength": 1,
                                "description": "Completed layout_svg_review JSON for both SVGs captured by the HMI status probe."},
+        "verifyCapturedLayout": {"type": "boolean", "default": False,
+                                 "description": "Verify both SVGs beside hmiStatusReport in the cycle review. Use in place of hmiLayoutSvgReport."},
+        "verifyMappingLineEndpoints": LAYOUT_SVG_REVIEW.arguments["verifyMappingLineEndpoints"],
+        "verifyTrafficLabels": LAYOUT_SVG_REVIEW.arguments["verifyTrafficLabels"],
         "verifyPositionTimeHandoff": {"type": "boolean", "default": False,
                                       "description": "Compare outbound arrival and return occupancy timestamps using a common clock. Requires verifySampledSpeed."},
         "returnPositionToleranceMicrometres": {"type": "integer", "minimum": 0, "maximum": 9007199254740991,
