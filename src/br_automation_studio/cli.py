@@ -753,6 +753,23 @@ def markdown_cycle_trace(cycle, text):
     if positions := cycle.get("returnPositionReview"):
         lines.extend(["", "## Return and hold positions", ""])
         lines.extend(markdown_position_review("Return and hold positions", positions, text))
+    if timing := cycle.get("scanTiming"):
+        lines.extend(["", "## Cycle scan intervals", "",
+                      "| Interval | Start scan | End scan | Elapsed scans |", "| --- | ---: | ---: | ---: |"])
+        for key, label in (
+            ("resultToRelease", "Approved result to Release"),
+            ("releaseToDone", "Release to ReleaseDone"),
+            ("releaseToOutboundArrival", "Release to outbound arrival"),
+            ("outboundArrivalToReturnOccupancy", "Outbound arrival to return source occupancy"),
+            ("returnOccupancyToClear", "Return source occupancy to clearance"),
+            ("returnOccupancyToArrival", "Return source occupancy to arrival"),
+            ("returnArrivalToNextHold", "Return arrival to next hold"),
+            ("releaseToNextHold", "Release to next hold"),
+        ):
+            interval = timing["intervals"][key]
+            lines.append(f"| {label} | {interval['startScan']} | {interval['endScan']} | {interval['elapsedScans']} |")
+        if limit := timing.get("releaseToNextHoldLimit"):
+            lines.extend(["", f"- Release-to-next-hold limit {text(limit['state'])} · Maximum {limit['maximumScans']} scans"])
     return lines
 
 

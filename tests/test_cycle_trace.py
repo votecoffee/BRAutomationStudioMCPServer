@@ -76,6 +76,28 @@ class CycleTraceTest(unittest.TestCase):
         second = self.run_cycle(self.trace)
         self.assertTrue(second["returnLeg"]["arrivalObservedBeforeSourceClear"])
 
+    def test_cycle_scan_intervals_use_observed_boundaries_and_an_inclusive_limit(self):
+        self.trace["returnLeg"]["scans"][:0] = [self.return_scan(13, 3), self.return_scan(14, 3)]
+        cycle = {}
+        check_cycle(self.trace, self.identity, self.outbound, self.inbound, cycle, max_release_to_next_hold_scans=6)
+        timing = cycle["scanTiming"]
+        self.assertEqual(timing["releaseToNextHoldLimit"], {"state": "matched", "maximumScans": 6})
+        self.assertEqual(timing["intervals"], {
+            name: {"startScan": start, "endScan": end, "elapsedScans": end - start}
+            for name, start, end in (
+                ("resultToRelease", 11, 12), ("releaseToDone", 12, 14), ("releaseToOutboundArrival", 12, 13),
+                ("outboundArrivalToReturnOccupancy", 13, 13), ("returnOccupancyToClear", 13, 16),
+                ("returnOccupancyToArrival", 13, 17), ("returnArrivalToNextHold", 17, 18), ("releaseToNextHold", 12, 18),
+            )
+        })
+        rejected = {}
+        with self.assertRaises(TraceIssue) as caught:
+            check_cycle(self.trace, self.identity, self.outbound, self.inbound, rejected, max_release_to_next_hold_scans=5)
+        self.assertEqual(caught.exception.code, "cycle_trace_scan_limit")
+        self.assertEqual(rejected["phase"], "scan_timing")
+        self.assertEqual(rejected["nextHold"], cycle["nextHold"])
+        self.assertEqual(rejected["scanTiming"]["intervals"], timing["intervals"])
+
     def test_derive_omitted_build_hashes_only_from_matching_pinned_inputs(self):
         proof = {"sourceSha256": self.identity["launchPadSha256"], "readbackSha256": "c" * 64}
         files = {"project": {"sha256": proof["sourceSha256"]}, "readback": {"sha256": proof["readbackSha256"]}}

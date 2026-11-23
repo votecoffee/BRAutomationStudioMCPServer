@@ -329,6 +329,7 @@ def run_cycle_trace_review(arguments, request_directory):
                               hmi_layout_report_path=request_directory / layout_report if layout_report else None,
                               captured_layout_checks=layout_checks if verify_layout else None,
                               release_total_event=release_total_event,
+                              max_release_to_next_hold_scans=arguments.get("maxReleaseToNextHoldScans"),
                               **sampled_speed_options(arguments))
 
 
@@ -677,6 +678,8 @@ CYCLE_TRACE_REVIEW = Operation(
         "verifyTrafficLabels": LAYOUT_SVG_REVIEW.arguments["verifyTrafficLabels"],
         "releaseTotalEvent": {"type": "string", "minLength": 1, "enum": list(RELEASE_TOTAL_EVENTS),
                               "description": "Require the sampled release total to increase once at the selected event scan and stay steady through the next hold."},
+        "maxReleaseToNextHoldScans": {"type": "integer", "minimum": 1, "maximum": 9007199254740991,
+                                      "description": "Maximum allowed scan index difference from the Release edge to the first next hold."},
         "verifyPositionTimeHandoff": {"type": "boolean", "default": False,
                                       "description": "Compare outbound arrival and return occupancy timestamps using a common clock. Requires verifySampledSpeed."},
         "returnPositionToleranceMicrometres": {"type": "integer", "minimum": 0, "maximum": 9007199254740991,

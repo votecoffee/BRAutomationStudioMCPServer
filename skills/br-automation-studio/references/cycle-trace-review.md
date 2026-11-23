@@ -48,6 +48,14 @@ Capture `nextHold` after the outbound interval and both return observations. Use
 
 Keep the raw PLC export, normalized trace, review output and RUC job together. The review records the trace SHA-256, compiled paths and decisive scan indexes. A gap or missing witness yields `incomplete`. An identity conflict, premature hold or recorded adapter error yields `issues`.
 
+## Compare cycle timing in PLC scans
+
+With br-studio 0.80.0 or later, read `cycleTraceReview.scanTiming.intervals` for the verified start scan, end scan and their difference. The report includes the spans from the approved inspection result to Release, from Release to ReleaseDone and outbound arrival, from outbound arrival to return source occupancy, from that occupancy to clearance and return arrival, and from return arrival to the next hold. The release-to-next-hold span covers both legs.
+
+An interval is zero when its two events were observed in one scan. The occupancy-to-arrival interval can include dwell before the shuttle moves. For elapsed time on an acquisition clock, use the timestamped position workflow and retain the clock details. [Acquisition clock check](#compare-timestamps-at-the-handoff-between-legs)
+
+Set `maxReleaseToNextHoldScans` when the rehearsal has an approved upper limit in scans. The exact limit passes. An exceeded limit produces `cycle_trace_scan_limit` in phase `scan_timing`, preserves the measured intervals, and stops the acceptance review before HMI pairing.
+
 ## Check when the release total increments
 
 With br-studio 0.79.0 or later, set `releaseTotalEvent` for an isolated one-shuttle cycle when the project's counter semantics and sample timing are known.
