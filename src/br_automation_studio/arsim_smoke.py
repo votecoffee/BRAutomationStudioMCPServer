@@ -134,6 +134,7 @@ def expected_assets(archive_path, review, profile, extra_content=(), *, require_
         names.add(WIDGET_SCRIPT)
     start = review.get("startPageWidget")
     client_map = start["compiled"]["clientMap"] if start and start["state"] == "matched" else None
+    traffic_content = start["compiled"]["content"] if client_map and "trafficDetails" in start else None
     if client_map:
         names.add(client_map)
     if require_widget_bundle:
@@ -167,6 +168,8 @@ def expected_assets(archive_path, review, profile, extra_content=(), *, require_
                 asset.update(archiveMember=name, namedModule=WIDGET_MODULE)
             if name == client_map:
                 asset.update(path=start["compiled"]["clientMapUrl"], archiveMember=name)
+            if name == traffic_content:
+                asset.update(path=start["compiled"]["contentUrl"], archiveMember=name)
             assets.append(asset)
         return xml.findtext("ARVersion"), assets
 

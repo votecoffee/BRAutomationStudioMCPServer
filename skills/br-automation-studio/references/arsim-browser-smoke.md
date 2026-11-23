@@ -43,6 +43,14 @@ Set `requireStartPage` to `true` in br-studio 0.40.0 or later to check that the 
 
 The owned ARsim listener must return the exact packaged visualization client map at the lowercase URL used by the AS4 browser. For example, the RUC member `ExampleVisu.json` corresponds to `/examplevisu.json`. The HTTP record identifies the archive member and the response SHA-256. Both browser documents must record a same-origin XHR or fetch for that map with HTTP 200 or 304. See `startPageMap` under `initial` and `reopened` in the browser receipt.
 
+### Follow the Traffic Manager details option into the start page
+
+Set `requireTrafficDetails` to `true` in br-studio 0.105.0 or later to include the start page check and require the selected Assembly6D widget's [saved and compiled Traffic Manager display option](ruc-review.md#verify-the-generated-traffic-manager-display-option). Review `rucReview.startPageWidget.trafficDetails` for both Boolean values before interpreting the browser evidence.
+
+The ARsim HTTP receipt gives the selected content's RUC member and the matching response SHA-256. Both browser documents must show a same-origin XHR or fetch with HTTP 200 or 304 for that content's exact URL from the generated client map. Check `startPageContent` alongside `startPageMap` in the `initial` and `reopened` records. An unavailable status leaves the load unverified. [W3C Resource Timing](https://www.w3.org/TR/resource-timing/)
+
+This check covers loading the content that carries the option while the selected Assembly6D widget and advancing counter are present. Verify the actual detail values with an active Traffic Manager on the intended runtime.
+
 ## Verify the Assembly6D bundle in both documents
 
 Set `requireWidgetBundle` to `true` in br-studio 0.38.0 or later to require the AS4 release bundle. The CLI finds `BRVisu/release/brease.js` in the reviewed RUC, checks for one named `widgets/mapp6D/Assembly6D/Assembly6D` AMD declaration, and compares the bytes served by the owned HTTP listener with that RUC member. The HTTP receipt records the archive path, module name and SHA-256.

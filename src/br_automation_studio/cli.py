@@ -1105,6 +1105,9 @@ def markdown_browser(browser, text):
             if client_map := document.get("startPageMap"):
                 lines.append(f"  - Start page map {text(client_map['state'])} · {text(client_map['path'])}"
                              f" · HTTP {text(client_map['httpStatus'])}")
+            if content := document.get("startPageContent"):
+                lines.append(f"  - Start page content {text(content['state'])} · {text(content['path'])}"
+                             f" · HTTP {text(content['httpStatus'])}")
             if layout := document.get("layout"):
                 lines.append(f"  - Layout {text(layout['state'])} · Inline SVGs with layout bounds {text(layout['boundedSvgCount'])}")
                 for role, asset in layout["assets"].items():

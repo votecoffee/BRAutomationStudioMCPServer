@@ -28,7 +28,11 @@ LINK_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 SVG_ROOT = "{http://www.w3.org/2000/svg}svg"
 LAYOUT_ASSET_DIRECTORY = "layout-assets"
 TRANSIENT_CONTEXT_ERRORS = {"Cannot find default execution context", "Execution context was destroyed."}
-RESOURCE_LABELS = {"widgetBundle": "bundle", "startPageMap": "start page map"}
+RESOURCE_LABELS = {
+    "widgetBundle": "bundle",
+    "startPageMap": "start page map",
+    "startPageContent": "start page content",
+}
 
 
 def assembly_dom_id(widgets, selected, counter):
@@ -313,6 +317,8 @@ def verify_navigation(page, url, receipt):
         resources["widgetBundle"] = WIDGET_BUNDLE_PATH
     if client_map := receipt.get("startPageMapPath"):
         resources["startPageMap"] = client_map
+    if content := receipt.get("startPageContentPath"):
+        resources["startPageContent"] = content
     expected = receipt.get("expectedStatus", {})
     assembly = receipt["assemblyWidgetId"]
     options = {"layout_paths": paths, "require_layout": required, "check_assembly": assembly is not None,
@@ -419,6 +425,8 @@ class ChromeProbe:
             if start["state"] != "matched" or start["domId"] != widget:
                 raise ValueError("The start page review must match the browser's Assembly6D widget")
             receipt["startPageMapPath"] = start["compiled"]["clientMapUrl"]
+            if "trafficDetails" in start:
+                receipt["startPageContentPath"] = start["compiled"]["contentUrl"]
         if self.require_widget_bundle:
             if widget is None:
                 raise ValueError("The bundle check requires a reviewed Assembly6D widget")

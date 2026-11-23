@@ -450,7 +450,10 @@ def arsim_inputs(arguments, request_directory):
 
 
 def run_arsim_smoke(arguments, request_directory, runtime_probe=None):
-    start_widget = StartPageWidget(arguments.get("assemblyWidgetId")) if arguments.get("requireStartPage") else None
+    require_traffic_details = arguments.get("requireTrafficDetails", False)
+    start_widget = None
+    if arguments.get("requireStartPage") or require_traffic_details:
+        start_widget = StartPageWidget(arguments.get("assemblyWidgetId"), require_traffic_details)
     return arsim_smoke(*arsim_inputs(arguments, request_directory), runtime_probe,
                        require_widget_bundle=arguments.get("requireWidgetBundle", False), start_widget=start_widget)
 
@@ -907,6 +910,8 @@ ARSIM_BROWSER_SMOKE = Operation(
         "browserTimeoutSeconds": {"type": "integer", "minimum": 1, "maximum": 120, "default": 30},
         "requireStartPage": {"type": "boolean", "default": False,
                              "description": "Verify the Assembly6D startup route and require the generated client map in both browser documents."},
+        "requireTrafficDetails": {"type": "boolean", "default": False,
+                                  "description": "Require enabled saved and compiled Traffic Manager details and the selected startup content in both browser documents."},
         "requireWidgetBundle": {"type": "boolean", "default": False,
                                 "description": "Check the packaged Assembly6D bundle and require its script load in both HMI documents."},
         "requireLayoutAssets": {"type": "boolean", "default": False,

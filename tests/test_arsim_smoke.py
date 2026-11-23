@@ -106,24 +106,31 @@ class ArsimSmokeTests(unittest.TestCase):
                     probe_http(session, profile, [expected], receipt, 1)
         self.assertEqual(receipt["assets"], [response])
 
-    def test_verified_client_map_is_pinned_at_its_browser_url(self):
+    def test_verified_client_map_and_traffic_details_content_are_pinned_at_their_browser_urls(self):
         package = self.project.parent / "startup.zip"
         member, url = f"{VIEW}/DemoPanel.json", "/demopanel.json"
+        content = f"{CONTENT}/Assembly.html"
+        content_url = content.removeprefix(VIEW)
+        html = b"content"
         data = b'{"startPage":"Overview"}'
         with ZipFile(package, "w") as archive:
             archive.writestr("ProjectInformation.xml",
                              "<ProjectInformation><CPUType>AR000</CPUType>"
                              "<RuntimeType>AR Simulation</RuntimeType></ProjectInformation>")
             archive.writestr(f"{VIEW}/index.html", b"index")
-            archive.writestr(f"{CONTENT}/Assembly.html", b"content")
+            archive.writestr(content, html)
             archive.writestr(WIDGET_SCRIPT, b"assembly widget script")
             archive.writestr(member, data)
         review = {"widgets": [{"contentId": "Assembly"}],
-                  "startPageWidget": {"state": "matched", "compiled": {"clientMap": member, "clientMapUrl": url}}}
+                  "startPageWidget": {"state": "matched", "trafficDetails": {"state": "matched"},
+                                      "compiled": {"clientMap": member, "clientMapUrl": url,
+                                                   "content": content, "contentUrl": content_url}}}
         _, assets = expected_assets(package, review, {"opcUaPort": None})
         want, = (asset for asset in assets if asset["path"] == url)
         self.assertEqual(want, {"path": url, "bytes": len(data), "sha256": sha256(data).hexdigest(),
                                 "archiveMember": member})
+        self.assertIn({"path": content_url, "bytes": len(html), "sha256": sha256(html).hexdigest(),
+                       "archiveMember": content}, assets)
 
         worker = SimpleNamespace(poll=lambda: None)
         session = SimpleNamespace(worker=worker, job=SimpleNamespace(pids=lambda: {99}))
