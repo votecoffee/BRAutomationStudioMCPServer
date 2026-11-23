@@ -81,6 +81,12 @@ Use `br-studio operation-help simulation_preflight` to discover the contract. Se
 
 Run `br-studio run --request <simulation-preflight.json>`. Add `--format markdown` for the readable report.
 
+## Verify the installed companion builds
+
+With br-studio 0.88.0 or later, the saved-project preflight applies the same package version checks as the workstation review. For mapp Motion, both the saved selector and the installed `TP.cfg` internal build must meet **5.26**. For mapp View, the saved selector and installed build must both be numeric. An eligible selector with an unsuitable internal build blocks the simulation preflight.
+
+Check `preflight.technologyPackages` for the exact saved selectors, internal builds and manifest paths. The corresponding diagnostic identifies the selected package and the observed values. Correct the package installation or saved selection, then rerun the preflight for the intended CPU.
+
 ## Inspect the LaunchPad export structure
 
 With br-studio 0.49.0 or later, set `inspectLaunchPadExport` to true alongside `launchPadExport`. Read `simulationPreflight.launchPadExport.structure` for the XML root, group counts and available IDs and names. The check uses the same bytes identified by the export hash. It recognizes the unqualified top-level `Segments` group and inventories `Stations`, `Waypoints`, `Gates`, `Branches` and `ExclusiveGroups` when present.

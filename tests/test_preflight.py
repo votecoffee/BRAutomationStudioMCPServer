@@ -988,6 +988,40 @@ class BuildPreflightTests(unittest.TestCase):
 
     @patch("br_automation_studio.simulation_preflight.installed_product",
            return_value={"stateCode": 5, "version": "1.25.53"})
+    def test_saved_simulation_requires_eligible_installed_companion_builds(self, msi):
+        self.prepare_simulation()
+        arguments = {"studioRoot": "Install/AS412", "targetMapp6D": "2.7"}
+        environment = {"schemaVersion": 1, "workspace": "preflight", "operation": "simulation_environment",
+                       "arguments": arguments}
+        cases = (
+            ("mappMotion", "5.29.1", "5.29.1.2", "5.25.99.9999", "simulation_motion_selection"),
+            ("mappView", "5.24.5", "5.24.5.104", "unverified", "simulation_view_selection"),
+        )
+        for name, selector, valid_build, internal, code in cases:
+            with self.subTest(package=name):
+                manifest = PACKAGES / f"{name}/{selector}/ApplicationSettings/TP.cfg"
+                path = self.studio / manifest
+                original = path.read_bytes()
+                valid_property = prop("InternalVersion", valid_build).encode("utf-8")
+                self.assertEqual(original.count(valid_property), 1)
+                path.write_bytes(original.replace(valid_property, prop("InternalVersion", internal).encode("utf-8")))
+                try:
+                    workstation = execute(environment, self.root)["result"]["simulationEnvironment"]
+                    self.assertFalse(workstation["companionCatalog"][name][0]["verified"])
+
+                    response = self.simulation()
+                    result = response["result"]
+                    self.assertEqual(result["simulationPreflight"]["state"], "blocked")
+                    issue, = result["diagnostics"]
+                    self.assertEqual((issue["code"], issue["path"]), (code, manifest.as_posix()))
+                    self.assertIn(internal, issue["message"])
+                    self.assertIn(internal, markdown(response))
+                finally:
+                    path.write_bytes(original)
+        self.assertEqual(self.simulation()["result"]["simulationPreflight"]["state"], "inputs_present")
+
+    @patch("br_automation_studio.simulation_preflight.installed_product",
+           return_value={"stateCode": 5, "version": "1.25.53"})
     def test_simulation_can_inventory_export_groups_and_report_unverified_shapes(self, msi):
         export = self.prepare_simulation()
         original = b"""<?xml version="1.0"?>

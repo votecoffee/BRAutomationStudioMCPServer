@@ -102,6 +102,10 @@ def catalog_selectors(catalog, name):
                   if path.is_dir() and numeric_version(path.name) is not None)
 
 
+def eligible_package_versions(selector, build, minimum):
+    return within(selector, minimum, None) is True and within(build, minimum, None) is True
+
+
 def read_candidates(catalog, name, selectors, minimum=None, family=None):
     candidates = []
     for version in selectors:
@@ -115,7 +119,7 @@ def read_candidates(catalog, name, selectors, minimum=None, family=None):
         build = entry["internalVersion"]
         verified = (package is not None and len(catalog.diagnostics) == issue_start
                     and (family is None or same_family(build, family))
-                    and within(version, minimum, None) is True and within(build, minimum, None) is True)
+                    and eligible_package_versions(version, build, minimum))
         candidates.append({"selector": version, "internalVersion": build, "manifest": manifest.as_posix(),
                            "verified": verified, "constraints": entry["constraints"]})
     return candidates
@@ -157,12 +161,18 @@ def check_project(reader, report, family, pair, candidates):
                      f"Verify the saved Runtime {MINIMUM_RUNTIME} or later in the selected catalog")
 
     catalog = {item["name"]: item for item in preflight["technologyPackages"]}
-    motion = selections.get("mappMotion")
-    if within(motion, MINIMUM_MOTION, None) is not True or not catalog.get("mappMotion", {}).get("internalVersion"):
-        reader.issue("error", "simulation_motion_selection", project,
-                     f"Select and verify an installed mapp Motion package {MINIMUM_MOTION} or later")
-    if not catalog.get("mappView", {}).get("internalVersion"):
-        reader.issue("error", "simulation_view_selection", project, "Select and verify an installed mapp View package")
+    for name, code, minimum in (
+        ("mappMotion", "simulation_motion_selection", MINIMUM_MOTION),
+        ("mappView", "simulation_view_selection", None),
+    ):
+        selector = selections.get(name)
+        entry = catalog.get(name, {})
+        build = entry.get("internalVersion")
+        if not eligible_package_versions(selector, build, minimum):
+            location = Path(entry["manifest"]) if entry else project
+            requirement = f"numeric versions {minimum} or later" if minimum else "numeric versions"
+            reader.issue("error", code, location,
+                         f"Saved {name} selector {selector!r} and installed build {build!r} must both be {requirement}")
     components = {row["name"]: row.get("source") for row in catalog.get("mapp6D", {}).get("components", ())}
     if not all(components.get(name) for name in ("McAcp6D", "MpTraffic")):
         reader.issue("error", "simulation_motion_libraries", project,
