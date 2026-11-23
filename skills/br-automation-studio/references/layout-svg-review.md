@@ -39,6 +39,12 @@ For a cycle and held-status review, supply this operation's complete JSON output
 
 Use the [coordinate frame workflow](launchpad-frame-review.md#trace-the-coordinates-into-the-hmi) when the review also needs to trace the positions to a saved LaunchPad model.
 
+## Read the SVGs beside the status response
+
+With br-studio 0.76.0 or later, set `hmiStatusReport` in the layout request and omit `assemblySvg` and `trafficSvg`. Use the completed `arsim_status_smoke` response for the selected build. Keep `layout-assets/assembly.svg` and `layout-assets/trafficManager.svg` under the response's directory. Move the response and layout folder together when archiving the run. [Inspection rehearsal request](inspection-cycle-rehearsal.md#review-the-saved-svgs-and-plc-scans)
+
+The review checks the status receipt against the build and compares each file's hash and byte count with the assets captured from the session's owned HTTP listener before interpreting its geometry. Read `layoutSvgReview.statusCapture` for the session ID and status response hash. When supplied as `hmiLayoutSvgReport`, this response must identify the same session as the cycle's HMI receipt. For independent or renamed SVGs, use the explicit-file request above.
+
 ## Check the drawn mapping endpoints
 
 With br-studio 0.70.0 or later, set `verifyMappingLineEndpoints: true` in `layout_svg_review`. For each directed mapping, the review uses the direction between the configured marker centers and the footprints from the station rectangle or waypoint ellipse. The drawn start must be on the source boundary. The drawn end must stop 10 mm before the destination boundary, leaving the clearance observed for the arrowhead in the retained AS4 mapp 6D 2.2 SVGs.

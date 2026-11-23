@@ -26,6 +26,7 @@ NUMBER = re.compile(r"[+-]?[0-9]+(?:\.[0-9]+)?")
 PAGE_SOCKET = re.compile(r"/devtools/page/[a-zA-Z0-9_-]+")
 LINK_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 SVG_ROOT = "{http://www.w3.org/2000/svg}svg"
+LAYOUT_ASSET_DIRECTORY = "layout-assets"
 TRANSIENT_CONTEXT_ERRORS = {"Cannot find default execution context", "Execution context was destroyed."}
 RESOURCE_LABELS = {"widgetBundle": "bundle", "startPageMap": "start page map"}
 
@@ -41,6 +42,12 @@ def assembly_dom_id(widgets, selected, counter):
     return selected
 
 
+def layout_asset_path(link):
+    if isinstance(link, str) and LINK_NAME.fullmatch(name := link.removeprefix("mapp6D::")):
+        return f"/FileDevice:6DData/{name}.svg"
+    return None
+
+
 def layout_asset_paths(widgets, selected):
     widget = next(item for item in widgets if f"{item['contentId']}_{item['id']}" == selected)
     paths = {}
@@ -48,9 +55,9 @@ def layout_asset_paths(widgets, selected):
         link = widget.get(key)
         if role == "trafficManager" and link in (None, ""):
             continue
-        if not isinstance(link, str) or not LINK_NAME.fullmatch(name := link.removeprefix("mapp6D::")):
+        if (path := layout_asset_path(link)) is None:
             return {}
-        paths[role] = f"/FileDevice:6DData/{name}.svg"
+        paths[role] = path
     return paths
 
 
@@ -354,10 +361,10 @@ def capture_layout_assets(session_dir, http_port, paths, guard_runtime):
         bodies[role] = body
         assets[role] = {"path": path, "status": status, "contentType": media_type,
                         "bytes": len(body), "sha256": sha256(body).hexdigest(),
-                        "file": f"layout-assets/{role}.svg"}
+                        "file": f"{LAYOUT_ASSET_DIRECTORY}/{role}.svg"}
 
     root = session_dir.resolve(strict=True)
-    target = root / "layout-assets"
+    target = root / LAYOUT_ASSET_DIRECTORY
     if target.exists() or target.is_symlink():
         raise ValueError("The session already has a layout asset directory")
     with TemporaryDirectory(prefix=".layout-assets-", dir=root) as temporary:

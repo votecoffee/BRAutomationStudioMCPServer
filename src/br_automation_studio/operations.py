@@ -217,9 +217,14 @@ def run_layout_device_review(arguments, request_directory):
 
 
 def run_layout_svg_review(arguments, request_directory):
+    status_report = arguments.get("hmiStatusReport")
+    assembly, traffic = (arguments.get(key) for key in ("assemblySvg", "trafficSvg"))
+    if (status_report and (assembly or traffic)) or (not status_report and not (assembly and traffic)):
+        raise InvalidRequest("Supply hmiStatusReport or both assemblySvg and trafficSvg")
     return layout_svg_review(project_path(arguments, request_directory), request_directory / arguments["jobDirectory"],
-                             arguments["managerId"], request_directory / arguments["assemblySvg"],
-                             request_directory / arguments["trafficSvg"],
+                             arguments["managerId"], request_directory / assembly if assembly else None,
+                             request_directory / traffic if traffic else None,
+                             hmi_status_path=request_directory / status_report if status_report else None,
                              verify_mapping_line_endpoints=arguments.get("verifyMappingLineEndpoints", False),
                              verify_traffic_labels=arguments.get("verifyTrafficLabels", False))
 
@@ -564,14 +569,16 @@ LAYOUT_SVG_REVIEW = Operation(
     arguments={
         **RUC_INPUTS,
         "managerId": {"type": "string", "minLength": 1, "description": "Selected Traffic Manager element ID."},
-        "assemblySvg": {"type": "string", "minLength": 1, "description": "Retained generated assembly SVG file."},
-        "trafficSvg": {"type": "string", "minLength": 1, "description": "Retained generated Traffic Manager SVG file."},
+        "assemblySvg": {"type": "string", "minLength": 1, "description": "Retained assembly SVG file. Supply with trafficSvg for explicit-file review."},
+        "trafficSvg": {"type": "string", "minLength": 1, "description": "Retained Traffic Manager SVG file. Supply with assemblySvg for explicit-file review."},
+        "hmiStatusReport": {"type": "string", "minLength": 1,
+                            "description": "Completed arsim_status_smoke JSON beside layout-assets/. Supply in place of assemblySvg and trafficSvg."},
         "verifyMappingLineEndpoints": {"type": "boolean", "default": False,
                                        "description": "Verify the drawn start and end coordinates of each generated one-way mapping."},
         "verifyTrafficLabels": {"type": "boolean", "default": False,
                                 "description": "Verify the text and anchor of each generated station and waypoint label."},
     },
-    required=("project", "jobDirectory", "managerId", "assemblySvg", "trafficSvg"),
+    required=("project", "jobDirectory", "managerId"),
     handler=run_layout_svg_review,
 )
 LAUNCHPAD_ROUTE_REVIEW = Operation(

@@ -123,10 +123,13 @@ class CycleHmiTest(unittest.TestCase):
         check_layout_svg_pairing(self.ruc, self.smoke, response, result)
         self.assertEqual(result["layoutGeometry"]["state"], "matched")
         self.assertEqual(result["layoutGeometry"]["assets"]["trafficManager"]["sha256"], "e" * 64)
+        layout["statusCapture"] = {"sessionId": self.smoke["sessionId"]}
+        check_layout_svg_pairing(self.ruc, self.smoke, response, result)
         for fields, key, change, code in (
             (layout["assets"]["trafficManager"], "sha256", "f" * 64, "cycle_hmi_layout_hash"),
             (self.hmi["browser"]["layoutCapture"], "ownedListener", owner | {"pid": 21}, "cycle_hmi_layout_capture"),
             (layout, "managerId", "OtherTraffic", "cycle_hmi_layout_route"),
+            (layout["statusCapture"], "sessionId", "different-generation", "cycle_hmi_layout_session"),
         ):
             with self.subTest(key=key):
                 original = fields[key]

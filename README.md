@@ -82,7 +82,7 @@ Use `assembly_io_review` to trace the selected assembly's communication variable
 
 Use `layout_device_review` to verify the selected CPU's saved and compiled `6DData` declaration before checking the runtime SVGs. [Layout file-device workflow](skills/br-automation-studio/references/layout-device-review.md)
 
-Use `layout_svg_review` to compare the generated segment grid, marker positions and directed mapping IDs with the saved project and its RUC. [Generated layout workflow](skills/br-automation-studio/references/layout-svg-review.md)
+Use `layout_svg_review` to compare the generated segment grid, marker positions and directed mapping IDs with the saved project and its RUC. A completed HMI status receipt can locate and verify both SVGs from the same session. [Generated layout workflow](skills/br-automation-studio/references/layout-svg-review.md)
 
 Use `launchpad_export_review` to compare a locally decoded LaunchPad cycle with the XML export before import. Use `launchpad_route_review` to compare that cycle with the saved or compiled Traffic Manager. The native build can retain the reviewed route inputs and pin the saved segment grid and station and waypoint positions. [LaunchPad route workflow](skills/br-automation-studio/references/launchpad-route-review.md) · [Build with LaunchPad evidence](skills/br-automation-studio/references/native-build.md#bind-the-reviewed-launchpad-export-to-the-build)
 

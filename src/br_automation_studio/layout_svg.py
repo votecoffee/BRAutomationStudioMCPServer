@@ -4,11 +4,16 @@ from collections import Counter
 from math import hypot, isfinite
 from pathlib import Path
 import re
+from xml.etree import ElementTree as ET
 
+from .browser_smoke import LAYOUT_ASSET_DIRECTORY, layout_asset_path
+from .cycle_hmi import captured_layout_assets, status_run
+from .launchpad_baseline import json_snapshot
 from .launchpad_geometry import point
 from .launchpad_layout import GRID_MM, linked_layout, master_offsets, native_segments
-from .project import SavedFiles
+from .project import ProjectXml, SavedFiles, XML_LIMIT
 from .ruc_review import review_ruc
+from .station_trace import TRACE_LIMIT, TraceIssue
 
 SVG = "{http://www.w3.org/2000/svg}"
 OBJECTS = {"Station": ("station", "rect"), "Waypoint": ("waypoint", "ellipse")}
@@ -43,17 +48,38 @@ def inventory(label, expected, observed):
                          f"Unexpected {list((found - want).items())[:5]!r}.")
 
 
-def svg_input(path, identity):
-    reader = SavedFiles(path.parent)
-    name = Path(path.name)
-    root, _ = reader.xml(name, "svg")
-    if root is None:
+def svg_input(path, identity, *, session_dir=None, capture=None):
+    reader = SavedFiles(session_dir or path.parent)
+    name = path.relative_to(session_dir) if session_dir is not None else Path(path.name)
+    raw = reader.read_bytes(name, XML_LIMIT, label="XML input")
+    if raw is None:
         raise ValueError(reader.diagnostics[0]["message"])
+    digest = reader.sources[name.as_posix()]
+    if capture is not None and (digest != capture["sha256"] or len(raw) != capture["bytes"]):
+        raise TraceIssue("layout_svg_capture_hash", f"The retained {name.name} differs from the HMI capture")
+    try:
+        root = ET.fromstring(raw, parser=ET.XMLParser(target=ProjectXml()))
+    except (ET.ParseError, LookupError) as error:
+        raise ValueError(str(error)) from error
     if root.tag != SVG + "svg" or root.get("id") != identity + "-svg":
         raise ValueError(f"Expected a namespaced SVG root for {identity!r}")
     if "transform" in root.attrib:
         raise UnsupportedLayout("Expected a generated SVG without a root transform")
-    return root, {"path": path.as_posix(), "sha256": reader.sources[name.as_posix()]}
+    return root, {"path": path.as_posix(), "sha256": digest}
+
+
+def status_layout_inputs(path, ruc, assembly, manager):
+    document, snapshot = json_snapshot(path, TRACE_LIMIT)
+    _, smoke = status_run(document, ruc)
+    session = smoke.get("sessionId")
+    if not isinstance(session, str) or not session.strip():
+        raise ValueError("The status report needs its ARsim session ID")
+    urls = {"assembly": layout_asset_path(assembly), "trafficManager": layout_asset_path(manager)}
+    captures = captured_layout_assets(smoke, urls)
+    for role, asset in captures.items():
+        if asset.get("file") != f"{LAYOUT_ASSET_DIRECTORY}/{role}.svg":
+            raise TraceIssue("layout_svg_capture_file", f"The {role} capture needs its standard retained SVG filename")
+    return Path(snapshot["path"]).parent, captures, {"sessionId": session, "statusReport": snapshot}
 
 
 def translation(node):
@@ -238,8 +264,8 @@ def check_traffic_labels(overlay, positions):
     return result
 
 
-def layout_svg_review(project, job, manager_id, assembly_svg, traffic_svg, *, verify_mapping_line_endpoints=False,
-                      verify_traffic_labels=False):
+def layout_svg_review(project, job, manager_id, assembly_svg, traffic_svg, *, hmi_status_path=None,
+                      verify_mapping_line_endpoints=False, verify_traffic_labels=False):
     report = review_ruc(project, job, geometry_manager=manager_id, include_layout=True, include_saved_geometry=True)
     ruc = report["rucReview"]
     result = report["layoutSvgReview"] = {"state": "not_checked", "managerId": manager_id,
@@ -273,11 +299,23 @@ def layout_svg_review(project, job, manager_id, assembly_svg, traffic_svg, *, ve
         if native_positions(ruc["savedPositionEvidence"]) != positions:
             raise ValueError("Saved and compiled traffic object positions differ")
         mappings = directed_ids(manager["edges"])
+        session_dir, captures = None, {}
+        if hmi_status_path is not None:
+            path = hmi_status_path
+            session_dir, captures, provenance = status_layout_inputs(path, ruc, assembly, manager_id)
+            assembly_svg = session_dir / captures["assembly"]["file"]
+            traffic_svg = session_dir / captures["trafficManager"]["file"]
         path = assembly_svg
-        root, result["assets"]["assembly"] = svg_input(path, assembly)
+        root, result["assets"]["assembly"] = svg_input(
+            path, assembly, session_dir=session_dir, capture=captures.get("assembly"),
+        )
         result["segments"] = check_assembly(root, assembly, layout["layoutId"], grid)
         path = traffic_svg
-        root, result["assets"]["trafficManager"] = svg_input(path, manager_id)
+        root, result["assets"]["trafficManager"] = svg_input(
+            path, manager_id, session_dir=session_dir, capture=captures.get("trafficManager"),
+        )
+        if hmi_status_path is not None:
+            result["statusCapture"] = provenance
         overlay = svg_group(root, manager_id, "traffic-manager")
         if "transform" in overlay.attrib:
             raise UnsupportedLayout("The Traffic Manager group must share the SVG coordinate frame")
@@ -319,8 +357,11 @@ def layout_svg_review(project, job, manager_id, assembly_svg, traffic_svg, *, ve
         issue("layout_svg_unverified", path, str(error), "warning")
         result["state"] = "unverified"
         return report
-    except (ValueError, TypeError, OverflowError) as error:
-        issue("layout_svg_mismatch", path, str(error))
+    except (AttributeError, KeyError, TypeError) as error:
+        message = "The status report has missing or malformed layout capture fields" if path == hmi_status_path else str(error)
+        issue("layout_svg_mismatch", path, message)
+    except (OSError, RuntimeError, ValueError, OverflowError) as error:
+        issue(error.code if isinstance(error, TraceIssue) else "layout_svg_mismatch", path, str(error))
     if report["diagnostics"]:
         result["state"] = "issues"
     else:

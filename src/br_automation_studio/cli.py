@@ -523,6 +523,8 @@ def markdown_layout_svg(review, text):
              f"- State {text(review['state'])} · Manager {text(review['managerId'])}"]
     if "layoutId" in review:
         lines.append(f"- Assembly {text(review['assemblyId'])} · Layout {text(review['layoutId'])}")
+    if capture := review.get("statusCapture"):
+        lines.append(f"- HMI capture session {text(capture['sessionId'])} · Status SHA-256 {capture['statusReport']['sha256']}")
     for row in review["assets"].values():
         lines.append(f"- {text(row['path'])} · SHA-256 {row['sha256']}")
     if "segments" in review:

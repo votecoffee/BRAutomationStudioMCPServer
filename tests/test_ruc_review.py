@@ -15,7 +15,7 @@ from br_automation_studio.binding_review import NODESETS, SERVER
 from br_automation_studio.cli import markdown
 from br_automation_studio.inspection import inspect_project
 from br_automation_studio.native_build import identity, source_tree
-from br_automation_studio.operations import execute
+from br_automation_studio.operations import InvalidRequest, execute
 from br_automation_studio.ruc_review import CONTENT, DATA, VIEW, WIDGET_SCRIPT
 
 FIXTURE = Path(__file__).resolve().parent / "fixtures/Loop"
@@ -260,6 +260,47 @@ position-x-mm="0" position-y-mm="0" transform="translate(0 -240)"><g>
         checked = execute(request, self.root)
         self.assertEqual(checked["status"], "complete", checked)
         self.assertEqual(checked["result"]["layoutSvgReview"]["trafficLabels"]["checkedLabels"], 3)
+        session = self.root / "archived-session"
+        assets = session / "layout-assets"
+        assets.mkdir(parents=True)
+        endpoint = {"protocol": "tcp", "address": "127.0.0.1", "port": 18081, "pid": 22}
+        ruc = checked["result"]["rucReview"]
+        captured = {}
+        for role, source, link_id in (("assembly", assembly, "FixtureAssembly"), ("trafficManager", traffic, "DemoTraffic")):
+            raw = source.read_bytes()
+            file = f"layout-assets/{role}.svg"
+            (session / file).write_bytes(raw)
+            captured[role] = {"file": file, "path": f"/FileDevice:6DData/{link_id}.svg",
+                              "status": 200, "bytes": len(raw), "sha256": sha256(raw).hexdigest()}
+        status = {
+            "schemaVersion": 1, "operation": "arsim_status_smoke", "status": "complete",
+            "result": {
+                "rucReview": ruc, "evidence": "arsim_loopback_status", "diagnostics": [],
+                "arsimSmoke": {
+                    "state": "complete", "cleanup": "empty", "sessionId": "fixture-generation",
+                    "directory": str(self.root / "old-session"), "planSha256": ruc["planSha256"],
+                    "packageSha256": ruc["archive"]["sha256"], "ownedEndpoints": [endpoint],
+                    "hmi": {"state": "complete", "browser": {"url": "http://127.0.0.1:18081/", "layoutCapture": {
+                        "state": "complete", "assets": captured, "ownedListener": endpoint,
+                    }}},
+                },
+            },
+        }
+        status_path = session / "status-response.json"
+        status_path.write_text(json.dumps(status), encoding="utf-8")
+        bound_arguments = {key: value for key, value in request["arguments"].items()
+                           if key not in ("assemblySvg", "trafficSvg")}
+        bound_request = request | {"arguments": bound_arguments | {"hmiStatusReport": status_path.relative_to(self.root).as_posix()}}
+        bound = execute(bound_request, self.root)
+        self.assertEqual(bound["status"], "complete", bound)
+        evidence = bound["result"]["layoutSvgReview"]["statusCapture"]
+        self.assertEqual(evidence["sessionId"], "fixture-generation")
+        self.assertEqual(evidence["statusReport"]["sha256"], sha256(status_path.read_bytes()).hexdigest())
+        self.assertIn("HMI capture session fixture-generation", markdown(bound))
+        with self.assertRaises(InvalidRequest):
+            execute(bound_request | {"arguments": bound_request["arguments"] | {"assemblySvg": assembly.name}}, self.root)
+        (assets / "trafficManager.svg").write_bytes(b"changed before parsing")
+        self.assertEqual(self.codes(execute(bound_request, self.root)), ["layout_svg_capture_hash"])
         for original, replacement, code in (
             (">Transit</text>", ">Inspect</text>", "layout_svg_label_text"),
             ('translate(100 -20)"><text', 'translate(101 -20)"><text', "layout_svg_label_anchor"),

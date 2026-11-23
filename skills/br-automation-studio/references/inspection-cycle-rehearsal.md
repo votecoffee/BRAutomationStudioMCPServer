@@ -1,6 +1,6 @@
 # Rehearse one ACOPOS 6D inspection cycle with its HMI
 
-Use this workflow with br-studio 0.75.0 or later for a saved AS4 PC simulation project, a two-station LaunchPad route and a PLC-hosted mapp View page. Work in one run directory with a reviewed project and build as inputs. Keep installation paths, project identifiers and captures in the local run directory.
+Use this workflow with br-studio 0.76.0 or later for a saved AS4 PC simulation project, a two-station LaunchPad route and a PLC-hosted mapp View page. Work in one run directory with a reviewed project and build as inputs. Keep installation paths, project identifiers and captures in the local run directory.
 
 ## Qualify the project and build
 
@@ -93,7 +93,7 @@ Coordinate the matched Planar Motor Simulator and inspection stimuli with the ow
 
 ## Review the saved SVGs and PLC scans
 
-Save as `svg-request.json`. Enable the two optional SVG checks when the captured format and rehearsal objectives call for them.
+Save as `svg-request.json`. Point it at the same completed status response as the cycle request. The layout review finds and verifies both captured SVGs in `session/layout-assets/`. Enable the two optional SVG checks when the captured format and rehearsal objectives call for them.
 
 ```json
 {
@@ -104,8 +104,7 @@ Save as `svg-request.json`. Enable the two optional SVG checks when the captured
     "project": "project/Example.apj",
     "jobDirectory": "build",
     "managerId": "ExampleTraffic",
-    "assemblySvg": "session/layout-assets/assembly.svg",
-    "trafficSvg": "session/layout-assets/trafficManager.svg",
+    "hmiStatusReport": "session/status-response.json",
     "verifyMappingLineEndpoints": true,
     "verifyTrafficLabels": true
   }
@@ -191,7 +190,7 @@ $LASTEXITCODE
 | --- | --- |
 | Build and RUC | Native job status and warnings, package SHA-256, matched route and pinned inputs |
 | Status | `result.arsimSmoke.sessionId`, retained scan SHA-256, both browser documents and cleanup |
-| Geometry | `result.layoutSvgReview.state`, assembly and manager, both SVG hashes, requested line and label results |
+| Geometry | `result.layoutSvgReview.state`, assembly and manager, `statusCapture`, both SVG hashes, requested line and label results |
 | Cycle | `result.cycleTraceReview.state` and phase, derived hashes in `buildBinding`, accepted arrival and next hold scans, requested motion checks |
 | Same-run HMI | `result.cycleHmiReview.state`, `scanCapture`, `holdCoverage`, `assemblyWidget` and `layoutGeometry` |
 

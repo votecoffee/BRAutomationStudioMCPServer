@@ -250,6 +250,25 @@ def check_assembly_widget(ruc, reviewed, browser, route, result):
     widget_result["state"] = "matched"
 
 
+def captured_layout_assets(smoke, paths):
+    browser = smoke["hmi"]["browser"]
+    capture = browser.get("layoutCapture", {})
+    owner = capture.get("ownedListener", {})
+    if (capture.get("state") != "complete" or not isinstance(owner, dict) or owner not in smoke.get("ownedEndpoints", [])
+            or owner.get("protocol") != "tcp" or owner.get("address") != HOST
+            or not integer(owner.get("port"), 1) or browser.get("url") != f"http://{HOST}:{owner['port']}/"):
+        raise TraceIssue("cycle_hmi_layout_capture", "The HMI report needs SVGs captured from its owned HTTP listener")
+    assets = {}
+    for role, path in paths.items():
+        retained = capture.get("assets", {}).get(role, {})
+        digest = retained.get("sha256")
+        if (path is None or retained.get("path") != path or http_status(retained.get("status")) != 200
+                or not integer(retained.get("bytes"), 1) or not isinstance(digest, str) or not SHA256.fullmatch(digest)):
+            raise TraceIssue("cycle_hmi_layout_capture", f"The HMI report needs a complete capture of the {role} SVG")
+        assets[role] = retained
+    return assets
+
+
 def check_layout_svg_pairing(ruc, smoke, response, result):
     geometry = result["layoutGeometry"] = {"state": "issues", "assets": {}}
     if (type(response.get("schemaVersion")) is not int or response["schemaVersion"] != 1
@@ -265,22 +284,13 @@ def check_layout_svg_pairing(ruc, smoke, response, result):
     widget = result["assemblyWidget"]
     if svg["assemblyId"] != widget["assembly"] or svg["managerId"] != widget["manager"]:
         raise TraceIssue("cycle_hmi_layout_route", "The layout SVG review identifies a different assembly or Traffic Manager")
-    browser = smoke["hmi"]["browser"]
-    capture = browser.get("layoutCapture", {})
-    owner = capture.get("ownedListener", {})
-    if (capture.get("state") != "complete" or owner not in smoke.get("ownedEndpoints", [])
-            or owner.get("protocol") != "tcp" or owner.get("address") != HOST
-            or not integer(owner.get("port"), 1) or browser.get("url") != f"http://{HOST}:{owner['port']}/"):
-        raise TraceIssue("cycle_hmi_layout_capture", "The HMI report needs SVGs captured from its owned HTTP listener")
-    for role, path in widget["layoutPaths"].items():
-        retained = capture.get("assets", {}).get(role, {})
-        digest = retained.get("sha256")
-        if (retained.get("path") != path or http_status(retained.get("status")) != 200
-                or not integer(retained.get("bytes"), 1) or not isinstance(digest, str) or not SHA256.fullmatch(digest)):
-            raise TraceIssue("cycle_hmi_layout_capture", f"The HMI report needs a complete capture of the {role} SVG")
+    if "statusCapture" in svg and svg["statusCapture"].get("sessionId") != smoke.get("sessionId"):
+        raise TraceIssue("cycle_hmi_layout_session", "The layout SVG review and cycle identify different HMI sessions")
+    for role, retained in captured_layout_assets(smoke, widget["layoutPaths"]).items():
+        digest = retained["sha256"]
         if svg.get("assets", {}).get(role, {}).get("sha256") != digest:
             raise TraceIssue("cycle_hmi_layout_hash", f"The reviewed {role} SVG differs from the SVG captured in the HMI session")
-        geometry["assets"][role] = {"path": path, "sha256": digest}
+        geometry["assets"][role] = {"path": retained["path"], "sha256": digest}
     if "mappingLineEndpoints" in svg:
         endpoints = svg["mappingLineEndpoints"]
         if endpoints.get("state") != "matched":
