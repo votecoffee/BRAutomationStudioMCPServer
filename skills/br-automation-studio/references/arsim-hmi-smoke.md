@@ -48,6 +48,14 @@ Set `requireWidgetBundle` to `true` to verify the packaged Assembly6D bundle, th
 
 Set `captureLayoutAssets` to `true` to enable that browser requirement and save the expected SVGs from the same owned ARsim HTTP listener. Look for `hmi.browser.layoutCapture` in `session.json`. Its paths are relative to the session directory. Retain those files and the receipt for the offline review. [SVG capture and readback](arsim-browser-smoke.md#save-the-generated-svgs)
 
+### Check the Traffic Manager display option alongside the layout
+
+With br-studio 0.106.0 or later, set `requireTrafficDetails` and `captureLayoutAssets` to `true` in the same `arsim_hmi_smoke` request. The first option checks the saved and compiled display setting and the selected start page content in each browser document. The second requires both browser layout observations and saves the generated SVGs. The direct OPC UA readings still bracket the browser counter values. [Start page content check](arsim-browser-smoke.md#follow-the-traffic-manager-details-option-into-the-start-page)
+
+If both `6DData` requests return HTTP 404, run `layout_device_review` with the same project and `jobDirectory`. Confirm that the selected CPU and compiled RUC declare the file device and agree on its path. If the declarations agree, check the runtime directory and the assembly's generation diagnostics. [File-device workflow](layout-device-review.md)
+
+Use the two captured SVGs with `layout_svg_review` on the same job to check the traffic labels and route geometry. Verify changing Traffic Manager details on the target while its manager is running. [Generated layout workflow](layout-svg-review.md)
+
 ## Read the evidence
 
 1. Confirm the binding, compiled default visualization, 6D configuration and rendered Assembly6D links belong to the same completed build. A binding or default visualization mismatch stops before runtime materialization.

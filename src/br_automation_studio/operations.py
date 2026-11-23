@@ -482,6 +482,7 @@ def run_arsim_hmi_smoke(arguments, request_directory, status_bindings=(), scan_c
         capture_layout=arguments.get("captureLayoutAssets", False),
         require_widget_bundle=arguments.get("requireWidgetBundle", False),
         require_start_page=arguments.get("requireStartPage", False),
+        require_traffic_details=arguments.get("requireTrafficDetails", False),
         status_bindings=status_bindings, scan_capture=scan_capture,
     )
 
@@ -944,6 +945,7 @@ ARSIM_HMI_SMOKE = Operation(
         "assemblyWidgetId": ARSIM_BROWSER_SMOKE.arguments["assemblyWidgetId"],
         "browserTimeoutSeconds": ARSIM_BROWSER_SMOKE.arguments["browserTimeoutSeconds"],
         "requireStartPage": ARSIM_BROWSER_SMOKE.arguments["requireStartPage"],
+        "requireTrafficDetails": ARSIM_BROWSER_SMOKE.arguments["requireTrafficDetails"],
         "requireWidgetBundle": ARSIM_BROWSER_SMOKE.arguments["requireWidgetBundle"],
         "requireLayoutAssets": ARSIM_BROWSER_SMOKE.arguments["requireLayoutAssets"],
         "captureLayoutAssets": ARSIM_BROWSER_SMOKE.arguments["captureLayoutAssets"],

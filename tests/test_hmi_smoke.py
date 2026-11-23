@@ -55,6 +55,8 @@ class HmiSmokeTest(unittest.TestCase):
             first, second = probe.status_bindings
             self.assertEqual((first["role"], first["bindingReview"]["stringIdentifier"]), ("requestId", "::Status:Request"))
             self.assertNotIn("role", second)
+            self.assertFalse(probe.browser.check_assembly)
+            self.assertIsNone(keywords["start_widget"])
             return {}
 
         with (patch("br_automation_studio.hmi_smoke.review_ruc", side_effect=review),
@@ -67,6 +69,23 @@ class HmiSmokeTest(unittest.TestCase):
                 with (patch("br_automation_studio.hmi_smoke.read_json", return_value=document),
                       self.assertRaisesRegex(ValueError, "held-status role")):
                     read_status_bindings(None, target)
+
+    def test_traffic_details_requires_assembly_start_page_review_in_status_mode(self):
+        target = BindingTarget("Default", "Main", "Heartbeat", "::Status:Heartbeat")
+        document = {"schemaVersion": 1, "bindings": [
+            {"widgetId": "Request", "stringIdentifier": "::Status:Request", "expectedValue": 7},
+        ]}
+        with patch("br_automation_studio.hmi_smoke.read_json", return_value=document):
+            bindings = read_status_bindings(None, target)
+        binding = {"evidence": "ruc_binding_readback", "rucReview": {"archive": {}}, "snapshot": {},
+                   "bindingReview": {"domId": "Main_Request"}}
+        with (patch("br_automation_studio.hmi_smoke.review_ruc", return_value=binding),
+              patch("br_automation_studio.hmi_smoke.arsim_smoke", return_value={}) as smoke):
+            arsim_hmi_smoke(None, None, None, None, 30, target, None, None, 30, 20,
+                            require_traffic_details=True, status_bindings=bindings)
+        self.assertTrue(smoke.call_args.args[-1].browser.check_assembly)
+        self.assertTrue(smoke.call_args.kwargs["require_6d"])
+        self.assertTrue(smoke.call_args.kwargs["start_widget"].require_traffic_details)
 
 
 if __name__ == "__main__":

@@ -26,7 +26,7 @@ Set `verifyIecType` to true to check the saved IEC declaration against the compi
 
 Install the `browser` and `opcua` extras. Run `br-studio operation-help arsim_status_smoke` to see the request fields, then run `br-studio run --request <request.json>`. Use a fresh session directory for each run.
 
-To include Assembly6D in this check, supply the reviewed `assemblyWidgetId` or request the layout check with `requireLayoutAssets` or `captureLayoutAssets`. Leaving those fields unset runs the numeric status and heartbeat checks.
+To include Assembly6D in this check, supply the reviewed `assemblyWidgetId` or request its startup, bundle or layout checks. Use `requireTrafficDetails` in br-studio 0.106.0 or later to require the enabled setting and its startup content in both documents. The default checks the numeric status and heartbeat. [Traffic Manager display check](arsim-hmi-smoke.md#check-the-traffic-manager-display-option-alongside-the-layout)
 
 ## Select the Assembly6D widget and layout
 
