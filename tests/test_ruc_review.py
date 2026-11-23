@@ -1106,6 +1106,52 @@ END_VAR
                 self.assertEqual(self.codes(reviewed), ["saved_binding_mismatch"])
                 path.write_bytes(original)
 
+        request["arguments"].pop("requireDefaultVisualization")
+        request["arguments"]["requireStartPage"] = True
+        vis_path = cpu / "Display.vis"
+        visu = vis_path.read_bytes().replace(b"<Contents>", b'<StartPage pageRefId="Overview"/>'
+                                            b'<Pages><Page refId="Overview"/><Page refId="Details"/></Pages><Contents>')
+        vis_path.write_bytes(visu)
+        logical = self.project / "Logical/Package.pkg"
+        logical.write_bytes(logical.read_bytes().replace(
+            b"</Objects>", b'<Object Type="File">Overview.page</Object><Object Type="File">Details.page</Object>'
+            b'<Object Type="File">Panel.layout</Object></Objects>'))
+        page_header = b'<p:Page xmlns:p="http://www.br-automation.com/iat2015/pageDefinition/v2" layoutRefId="Panel"'
+        logical.with_name("Overview.page").write_bytes(
+            page_header + b' id="Overview"><Assignments><Assignment type="Content" areaRefId="Main"'
+            b' baseContentRefId="DemoOverview"/></Assignments></p:Page>')
+        logical.with_name("Details.page").write_bytes(page_header + b' id="Details"/>')
+        layout = logical.with_name("Panel.layout")
+        layout_bytes = (b'<l:Layout xmlns:l="http://www.br-automation.com/iat2015/layoutDefinition/v2" id="Panel">'
+                        b'<Areas><Area id="Main"/></Areas></l:Layout>')
+        layout.write_bytes(layout_bytes)
+
+        startup = execute(request, self.root)
+        placement = startup["result"]["savedBindingReview"]["startPagePlacement"]
+        self.assertEqual(startup["status"], "complete", startup["result"]["diagnostics"])
+        self.assertEqual(placement, {"state": "matched", "pageId": "Overview", "page": "Logical/Overview.page",
+                                     "layoutId": "Panel", "layout": "Logical/Panel.layout", "areaId": "Main"})
+        self.assertEqual(startup["result"]["savedBindingReview"]["saved"]["defaultVisualization"], "CounterPanel")
+        self.assertIn("Page Overview · Layout Panel · Area Main", markdown(startup))
+        self.assertTrue({"Logical/Overview.page", "Logical/Panel.layout"} <=
+                        {row["path"] for row in startup["result"]["snapshot"]["files"]})
+
+        vis_path.write_bytes(visu.replace(b'pageRefId="Overview"', b'pageRefId="Details"'))
+        off_page = execute(request, self.root)
+        self.assertEqual(off_page["status"], "issues")
+        self.assertEqual(self.codes(off_page), ["saved_binding_start_page_mismatch"])
+        self.assertEqual(off_page["result"]["savedBindingReview"]["saved"]["cpuOpcUa"]["port"], 14840)
+        self.assertEqual(off_page["result"]["savedBindingReview"]["startPagePlacement"]["state"], "mismatched")
+        request["arguments"]["requireStartPage"] = False
+        self.assertEqual(execute(request, self.root)["status"], "complete")
+
+        request["arguments"]["requireStartPage"] = True
+        vis_path.write_bytes(visu)
+        layout.write_bytes(layout_bytes.replace(b'id="Main"', b'id="Sidebar"'))
+        dangling_area = execute(request, self.root)
+        self.assertEqual(dangling_area["status"], "issues")
+        self.assertEqual(self.codes(dangling_area), ["saved_binding_start_page_mismatch"])
+
     def test_compiled_binding_source_is_checked_even_when_the_archive_is_valid(self):
         self.configure_display()
         self.members[BINDING] = self.members[BINDING].replace(b"::Pulse:Count", b"::Pulse:Other")

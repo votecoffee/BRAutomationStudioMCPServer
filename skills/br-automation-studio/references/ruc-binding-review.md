@@ -32,6 +32,8 @@ With br-studio 0.100.0 or later, run `saved_binding_review` against the saved AS
 
 Read `savedBindingReview.saved` for the visualization, active one-way binding, widget, enabled default-view task variable and its registered IEC declaration. The review also compares the explicit local `.uaserver` port with the CPU's saved `ActivateOpcUa` and `OpcUaPort` settings. A disabled server or conflicting saved port produces `saved_binding_endpoint_mismatch`. Omitted or ambiguous CPU endpoint settings leave a partial result and retain the saved binding evidence. [B&R OPC UA server configuration](https://help.br-automation.com/#/en/4/visualization/mappview/engineering/lv_organization/configurationview/cv_opcuaserver_config.html)
 
+With br-studio 0.101.0 or later, set `requireStartPage` to `true` to check the default visualization and verify that the selected content is directly assigned to an area on its saved start page. Read `savedBindingReview.startPagePlacement` for the page, layout, area and paths. A binding can still have a valid PLC source when its content opens on a different page. An unresolved direct assignment produces `saved_binding_start_page_mismatch`. [B&R saved page XML](https://help.br-automation.com/#/en/4/visualization/mappview/engineering/lv_page/lv_page_xml.html)
+
 After build, use `ruc_binding_review` to confirm the generated node's type and read access. The saved trace establishes the browser binding direction and source. Verify effective OPC UA access and changing values during the runtime check.
 
 ## Verify the saved IEC type

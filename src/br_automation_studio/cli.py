@@ -122,6 +122,10 @@ def markdown(response):
                       f"- {text(binding['stringIdentifier'])} → {text(binding['domId'])} · {text(binding['state'])}",
                       f"- Visualization {text(binding['visualizationId'])} · Binding {text(details.get('binding'))}",
                       f"- OPC UA exposure {text(details.get('nodeMap'))}"])
+        if placement := binding.get("startPagePlacement"):
+            lines.append(f"- Start page placement {text(placement['state'])}"
+                         f" · Page {text(placement.get('pageId'))} · Layout {text(placement.get('layoutId'))}"
+                         f" · Area {text(placement.get('areaId'))}")
         if declaration := details.get("iecDeclaration"):
             lines.append(f"- IEC {text(declaration['type'])} · {text(declaration['path'])} line {declaration['line']}"
                          f" · Expected OPC UA type {text(declaration['expectedDataType'])}")

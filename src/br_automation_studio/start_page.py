@@ -46,15 +46,7 @@ def visualization_start(visu, path, visualization, content=None):
     return page
 
 
-def saved_start(source, manifest, widget):
-    cpu = Path("Physical", manifest["configuration"], manifest["cpu"], "Cpu.pkg")
-    physical = package_files(source, cpu, "Cpu", {"mappviewcfg", "vis"})
-    server, config = one(saved_documents(source, physical, ".mappviewcfg", "Configuration"),
-                         cpu, "saved mapp View server configuration")
-    visualization = resource_id(one(default_visualizations(config), server, "default visualization"),
-                                server, "default visualization ID")
-    vis_path, visu = saved_resource(source, physical, ".vis", VISUALIZATION, visualization, server)
-    content = widget["contentId"]
+def saved_content_placement(source, vis_path, visu, visualization, content):
     page = visualization_start(visu, vis_path, visualization, content)
     logical = package_files(source, Path("Logical/Package.pkg"), "Package", {"page", "layout"})
     page_path, page_node = saved_resource(source, logical, ".page", PAGE, page, vis_path)
@@ -68,9 +60,22 @@ def saved_start(source, manifest, widget):
     layout_path, layout_node = saved_resource(source, logical, ".layout", LAYOUT, layout, page_path)
     one((row for row in layout_node.findall("./Areas/Area") if row.get("id") == area),
         layout_path, f"layout area {area!r}")
+    return {"pageId": page, "page": page_path.as_posix(), "layoutId": layout,
+            "layout": layout_path.as_posix(), "areaId": area}
+
+
+def saved_start(source, manifest, widget):
+    cpu = Path("Physical", manifest["configuration"], manifest["cpu"], "Cpu.pkg")
+    physical = package_files(source, cpu, "Cpu", {"mappviewcfg", "vis"})
+    server, config = one(saved_documents(source, physical, ".mappviewcfg", "Configuration"),
+                         cpu, "saved mapp View server configuration")
+    visualization = resource_id(one(default_visualizations(config), server, "default visualization"),
+                                server, "default visualization ID")
+    vis_path, visu = saved_resource(source, physical, ".vis", VISUALIZATION, visualization, server)
+    content = widget["contentId"]
+    placement = saved_content_placement(source, vis_path, visu, visualization, content)
     return {"serverConfig": server.as_posix(), "visualizationId": visualization, "visualization": vis_path.as_posix(),
-            "pageId": page, "page": page_path.as_posix(), "layoutId": layout, "layout": layout_path.as_posix(),
-            "areaId": area, "contentId": content, "content": widget["path"]}
+            **placement, "contentId": content, "content": widget["path"]}
 
 
 def json_object(parent, key, path):

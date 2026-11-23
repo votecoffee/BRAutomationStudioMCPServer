@@ -422,7 +422,8 @@ def binding_target(arguments):
 def saved_binding_review(arguments, request_directory):
     target = binding_target({**arguments, "verifyIecType": True})
     return review_saved_binding(project_path(arguments, request_directory), arguments.get("configuration"),
-                                arguments.get("cpu"), target)
+                                arguments.get("cpu"), target,
+                                require_start_page=arguments.get("requireStartPage", False))
 
 
 def ruc_binding_review(arguments, request_directory):
@@ -841,6 +842,8 @@ SAVED_BINDING_REVIEW = Operation(
         **BINDING_SELECTION,
         "requireDefaultVisualization": {"type": "boolean", "default": False,
                                          "description": "Require the selected visualization to match the saved mapp View default."},
+        "requireStartPage": {"type": "boolean", "default": False,
+                             "description": "Require the selected content to be assigned directly to an area on the default visualization's saved start page."},
     },
     required=("project", *BINDING_SELECTION),
     handler=saved_binding_review,

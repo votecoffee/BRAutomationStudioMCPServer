@@ -1,6 +1,6 @@
 """Read back a local AS4 mapp View value binding and its generated PLC node."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from gzip import GzipFile
 from html.parser import HTMLParser
 from io import BytesIO
@@ -396,12 +396,31 @@ def check_saved_cpu_endpoint(source, project, cpu, saved, review):
         review["state"] = "matched"
 
 
-def review_saved_binding(path, configuration, cpu, target):
+def check_saved_binding_placement(source, target, review):
+    from .start_page import saved_content_placement
+
+    path = Path(review["saved"]["visualization"])
+    visualization, _ = source.xml(path, "Visualization")
+    try:
+        placement = saved_content_placement(source, path, visualization, target.visualization, target.content)
+    except BindingProblem as error:
+        review["startPagePlacement"]["state"] = "mismatched"
+        review["state"] = "mismatched"
+        source.issue("error", "saved_binding_start_page_mismatch", error.path, str(error))
+    else:
+        review["startPagePlacement"].update(state="matched", **placement)
+
+
+def review_saved_binding(path, configuration, cpu, target, *, require_start_page=False):
+    if require_start_page:
+        target = replace(target, require_default=True)
     source = SavedFiles(path.parent)
     result = inspect_saved(source, Path(path.name), configuration, cpu)
     review = target.receipt()
     review.pop("compiled")
     review["state"] = "unverified"
+    if require_start_page:
+        review["startPagePlacement"] = {"state": "unverified"}
     result["savedBindingReview"] = review
     if result["selectedCpu"]:
         selected = Path("Physical", result["selectedConfiguration"], result["selectedCpu"], "Cpu.pkg")
@@ -412,5 +431,7 @@ def review_saved_binding(path, configuration, cpu, target):
             source.issue("error", "saved_binding_mismatch", error.path, str(error))
         else:
             check_saved_cpu_endpoint(source, result, selected, review["saved"], review)
+            if require_start_page:
+                check_saved_binding_placement(source, target, review)
     result["snapshot"] = source.snapshot()
     return result
