@@ -426,6 +426,8 @@ def markdown_ruc(response, text):
             lines.append(f"- Verified motion payloads {len(payloads)}")
         if binding is None or review["modules"] or review["widgets"]:
             lines.append(f"- 6D module elements read {len(review['modules'])} · Rendered widgets read {len(review['widgets'])}")
+    if environment := review.get("environmentReport"):
+        lines.append(f"- Reviewed workstation report SHA-256 {text(environment['sha256'])}")
     if summary := review["buildSummary"]:
         lines.append(f"- Builder errors {text(summary['errors'])} · Builder warnings {text(summary['warnings'])}")
     if launchpad := review.get("launchPadRoute"):

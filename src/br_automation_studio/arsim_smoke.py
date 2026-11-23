@@ -13,7 +13,7 @@ from uuid import uuid4
 from xml.etree import ElementTree as ET
 from zipfile import BadZipFile, ZipFile
 
-from .native_build import fingerprint, utc_now, write_json
+from .native_build import fingerprint, retain_environment_report, utc_now, write_json
 from .project import ProjectXml, SavedFiles, XML_LIMIT, children, package_files, tag
 from .ruc_review import Archive, CONTENT, DATA, VIEW, WIDGET_SCRIPT, bound_receipts, open_configuration, review_ruc
 from .windows_job import observed_process, run_build
@@ -284,6 +284,9 @@ def arsim_smoke(project, job_dir, pvi, session_dir, timeout=30, runtime_probe=No
         smoke.update(state="materializing", directory=str(session_dir), startedAt=utc_now(),
                      sessionId=str(uuid4()), packageSha256=job["package"]["sha256"], planSha256=plan["sha256"],
                      pvi={"path": str(pvi), "version": pvi_version, "sha256": fingerprint(pvi)}, profile=profile)
+        if environment := reviewed.get("environmentReport"):
+            original = {**environment, "path": job_dir / environment["path"]}
+            smoke["environmentReport"] = retain_environment_report(session_dir, original)
         write_json(receipt, smoke)
         copyfile(archive_path, staged)
         if fingerprint(staged) != smoke["packageSha256"]:

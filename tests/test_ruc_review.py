@@ -7,6 +7,7 @@ from pathlib import Path
 import shutil
 from tempfile import TemporaryDirectory
 import unittest
+from unittest.mock import patch
 from xml.etree import ElementTree as ET
 from zipfile import ZipFile
 
@@ -170,6 +171,71 @@ class RucReviewTests(unittest.TestCase):
         self.assertEqual(review["widgets"][0]["manager"], "mapp6D::DemoTraffic")
         self.assertIn("Inspect (Station) → Load (Station)", markdown(response))
         self.assertIn("Builder errors 0 · Builder warnings 1", markdown(response))
+
+    def test_arsim_retains_the_verified_workstation_report_before_materialization(self):
+        content = b'{"modeled":true}\n'
+        environment = {"path": "simulation-environment.json", "sha256": sha256(content).hexdigest()}
+        retained = self.job / environment["path"]
+        retained.write_bytes(content)
+        manifest = self.plan["manifest"]
+        manifest["environmentReview"] = {"state": "matched", "receipt": environment}
+        self.plan["sha256"] = identity(manifest)
+        self.write("plan.json", self.plan)
+        self.members["ProjectInformation.xml"] = (
+            b"<ProjectInformation><CPUType>AR000</CPUType><RuntimeType>AR Simulation</RuntimeType>"
+            b"<ARVersion>J4.93</ARVersion></ProjectInformation>"
+        )
+        self.members[f"{VIEW}/index.html"] = b"modeled home page"
+        job = self.package()
+        self.write("job.json", dict(job, environmentReport=environment))
+
+        review = self.review()
+        self.assertEqual(review["status"], "complete", review["result"]["diagnostics"])
+        self.assertEqual(review["result"]["rucReview"]["environmentReport"], environment)
+        self.assertIn(environment["sha256"], markdown(review))
+
+        pvi = self.root / "vendor" / "PVITransfer.exe"
+        pvi.parent.mkdir()
+        pvi.write_bytes(b"modeled PVI marker")
+        request = {"schemaVersion": 1, "workspace": "readback", "operation": "arsim_smoke",
+                   "arguments": {"project": "Loop/Loop.apj", "jobDirectory": self.job.name,
+                                 "pviTransfer": "vendor/PVITransfer.exe", "sessionDirectory": "smoke"}}
+
+        def materialize(args, workdir, dispatch, stream, timeout):
+            self.assertEqual((workdir / environment["path"]).read_bytes(), content)
+            self.assertEqual(json.loads((workdir / "session.json").read_bytes())["environmentReport"], environment)
+            runtime = workdir / "runtime"
+            runtime.mkdir()
+            (runtime / "ar000loader.exe").write_bytes(b"modeled runtime marker")
+            (workdir / "pvi.log").write_bytes(b"PROCESS FINISHED (SUCCESS)")
+            return 0, False, "empty"
+
+        profile = {"opcUaPort": None, "guardedPorts": []}
+        with (patch("br_automation_studio.arsim_smoke.loopback_profile", return_value=profile),
+              patch("br_automation_studio.arsim_smoke.product_version", return_value="PVI4.12"),
+              patch("br_automation_studio.arsim_smoke.check_free"),
+              patch("br_automation_studio.arsim_smoke.run_build", side_effect=materialize) as launcher,
+              patch("br_automation_studio.arsim_smoke.observed_process") as runtime,
+              patch("br_automation_studio.arsim_smoke.probe_http")):
+            runtime.return_value.__enter__.return_value.cleanup = "empty"
+            smoke = execute(request, self.root)
+            self.assertEqual(smoke["status"], "complete", smoke["result"]["diagnostics"])
+            launcher.assert_called_once()
+        self.assertEqual(smoke["result"]["arsimSmoke"]["environmentReport"], environment)
+
+        def change_after_review(ports):
+            retained.write_bytes(content + b"\n")
+
+        request["arguments"]["sessionDirectory"] = "drift"
+        with (patch("br_automation_studio.arsim_smoke.loopback_profile", return_value=profile),
+              patch("br_automation_studio.arsim_smoke.product_version", return_value="PVI4.12"),
+              patch("br_automation_studio.arsim_smoke.check_free", side_effect=change_after_review),
+              patch("br_automation_studio.arsim_smoke.run_build") as launcher):
+            failed = execute(request, self.root)
+            launcher.assert_not_called()
+        self.assertEqual(failed["result"]["arsimSmoke"]["state"], "failed")
+        self.assertIn("workstation package report changed", failed["result"]["diagnostics"][0]["message"])
+        self.assertFalse((self.root / "drift" / environment["path"]).exists())
 
     def test_changed_source_cannot_be_used_as_build_baseline(self):
         self.package()

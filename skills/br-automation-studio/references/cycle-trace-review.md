@@ -127,6 +127,8 @@ If the status smoke retained a scan file, point `arguments.scanCsv` to that file
 
 Use `cycleHmiReview.state` for the pairing outcome. A failed pairing yields `issues` while preserving an independently matched cycle. Retain both input reports and the raw capture provenance. The joined check establishes consistency across supplied observations. A synthetic trace retains its synthetic capture classification.
 
+A status response recorded with br-studio 0.91.0 or later can carry the workstation package report identity from its native build. The paired cycle review checks the recorded identity against the current RUC review and keeps a match in `cycleHmiReview.environmentReport`. Older responses still pair by their verified plan, RUC and session identities. [ARsim session retention](arsim-smoke.md#keep-the-workstation-review-with-the-session)
+
 ## Use the status receipt for scan identity
 
 With br-studio 0.72.0 or later, set `requireSessionScanCapture: true` and supply `scanCsv` and `hmiStatusReport`. You can omit `scanCapture.sha256`, `hmi.sessionId`, or both. Keep the captured scan windows and column mapping, the HMI binding identifiers, and the LaunchPad and RUC hashes in the descriptor.

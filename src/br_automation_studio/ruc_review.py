@@ -399,6 +399,8 @@ def review_ruc(path, job_directory, binding=None, *, geometry_manager=None, incl
                 archive = Archive(package, reader)
                 review["archive"] = {"path": job["package"]["path"], "sha256": digest,
                                      "bytes": size, "entries": entries}
+                if "environmentReview" in manifest:
+                    review["environmentReport"] = job["environmentReport"]
                 if "motionPayloads" in manifest:
                     payloads = verify_packaged_motion(package, manifest["motionPayloads"])
                     if payloads != job["package"].get("motionPayloads"):

@@ -36,6 +36,11 @@ def status_run(document, ruc):
             or any(reviewed[key] != ruc[key] for key in ("jobId", "planSha256"))
             or smoke["planSha256"] != ruc["planSha256"] or reviewed["sourceMatched"] is not True):
         raise TraceIssue("cycle_hmi_package_mismatch", "The status report and cycle review identify different builds or RUCs")
+    environment = ruc.get("environmentReport")
+    if any("environmentReport" in receipt and receipt["environmentReport"] != environment
+           for receipt in (reviewed, smoke)):
+        raise TraceIssue("cycle_hmi_environment_mismatch",
+                         "The status report records a different workstation package review than the selected RUC")
     if smoke["state"] != "complete" or smoke["cleanup"] != "empty" or smoke["hmi"]["state"] != "complete":
         raise ValueError("The ARsim runtime and HMI check must complete with verified cleanup")
     return reviewed, smoke
@@ -52,6 +57,8 @@ def check_run(document, ruc, trace, result):
             or witness.get("sessionId") != session):
         raise TraceIssue("cycle_hmi_session_mismatch", "The cycle and status report need the same ARsim session ID")
     result.update(sessionId=session, captureKind=capture, packageSha256=ruc["archive"]["sha256"])
+    if environment := smoke.get("environmentReport"):
+        result["environmentReport"] = environment
     return smoke["hmi"], witness, reviewed
 
 

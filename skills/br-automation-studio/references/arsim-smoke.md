@@ -25,6 +25,12 @@ Discover the contract with `br-studio operation-help arsim_smoke` and write a UT
 
 Run `br-studio run --request <smoke-request.json>`. Select `--format markdown` on that invocation for a readable report. An additional invocation needs a new session directory. The timeout is the HTTP startup window. PVITransfer materialization has its own 75-second limit.
 
+## Keep the workstation review with the session
+
+With br-studio 0.91.0 or later, a RUC built with a pinned `environmentReport` carries the verified workstation report into the ARsim session. Before PVI materializes the runtime, the tool copies and rehashes `simulation-environment.json` from the build job. The RUC review and `session.json` both record the receipt SHA-256. Keep the copy beside the session logs and the HMI status response.
+
+The same retention applies to the browser, OPC UA and combined HMI smoke operations. The report identifies the packages reviewed for the RUC that was loaded. Use the runtime and HMI observations to establish what the session actually served.
+
 ## Interpret the session
 
 - `CreateARsimStructure` generates a fresh copy with `Start=0`. The session records the PVI version, package hash, input profile, loader hash, and vendor log.

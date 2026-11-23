@@ -245,6 +245,23 @@ class CycleHmiTest(unittest.TestCase):
             self.check()
         self.assertEqual(issue.exception.code, "cycle_hmi_package_mismatch")
 
+    def test_workstation_report_identity_is_bound_to_the_cycle_when_present(self):
+        environment = {"path": "simulation-environment.json", "sha256": "d" * 64}
+        self.document["result"]["rucReview"] = dict(self.ruc)
+        self.ruc["environmentReport"] = environment
+
+        self.assertNotIn("environmentReport", self.check())
+        self.smoke["environmentReport"] = dict(environment)
+        self.document["result"]["rucReview"]["environmentReport"] = dict(environment)
+        self.assertEqual(self.check()["environmentReport"], environment)
+
+        for report in (self.smoke, self.document["result"]["rucReview"]):
+            report["environmentReport"]["sha256"] = "e" * 64
+            with self.assertRaises(TraceIssue) as issue:
+                self.check()
+            self.assertEqual(issue.exception.code, "cycle_hmi_environment_mismatch")
+            report["environmentReport"]["sha256"] = environment["sha256"]
+
     def test_same_package_needs_the_same_session_and_correct_capture_order(self):
         for fields, key, value, code in (
             (self.smoke, "sessionId", "different-session", "cycle_hmi_session_mismatch"),
