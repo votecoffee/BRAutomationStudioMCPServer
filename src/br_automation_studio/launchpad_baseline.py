@@ -1,9 +1,9 @@
 """Read the source-bound LaunchPad save and compare a single typed cycle."""
 
 from collections import Counter
-from hashlib import file_digest, sha256
+from hashlib import file_digest
 
-from .json_io import decode_json
+from .json_io import json_snapshot
 from .launchpad_motion import read_model_exit
 from .launchpad_stations import model_process
 
@@ -75,14 +75,6 @@ def simple_cycle(decoded, layout):
     if len(ordered) < 2 or len(ordered) + 1 != len(recipe):
         raise ValueError("Expected a single complete cycle with at least two distinct route objects")
     return ordered
-
-
-def json_snapshot(path, limit):
-    with path.open("rb") as stream:
-        raw = stream.read(limit + 1)
-    if len(raw) > limit:
-        raise ValueError(f"JSON input exceeds {limit} bytes")
-    return decode_json(raw), {"path": str(path.resolve()), "sha256": sha256(raw).hexdigest()}
 
 
 def read_launchpad_save(lpj, readback):

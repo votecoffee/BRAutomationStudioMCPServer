@@ -3,7 +3,9 @@
 from dataclasses import asdict, dataclass
 from hashlib import file_digest
 from pathlib import Path
+import re
 
+from .json_io import json_snapshot
 from .launchpad_export import inventory_export
 from .mptraffic_definition import check_installed_definition
 from .preflight import (PACKAGE_ROOT, build_preflight, check_range, engine, numeric_version, runtime_order,
@@ -63,6 +65,8 @@ COMPANION_MEDIA_27 = {
     },
 }
 SIMULATION_PACKAGES = ("mapp6D", "mappMotion", "mappView")
+ENVIRONMENT_REPORT_LIMIT = 16 * 1024 * 1024
+SHA256 = re.compile(r"[0-9a-f]{64}")
 MINIMUM_STUDIO = "4.9.2"
 MINIMUM_RUNTIME = "C4.90"
 MINIMUM_MOTION = "5.26"
@@ -329,15 +333,95 @@ def simulation_environment(studio, family, simulator_zip=None, *, companion_medi
     }
 
 
+def reviewed_environment(document, family):
+    if (not isinstance(document, dict) or type(document.get("schemaVersion")) is not int
+            or document["schemaVersion"] != 1 or document.get("operation") != "simulation_environment"):
+        raise ValueError("Select a schemaVersion 1 simulation_environment JSON response")
+    environment = document["result"]["simulationEnvironment"]
+    if environment["targetMapp6D"] != family:
+        raise ValueError(f"The workstation report must cover the requested mapp 6D {family} family")
+    selection = environment["packageSelection"]
+    if selection["state"] != "inputs_present":
+        raise ValueError("The workstation report must contain a verified proposed package selection")
+    studio = environment["studioVersion"]
+    if not isinstance(studio, str) or within(studio, MINIMUM_STUDIO, None) is not True:
+        raise ValueError("The workstation report must identify a supported Automation Studio build")
+
+    files = environment["targetCatalogSnapshot"]["files"]
+    hashes = {row["path"]: row["sha256"] for row in files}
+    if len(hashes) != len(files):
+        raise ValueError("The workstation catalog snapshot contains duplicate paths")
+    packages = {}
+    for name in SIMULATION_PACKAGES:
+        row = selection["packages"][name]
+        selector, build = row["selector"], row["internalVersion"]
+        if not all(isinstance(version, str) and numeric_version(version) is not None for version in (selector, build)):
+            raise ValueError(f"The workstation report has no numeric {name} selector and build")
+        want = PACKAGE_ROOT / name / selector / "ApplicationSettings/TP.cfg"
+        manifest = row["manifest"]
+        if row["verified"] is not True or manifest != want.as_posix():
+            raise ValueError(f"The workstation report does not identify the reviewed {name} manifest")
+        digest = hashes.get(manifest)
+        if not isinstance(digest, str) or not SHA256.fullmatch(digest):
+            raise ValueError(f"The workstation report lacks a manifest SHA-256 for {name}")
+        packages[name] = {"selector": selector, "internalVersion": build, "manifest": manifest, "sha256": digest}
+    return studio, packages
+
+
+def check_environment_report(reader, path, family, preflight):
+    review = {"state": "unverified", "receipt": None}
+    try:
+        document, review["receipt"] = json_snapshot(path, ENVIRONMENT_REPORT_LIMIT)
+        expected_studio, packages = reviewed_environment(document, family)
+    except (KeyError, OSError, RecursionError, RuntimeError, TypeError, ValueError) as error:
+        reader.issue("error", "simulation_environment_report_unverified", path,
+                     f"Could not verify the workstation package report. {error}")
+        return review
+
+    studio_builds = {row["studioVersion"] for row in preflight["buildTools"]}
+    observed_studio = next(iter(studio_builds)) if len(studio_builds) == 1 else None
+    studio_matches = studio_builds == {expected_studio}
+    if not studio_matches:
+        reader.issue("error", "simulation_environment_studio_mismatch", path,
+                     f"Reviewed Automation Studio {expected_studio} differs from the selected build {observed_studio!r}")
+
+    hashes = {row["path"]: row["sha256"] for row in preflight["studioSnapshot"]["files"]}
+    observed = preflight["technologyPackages"]
+    checks = {}
+    for name, expected in packages.items():
+        entries = [row for row in observed if row["name"] == name]
+        actual = None
+        if len(entries) == 1:
+            entry, = entries
+            manifest = entry["manifest"]
+            actual = {"selector": entry["version"], "internalVersion": entry["internalVersion"],
+                      "manifest": manifest, "sha256": hashes.get(manifest)}
+        matched = actual == expected
+        checks[name] = {"reviewed": expected, "observed": actual, "matched": matched}
+        if not matched:
+            reader.issue("error", "simulation_environment_package_mismatch", path,
+                         f"The saved project's {name} selector, build or manifest SHA-256 differs from the workstation review")
+        elif name == "mapp6D" and reader.sources.get(expected["manifest"]) != expected["sha256"]:
+            checks[name]["matched"] = False
+            reader.issue("error", "simulation_environment_catalog_changed", Path(expected["manifest"]),
+                         "The mapp 6D manifest changed between the saved-project preflight and target catalog scan")
+
+    review.update(state="matched" if studio_matches and all(row["matched"] for row in checks.values()) else "mismatched",
+                  reviewedStudioVersion=expected_studio, observedStudioVersion=observed_studio, packages=checks)
+    return review
+
+
 def simulation_preflight(project, studio, runtime_root, configuration, cpu, family, simulator_zip=None, export=None,
                          *, verify_mptraffic_enum=False, verify_motion_declarations=False, companion_media=None,
-                         inspect_launchpad_export=False):
+                         inspect_launchpad_export=False, environment_report=None):
     pair = simulator_pair(family)
     report = build_preflight(project, studio, runtime_root, configuration, cpu,
                              verify_motion_declarations=verify_motion_declarations)
     reader = SavedFiles(studio)
     candidates = check_target_catalog(reader, family, pair, catalog_selectors(reader, "mapp6D"))
     check_project(reader, report, family, pair, candidates)
+    environment = (check_environment_report(reader, environment_report, family, report["preflight"])
+                   if environment_report is not None else None)
     simulator = check_simulator(reader, pair)
     archive = check_simulator_media(reader, pair, simulator_zip)
     media_checks = check_companion_media(reader, family, companion_media)
@@ -362,6 +446,7 @@ def simulation_preflight(project, studio, runtime_root, configuration, cpu, fami
         "minimums": dict(MINIMUMS),
         "installedTargetCatalog": candidates, "targetCatalogSnapshot": reader.snapshot(),
         "simulatorInstallation": simulator, "simulatorZip": archive, "launchPadExport": native_export,
+        **({"environmentReview": environment} if environment is not None else {}),
         **({"companionMedia": media_checks} if media_checks else {}),
         **extra,
     }

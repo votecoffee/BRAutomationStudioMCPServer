@@ -1,6 +1,7 @@
 
 """Read the UTF-8 JSON used by requests and retained receipts."""
 
+from hashlib import sha256
 import json
 
 
@@ -17,12 +18,21 @@ def invalid_constant(value):
     raise ValueError(f"Invalid JSON constant {value!r}")
 
 
-def read_json(path, limit):
+def _read_json_bytes(path, limit):
     with path.open("rb") as stream:
         data = stream.read(limit + 1)
     if len(data) > limit:
         raise ValueError(f"JSON input exceeds {limit} bytes")
-    return decode_json(data)
+    return data
+
+
+def read_json(path, limit):
+    return decode_json(_read_json_bytes(path, limit))
+
+
+def json_snapshot(path, limit):
+    data = _read_json_bytes(path, limit)
+    return decode_json(data), {"path": str(path.resolve()), "sha256": sha256(data).hexdigest()}
 
 
 def decode_json(data):

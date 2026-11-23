@@ -986,6 +986,65 @@ class BuildPreflightTests(unittest.TestCase):
         msi.assert_called_once_with(evidence["reference"]["productCode"])
         self.assertIn("Expected Planar Motor Simulation Tool 117.25.53", markdown(response))
 
+    @patch("br_automation_studio.simulation_preflight.installed_product")
+    def test_saved_simulation_checks_workstation_selection_and_manifest_hashes(self, msi):
+        self.prepare_simulation()
+        msi.return_value = {"stateCode": -1, "version": None}
+        request = {
+            "schemaVersion": 1, "workspace": "preflight", "operation": "simulation_environment",
+            "arguments": {"studioRoot": "Install/AS412", "targetMapp6D": "2.7", "mapp6DSelector": "2.7.0",
+                          "mappMotionSelector": "5.29.1", "mappViewSelector": "5.24.5"},
+        }
+        workstation = execute(request, self.root)
+        self.assertEqual(workstation["status"], "issues")
+        self.assertEqual(workstation["result"]["simulationEnvironment"]["packageSelection"]["state"], "inputs_present")
+        receipt = self.root / "workstation.json"
+        self.put(receipt, json.dumps(workstation))
+        msi.return_value = {"stateCode": 5, "version": "1.25.53"}
+
+        matched = self.simulation(environmentReport=receipt.name)
+        evidence = matched["result"]["simulationPreflight"]
+        review = evidence["environmentReview"]
+        self.assertEqual(evidence["state"], "inputs_present", matched["result"]["diagnostics"])
+        self.assertEqual(review["state"], "matched")
+        self.assertEqual(review["receipt"]["sha256"], sha256(receipt.read_bytes()).hexdigest())
+        self.assertEqual(review["reviewedStudioVersion"], review["observedStudioVersion"])
+        self.assertEqual(len(review["packages"]), 3)
+        self.assertTrue(all(row["reviewed"] == row["observed"] and row["matched"] for row in review["packages"].values()))
+        self.assertIn("### Workstation package review", markdown(matched))
+
+        with patch("br_automation_studio.preflight.product_version", return_value="AS4.12.11.39"):
+            newer = self.simulation(environmentReport=receipt.name)["result"]
+        self.assertEqual(newer["simulationPreflight"]["environmentReview"]["state"], "mismatched")
+        self.assertIn("simulation_environment_studio_mismatch", [row["code"] for row in newer["diagnostics"]])
+
+        manifest = self.studio / PACKAGES / "mappMotion/5.29.1/ApplicationSettings/TP.cfg"
+        old = manifest.read_bytes()
+        manifest.write_bytes(old + b"\n")
+        changed = self.simulation(environmentReport=receipt.name)["result"]
+        self.assertEqual(changed["simulationPreflight"]["state"], "blocked")
+        motion = changed["simulationPreflight"]["environmentReview"]["packages"]["mappMotion"]
+        self.assertFalse(motion["matched"])
+        self.assertEqual(motion["reviewed"]["selector"], motion["observed"]["selector"])
+        self.assertNotEqual(motion["reviewed"]["sha256"], motion["observed"]["sha256"])
+        self.assertEqual([row["code"] for row in changed["diagnostics"]], ["simulation_environment_package_mismatch"])
+        manifest.write_bytes(old)
+
+        apj = self.project / "Loop.apj"
+        apj.write_bytes(apj.read_bytes().replace(b'mappMotion Version="5.29.1"', b'mappMotion Version="5.30.0"'))
+        self.manifest("mappMotion", "5.30.0", "5.30.0.1", "", "4.9")
+        switched = self.simulation(environmentReport=receipt.name)["result"]
+        motion = switched["simulationPreflight"]["environmentReview"]["packages"]["mappMotion"]
+        self.assertEqual((motion["reviewed"]["selector"], motion["observed"]["selector"]), ("5.29.1", "5.30.0"))
+        self.assertFalse(motion["matched"])
+
+        workstation["result"]["simulationEnvironment"]["packageSelection"]["state"] = "blocked"
+        self.put(receipt, json.dumps(workstation))
+        blocked = self.simulation(environmentReport=receipt.name)["result"]
+        self.assertEqual(blocked["simulationPreflight"]["state"], "blocked")
+        self.assertEqual(blocked["simulationPreflight"]["environmentReview"]["state"], "unverified")
+        self.assertEqual([row["code"] for row in blocked["diagnostics"]], ["simulation_environment_report_unverified"])
+
     @patch("br_automation_studio.simulation_preflight.installed_product",
            return_value={"stateCode": 5, "version": "1.25.53"})
     def test_saved_simulation_requires_eligible_installed_companion_builds(self, msi):

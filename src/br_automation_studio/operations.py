@@ -137,6 +137,7 @@ def run_simulation_preflight(arguments, request_directory):
         raise InvalidRequest("targetMapp6D must be a supported AS4 family (2.4 or 2.7)")
     media = arguments.get("simulatorZip")
     export = arguments.get("launchPadExport")
+    environment = arguments.get("environmentReport")
     return simulation_preflight(
         *build_inputs(arguments, request_directory), family,
         request_directory / media if media is not None else None,
@@ -145,6 +146,7 @@ def run_simulation_preflight(arguments, request_directory):
         verify_motion_declarations=arguments.get("verifyMotionDeclarations", False),
         companion_media=simulation_companion_media(arguments, request_directory),
         inspect_launchpad_export=arguments.get("inspectLaunchPadExport", False),
+        environment_report=request_directory / environment if environment is not None else None,
     )
 
 
@@ -525,6 +527,8 @@ SIMULATION_PREFLIGHT = Operation(
         **BUILD_PREFLIGHT.arguments,
         **SIMULATION_ARGUMENTS,
         "launchPadExport": {"type": "string", "minLength": 1, "description": "Native LaunchPad .x6d for the intended route."},
+        "environmentReport": {"type": "string", "minLength": 1,
+                              "description": "Retained simulation_environment JSON with a verified three-package selection."},
         "inspectLaunchPadExport": {"type": "boolean", "default": False,
                                   "description": "Inventory XML groups observed in the AS4 2.2 LaunchPad importer."},
         "verifyMpTrafficEnum": {"type": "boolean", "default": False,

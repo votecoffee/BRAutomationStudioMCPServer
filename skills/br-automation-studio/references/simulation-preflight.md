@@ -81,6 +81,14 @@ Use `br-studio operation-help simulation_preflight` to discover the contract. Se
 
 Run `br-studio run --request <simulation-preflight.json>`. Add `--format markdown` for the readable report.
 
+## Carry the workstation package review into the saved project
+
+With br-studio 0.89.0 or later, save the JSON response from `simulation_environment` after its three-package `packageSelection.state` reaches `inputs_present`. Set `environmentReport` in the saved project's `simulation_preflight` request to that JSON file. The workstation report may still flag a separate installation or media prerequisite.
+
+The tool compares the reviewed Automation Studio version and all three exact selectors, internal build versions and manifest SHA-256 values with the selected catalog and saved project. Read `simulationPreflight.environmentReview` for the receipt hash and the compared values. An unavailable comparison or changed selector, Studio build, or manifest blocks the preflight. A different catalog root can match when it provides the same reviewed versions and manifest bytes.
+
+A matched comparison covers the selected packages. Continue with the CPU Runtime, simulator registration, native export and library checks in the same preflight.
+
 ## Verify the installed companion builds
 
 With br-studio 0.88.0 or later, the saved-project preflight applies the same package version checks as the workstation review. For mapp Motion, both the saved selector and the installed `TP.cfg` internal build must meet **5.26**. For mapp View, the saved selector and installed build must both be numeric. An eligible selector with an unsuitable internal build blocks the simulation preflight.
