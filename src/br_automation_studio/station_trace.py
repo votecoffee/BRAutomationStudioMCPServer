@@ -12,6 +12,7 @@ POSITION_COORDINATES = ("positionXM", "positionYM")
 POSITION_IDENTIFIERS = ("positionSampleScan", "positionShuttleId")
 POSITION_FIELDS = (*POSITION_IDENTIFIERS, "positionValid", *POSITION_COORDINATES)
 POSITION_TIME = "positionTimeMicroseconds"
+SCAN_TIME = "scanTimeMicroseconds"
 FLAGS = ("inspectionBusy", "routePermitted", "stationClear", "release", "releaseBuffered",
          "releaseDone", "releaseAborted", "error", "monitorHealthy")
 
@@ -390,13 +391,41 @@ def sampled_speed_interval(before, after, elapsed_us, limit):
         return distance_squared.sqrt() / elapsed_us, exceeds_limit, delta
 
 
-def check_sampled_speed(report, trace, rows, first_scan, last_scan, leg, *, max_sample_interval_us=None):
+def check_position_age(scan, position_time, scan_time, review):
+    if not integer(scan_time):
+        raise TraceIssue("station_trace_scan_time_missing", f"Capture the PLC scan time for the position at scan {scan}", "warning")
+    age = scan_time - position_time
+    sample = {"scan": scan, "scanTimeMicroseconds": scan_time, "positionTimeMicroseconds": position_time,
+              "ageMicroseconds": age}
+    review["checkedSamples"] += 1
+    if age < 0:
+        review["outsideLimit"] = sample
+        raise TraceIssue("station_trace_position_time_after_scan",
+                         f"The position at scan {scan} was recorded {abs(age)} µs after the PLC scan time")
+    oldest = review["oldestSample"]
+    if oldest is None or age > oldest["ageMicroseconds"]:
+        review["oldestSample"] = sample
+    if age > review["maximumMicroseconds"]:
+        review["outsideLimit"] = sample
+        raise TraceIssue("station_trace_position_age_exceeded",
+                         f"The position at scan {scan} is {age} µs old, above the requested maximum of {review['maximumMicroseconds']} µs",
+                         "warning")
+
+
+def check_sampled_speed(report, trace, rows, first_scan, last_scan, leg, *, max_sample_interval_us=None,
+                        max_position_sample_age_us=None):
     result = leg["sampledSpeedReview"] = {"state": "unverified", "firstScan": first_scan, "lastScan": last_scan,
                                           "acceptedSamples": 0, "skippedRows": 0, "checkedIntervals": 0,
                                           "exceededIntervals": 0, "maxIntervalMicroseconds": None,
                                           "peakInterval": None, "firstExceeded": None}
     if max_sample_interval_us is not None:
         result.update(maxSampleIntervalMicroseconds=max_sample_interval_us, overlongIntervals=0, firstOverlongInterval=None)
+    age_review = None
+    if max_position_sample_age_us is not None:
+        age_review = result["positionAge"] = {
+            "state": "unverified", "maximumMicroseconds": max_position_sample_age_us,
+            "checkedSamples": 0, "oldestSample": None,
+        }
     verified_position_context(report, trace)
     limits = bound_launchpad_evidence(report, trace["managerId"]).get("motionLimits", {})
     if limits.get("state") != "matched":
@@ -426,6 +455,12 @@ def check_sampled_speed(report, trace, rows, first_scan, last_scan, leg, *, max_
             result["state"] = "issues"
             raise TraceIssue("station_trace_speed_time_invalid",
                              f"Scan {scan} needs a nonnegative position time increasing in microseconds")
+        if age_review is not None:
+            try:
+                check_position_age(scan, time, row.get(SCAN_TIME), age_review)
+            except TraceIssue as error:
+                result["state"] = age_review["state"] = "incomplete" if error.severity == "warning" else "issues"
+                raise
         result["acceptedSamples"] += 1
         result.setdefault("firstSampleScan", scan)
         result.setdefault("firstSampleTimeMicroseconds", time)
@@ -467,6 +502,8 @@ def check_sampled_speed(report, trace, rows, first_scan, last_scan, leg, *, max_
         raise TraceIssue("station_trace_speed_interval_too_long",
                          f"Scans {gap['fromScan']} to {gap['toScan']} are {gap['elapsedMicroseconds']} µs apart, "
                          f"above the requested maximum of {max_sample_interval_us} µs", "warning")
+    if age_review is not None:
+        age_review["state"] = "matched"
     result["state"] = "matched"
 
 

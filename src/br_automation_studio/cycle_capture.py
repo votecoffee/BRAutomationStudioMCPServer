@@ -9,13 +9,12 @@ import re
 from .mptraffic_definition import NONE
 from .station_trace import (
     FLAGS, MONITOR_CHECKPOINTS, POSITION_FIELDS, POSITION_IDENTIFIERS, POSITION_TIME, RELEASE_MOTION_FIELDS,
-    TRACE_LIMIT, TraceIssue, integer,
+    SCAN_TIME, TRACE_LIMIT, TraceIssue, integer,
 )
 
 
 HOLD_RELEASE_TOTAL = "hold.releaseTotal"
 HOLD_HMI = ("hold.phase", HOLD_RELEASE_TOTAL, "hold.heartbeat")
-SCAN_TIME = "scanTimeMicroseconds"
 INSPECTION_MOTION = tuple(f"inspection.{field}" for field in RELEASE_MOTION_FIELDS)
 POSITION_COLUMNS = tuple(f"{phase}.{field}" for phase in ("inspection", "return", "hold")
                          for field in (*POSITION_FIELDS, POSITION_TIME))

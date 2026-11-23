@@ -6,14 +6,14 @@ from itertools import chain
 from pathlib import Path
 from stat import FILE_ATTRIBUTE_REPARSE_POINT, S_ISREG
 
-from .cycle_capture import SCAN_TIME, materialize_cycle
+from .cycle_capture import materialize_cycle
 from .cycle_hmi import bind_session_scan_capture, review_cycle_hmi
 from .layout_svg import layout_svg_review
 from .launchpad_route import json_snapshot, launchpad_route_review
 from .mptraffic_events import read_project_events
 from .runtime_capture import CAPTURE_COPY
 from .station_trace import (
-    MONITOR_CHECKPOINTS, TRACE_LIMIT, TraceIssue, bound_launchpad_evidence, check_bound_leg, check_detections,
+    MONITOR_CHECKPOINTS, SCAN_TIME, TRACE_LIMIT, TraceIssue, bound_launchpad_evidence, check_bound_leg, check_detections,
     check_leg_positions, check_monitor_checkpoint, check_release_motion, check_sampled_speed, check_station_positions,
     check_waypoint_positions, integer, leg_identity, scan_detections, selected_leg,
 )
@@ -318,7 +318,7 @@ def cycle_trace_review(project, configuration, cpu, manager_id, lpj, readback, n
                        waypoint_tolerance_um=None, verify_sampled_speed=False, max_sample_interval_us=None,
                        verify_position_time_handoff=False, require_assembly_widget=False, hmi_layout_report_path=None,
                        captured_layout_checks=None, require_hold_through_reopen=False, release_total_event=None,
-                       max_release_to_next_hold_scans=None, verify_scan_clock=False):
+                       max_release_to_next_hold_scans=None, verify_scan_clock=False, max_position_sample_age_us=None):
     report = launchpad_route_review(project, configuration, cpu, manager_id, lpj, readback, name_map, job_directory,
                                     include_stations=True)
     result = report["cycleTraceReview"] = {"state": "not_checked", "sourceStation": source_station}
@@ -405,10 +405,11 @@ def cycle_trace_review(project, configuration, cpu, manager_id, lpj, readback, n
             inspection = trace["inspectionLeg"]
             result["phase"] = "outbound_sampled_speed"
             check_sampled_speed(report, inspection, inspection["scans"], leg["releaseScans"][0], leg["arrival"]["scan"], leg,
-                                max_sample_interval_us=max_sample_interval_us)
+                                max_sample_interval_us=max_sample_interval_us, max_position_sample_age_us=max_position_sample_age_us)
             result["phase"] = "return_sampled_speed"
             check_sampled_speed(report, inspection, trace["returnLeg"]["scans"], returned["occupiedScan"],
-                                returned["arrival"]["scan"], returned, max_sample_interval_us=max_sample_interval_us)
+                                returned["arrival"]["scan"], returned, max_sample_interval_us=max_sample_interval_us,
+                                max_position_sample_age_us=max_position_sample_age_us)
             if verify_position_time_handoff:
                 result["phase"] = "position_time_handoff"
                 check_position_time_handoff(result)

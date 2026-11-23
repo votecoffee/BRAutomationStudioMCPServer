@@ -660,6 +660,13 @@ def markdown_sampled_speed(review, text):
         lines.append(f"- Requested maximum sample interval {maximum} µs · Intervals over maximum {review['overlongIntervals']}")
     if gap := review.get("firstOverlongInterval"):
         lines.append(f"- First interval over maximum {gap['elapsedMicroseconds']} µs · Scans {gap['fromScan']}–{gap['toScan']}")
+    if age := review.get("positionAge"):
+        lines.append(f"- Position sample age {text(age['state'])} · Samples checked {age['checkedSamples']}"
+                     f" · Maximum allowed {age['maximumMicroseconds']} µs")
+        if oldest := age.get("oldestSample"):
+            lines.append(f"- Oldest position {oldest['ageMicroseconds']} µs · Scan {oldest['scan']}")
+        if outside := age.get("outsideLimit"):
+            lines.append(f"- Position age outside limits {outside['ageMicroseconds']} µs · Scan {outside['scan']}")
     return lines
 
 

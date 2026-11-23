@@ -7,12 +7,12 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
 
-from br_automation_studio.cycle_capture import FIELDS, HOLD_HMI, SCAN_TIME, materialize_cycle
+from br_automation_studio.cycle_capture import FIELDS, HOLD_HMI, materialize_cycle
 from br_automation_studio.cycle_trace import (
     bind_cycle_build, check_adjacent_scan, check_cycle, check_position_time_handoff, check_release_total,
     check_return_positions,
 )
-from br_automation_studio.station_trace import ARRIVAL, FLAGS, MONITOR_CHECKPOINTS, TraceIssue
+from br_automation_studio.station_trace import ARRIVAL, FLAGS, MONITOR_CHECKPOINTS, SCAN_TIME, TraceIssue
 
 
 class CycleTraceTest(unittest.TestCase):

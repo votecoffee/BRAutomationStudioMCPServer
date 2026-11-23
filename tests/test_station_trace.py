@@ -200,6 +200,24 @@ class StationTraceTest(unittest.TestCase):
         self.assertEqual((speed["state"], speed["overlongIntervals"], speed["exceededIntervals"]), ("incomplete", 1, 0))
         self.assertEqual(speed["firstOverlongInterval"], speed["peakInterval"])
 
+        timed_source = source | {"scanTimeMicroseconds": 5}
+        timed_arrival = arrival | {"scanTimeMicroseconds": 1000007}
+        check_sampled_speed(report, self.trace, [timed_source, timed_arrival], 19, 21, result,
+                            max_position_sample_age_us=7)
+        age = result["sampledSpeedReview"]["positionAge"]
+        self.assertEqual((age["state"], age["checkedSamples"], age["oldestSample"]["ageMicroseconds"]), ("matched", 2, 7))
+        for scan_time, maximum, code, state in (
+            (1000007, 6, "station_trace_position_age_exceeded", "incomplete"),
+            (999999, 7, "station_trace_position_time_after_scan", "issues"),
+        ):
+            with self.subTest(scan_time=scan_time):
+                rows = [timed_source, timed_arrival | {"scanTimeMicroseconds": scan_time}]
+                with self.assertRaises(TraceIssue) as caught:
+                    check_sampled_speed(report, self.trace, rows, 19, 21, result, max_position_sample_age_us=maximum)
+                self.assertEqual(caught.exception.code, code)
+                age = result["sampledSpeedReview"]["positionAge"]
+                self.assertEqual((age["state"], age["outsideLimit"]["scan"]), (state, 21))
+
         for elapsed, code, severity in (
             (999999, "station_trace_speed_exceeds_limit", "error"),
             (0, "station_trace_speed_time_invalid", "error"),

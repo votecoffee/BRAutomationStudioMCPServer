@@ -1,6 +1,6 @@
 # Rehearse one ACOPOS 6D inspection cycle with its HMI
 
-Use this workflow with br-studio 0.81.0 or later for a saved AS4 PC simulation project, a two-station LaunchPad route and a PLC-hosted mapp View page. Work in one run directory with a reviewed project and build as inputs. Keep installation paths, project identifiers and captures in the local run directory.
+Use this workflow with br-studio 0.82.0 or later for a saved AS4 PC simulation project, a two-station LaunchPad route and a PLC-hosted mapp View page. Work in one run directory with a reviewed project and build as inputs. Keep installation paths, project identifiers and captures in the local run directory.
 
 ## Qualify the project and build
 
@@ -160,6 +160,7 @@ The review uses `scan-capture.csv` and `layout-assets/` beside the selected stat
 | Ordered waypoints | `waypointToleranceMicrometres` | Pinned waypoint positions and synchronized intermediate samples |
 | Timed sampled speed | `verifySampledSpeed` and optional `maxSampleIntervalMicroseconds` | Pinned positions and motion limits, explicit X/Y read axes, timed positions in both legs |
 | Shared acquisition clock | `verifyPositionTimeHandoff` with `verifySampledSpeed` | One monotonic clock across outbound arrival and return occupancy |
+| Position sample age | `maxPositionSampleAgeMicroseconds` with `verifySampledSpeed` and `verifyScanClock` | An approved age limit and the X/Y acquisition and scan record times from one clock. [Age review](cycle-trace-review.md#check-position-sample-age) |
 
 Run the combined cycle review and save its response.
 

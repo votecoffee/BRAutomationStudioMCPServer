@@ -30,6 +30,14 @@ With br-studio 0.66.0 or later, set `verifyPositionTimeHandoff: true` with `veri
 
 Read `cycleTraceReview.positionTimeHandoff` for both scan and timestamp pairs and their signed difference in microseconds. A conflict fails the cycle in phase `position_time_handoff` before any supplied HMI comparison. The per-leg maximum sample interval applies inside each travel window. The handoff difference may include time held at the station.
 
+## Check position sample age
+
+With br-studio 0.82.0 or later, set `maxPositionSampleAgeMicroseconds` with `verifySampledSpeed` and `verifyScanClock`. Record the X/Y acquisition time in `positionTimeMicroseconds` and the PLC scan record time in `scanTimeMicroseconds` using the same monotonic clock and units. [Scan file fields](cycle-scan-capture.md#record-one-clock-for-cycle-timing)
+
+For each X/Y sample used by the speed review, the tool subtracts the acquisition time from that sample's PLC scan record time. An age equal to the maximum passes. A position timestamp after its scan record fails the review. An over-age sample leaves the corresponding speed review incomplete.
+
+Inspect `sampledSpeedReview.positionAge` on each leg for the approved maximum and the recorded scan and acquisition times of the oldest sample or the sample outside the limit. The age check applies to the same samples admitted to the speed calculation.
+
 ## Record the return leg
 
 Use the same PLC scan index as the outbound trace. Start while the inspected shuttle occupies the return source station. This may overlap the outbound capture from its accepted arrival onward. A return starting after the outbound interval must begin at the next scan.
