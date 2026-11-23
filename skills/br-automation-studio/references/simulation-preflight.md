@@ -11,6 +11,8 @@ Choose the family from the expected project and hardware version set. The 2.4 ro
 
 ## Check the workstation before creating the project
 
+Use the [AS4 package media workflow](as4-package-media.md) to identify and review a staged installer before adding it to the workstation.
+
 Use `simulation_environment` with the intended AS4 installation and target family. It inventories the installed mapp 6D, mapp Motion and mapp View selectors. It verifies a manifest for the intended mapp 6D family, an installed mapp Motion candidate at the documented minimum or later, and a mapp View candidate. It also checks the AS build marker and exact Windows Installer registration. Pass the simulator ZIP to compare its bytes with the reviewed media.
 
 ```json
