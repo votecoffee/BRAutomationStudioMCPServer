@@ -6,7 +6,7 @@ from itertools import chain
 from pathlib import Path
 from stat import FILE_ATTRIBUTE_REPARSE_POINT, S_ISREG
 
-from .cycle_capture import materialize_cycle
+from .cycle_capture import SCAN_TIME, materialize_cycle
 from .cycle_hmi import bind_session_scan_capture, review_cycle_hmi
 from .layout_svg import layout_svg_review
 from .launchpad_route import json_snapshot, launchpad_route_review
@@ -169,7 +169,41 @@ def cycle_scan_intervals(cycle):
             for name, (start, end) in intervals.items()}
 
 
-def check_cycle(trace, identity, outbound_path, inbound_path, result, *, max_release_to_next_hold_scans=None):
+def cycle_observations_through_hold(trace):
+    hold = trace["nextHold"]
+    return (row for row in chain(trace["inspectionLeg"]["scans"], trace["returnLeg"]["scans"], (hold,))
+            if row["scan"] <= hold["scan"])
+
+
+def verify_cycle_scan_clock(trace, timing):
+    clock = timing["clock"] = {"state": "incomplete"}
+    times = {}
+    for row in cycle_observations_through_hold(trace):
+        scan = row["scan"]
+        if SCAN_TIME not in row:
+            clock["scan"] = scan
+            raise TraceIssue("cycle_trace_scan_time_missing", f"Capture the acquisition time at PLC scan {scan}", "warning")
+        time = row[SCAN_TIME]
+        if not integer(time):
+            clock.update(state="issues", scan=scan)
+            raise TraceIssue("cycle_trace_scan_time_invalid", f"Acquisition time at scan {scan} needs nonnegative integer microseconds")
+        if times.setdefault(scan, time) != time:
+            clock.update(state="issues", scan=scan, timeMicroseconds=time, otherTimeMicroseconds=times[scan])
+            raise TraceIssue("cycle_trace_scan_time_overlap", f"The leg observations disagree on acquisition time at scan {scan}")
+    previous = None
+    for scan, time in sorted(times.items()):
+        if previous is not None and time <= previous:
+            clock.update(state="issues", scan=scan, timeMicroseconds=time, precedingTimeMicroseconds=previous)
+            raise TraceIssue("cycle_trace_scan_time_order", f"Acquisition time must increase at scan {scan}")
+        previous = time
+    for interval in timing["intervals"].values():
+        start, end = times[interval["startScan"]], times[interval["endScan"]]
+        interval.update(startTimeMicroseconds=start, endTimeMicroseconds=end, elapsedMicroseconds=end - start)
+    clock.update(state="matched", firstScan=min(times), lastScan=max(times), checkedScans=len(times))
+
+
+def check_cycle(trace, identity, outbound_path, inbound_path, result, *, max_release_to_next_hold_scans=None,
+                verify_scan_clock=False):
     if not isinstance(trace, dict) or type(trace.get("schemaVersion")) is not int or trace["schemaVersion"] != 1:
         raise ValueError("Expected a schemaVersion 1 cycle trace")
     outbound = result["outbound"] = {"path": outbound_path, "identity": identity}
@@ -184,6 +218,9 @@ def check_cycle(trace, identity, outbound_path, inbound_path, result, *, max_rel
         result["phase"] = "hold_continuation"
         check_hold_continuation(trace["nextHold"], trace["holdContinuation"], result)
     timing = result["scanTiming"] = {"intervals": cycle_scan_intervals(result)}
+    if verify_scan_clock:
+        result["phase"] = "scan_clock"
+        verify_cycle_scan_clock(trace, timing)
     if max_release_to_next_hold_scans is not None:
         result["phase"] = "scan_timing"
         elapsed = timing["intervals"]["releaseToNextHold"]["elapsedScans"]
@@ -211,10 +248,8 @@ def check_release_total(trace, cycle, event):
         "firstScan": inspection[0]["scan"], "lastScan": hold["scan"],
     }
     initial = inspection[0].get("releaseTotal")
-    for row in chain(inspection, trace["returnLeg"]["scans"], (hold,)):
+    for row in cycle_observations_through_hold(trace):
         scan = row["scan"]
-        if scan > hold["scan"]:
-            continue
         if "releaseTotal" not in row:
             raise TraceIssue("cycle_trace_release_total_missing", f"Capture releaseTotal at PLC scan {scan}", "warning")
         count = row["releaseTotal"]
@@ -283,7 +318,7 @@ def cycle_trace_review(project, configuration, cpu, manager_id, lpj, readback, n
                        waypoint_tolerance_um=None, verify_sampled_speed=False, max_sample_interval_us=None,
                        verify_position_time_handoff=False, require_assembly_widget=False, hmi_layout_report_path=None,
                        captured_layout_checks=None, require_hold_through_reopen=False, release_total_event=None,
-                       max_release_to_next_hold_scans=None):
+                       max_release_to_next_hold_scans=None, verify_scan_clock=False):
     report = launchpad_route_review(project, configuration, cpu, manager_id, lpj, readback, name_map, job_directory,
                                     include_stations=True)
     result = report["cycleTraceReview"] = {"state": "not_checked", "sourceStation": source_station}
@@ -331,12 +366,13 @@ def cycle_trace_review(project, configuration, cpu, manager_id, lpj, readback, n
                 trace, scan_csv_path, result.setdefault("scanCapture", {}),
                 read_project_events=lambda: read_project_events(project, job_directory, report["rucReview"]),
                 verify_release_total=release_total_event is not None,
+                verify_scan_clock=verify_scan_clock,
             )
             evidence_path = trace_path
         elif isinstance(trace, dict) and "scanCapture" in trace:
             raise ValueError("Supply scanCsv for a cycle trace with scanCapture")
         check_cycle(trace, identity, outbound, inbound, result,
-                    max_release_to_next_hold_scans=max_release_to_next_hold_scans)
+                    max_release_to_next_hold_scans=max_release_to_next_hold_scans, verify_scan_clock=verify_scan_clock)
         if release_total_event is not None:
             result["phase"] = "release_total"
             evidence_path = scan_csv_path or trace_path

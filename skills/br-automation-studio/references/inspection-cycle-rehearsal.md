@@ -1,6 +1,6 @@
 # Rehearse one ACOPOS 6D inspection cycle with its HMI
 
-Use this workflow with br-studio 0.80.0 or later for a saved AS4 PC simulation project, a two-station LaunchPad route and a PLC-hosted mapp View page. Work in one run directory with a reviewed project and build as inputs. Keep installation paths, project identifiers and captures in the local run directory.
+Use this workflow with br-studio 0.81.0 or later for a saved AS4 PC simulation project, a two-station LaunchPad route and a PLC-hosted mapp View page. Work in one run directory with a reviewed project and build as inputs. Keep installation paths, project identifiers and captures in the local run directory.
 
 ## Qualify the project and build
 
@@ -155,6 +155,7 @@ The review uses `scan-capture.csv` and `layout-assets/` beside the selected stat
 | Release setpoints | `expectedExitVelocityMps` and `expectedExitAccelerationMps2` as decimal strings | Both inputs sampled on the Release edge and a RUC with pinned motion limits |
 | Release count | `releaseTotalEvent` set to `release`, `releaseDone` or `arrival` | The project's counter milestone and one counter sampled through both legs and the next hold. [Release count review](cycle-trace-review.md#check-when-the-release-total-increments) |
 | Release-to-next-hold limit | `maxReleaseToNextHoldScans` | An approved maximum scan index difference. The review reports the milestone intervals even when the limit is omitted. [Cycle scan timing](cycle-trace-review.md#compare-cycle-timing-in-plc-scans) |
+| Elapsed cycle intervals | `verifyScanClock` | A recorded `scanTimeMicroseconds` sample from one acquisition clock through the next hold. [Cycle clock review](cycle-trace-review.md#measure-the-cycle-intervals-with-a-recorded-clock) |
 | Station and return positions | `positionToleranceMicrometres` and `returnPositionToleranceMicrometres` | Approved tolerances, pinned positions, explicit X/Y read axes, valid same-shuttle XY at each boundary |
 | Ordered waypoints | `waypointToleranceMicrometres` | Pinned waypoint positions and synchronized intermediate samples |
 | Timed sampled speed | `verifySampledSpeed` and optional `maxSampleIntervalMicroseconds` | Pinned positions and motion limits, explicit X/Y read axes, timed positions in both legs |

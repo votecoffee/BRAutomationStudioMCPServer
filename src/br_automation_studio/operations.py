@@ -330,6 +330,7 @@ def run_cycle_trace_review(arguments, request_directory):
                               captured_layout_checks=layout_checks if verify_layout else None,
                               release_total_event=release_total_event,
                               max_release_to_next_hold_scans=arguments.get("maxReleaseToNextHoldScans"),
+                              verify_scan_clock=arguments.get("verifyScanClock", False),
                               **sampled_speed_options(arguments))
 
 
@@ -680,6 +681,8 @@ CYCLE_TRACE_REVIEW = Operation(
                               "description": "Require the sampled release total to increase once at the selected event scan and stay steady through the next hold."},
         "maxReleaseToNextHoldScans": {"type": "integer", "minimum": 1, "maximum": 9007199254740991,
                                       "description": "Maximum allowed scan index difference from the Release edge to the first next hold."},
+        "verifyScanClock": {"type": "boolean", "default": False,
+                            "description": "Measure cycle intervals from one recorded microsecond clock spanning both legs and the next hold."},
         "verifyPositionTimeHandoff": {"type": "boolean", "default": False,
                                       "description": "Compare outbound arrival and return occupancy timestamps using a common clock. Requires verifySampledSpeed."},
         "returnPositionToleranceMicrometres": {"type": "integer", "minimum": 0, "maximum": 9007199254740991,

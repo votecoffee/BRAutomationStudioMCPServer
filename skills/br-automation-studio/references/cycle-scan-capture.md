@@ -115,6 +115,10 @@ For each scan the checker compares the before value with the running sequence, w
 
 When `releaseTotalEvent` is set on the cycle request, use `hold.releaseTotal` for the same sampled counter from the start of the outbound leg through the first next-hold scan. If the export uses a different header or chart title, map it through `scanCapture.columns`. Use the value published to the HMI when pairing with a status report. [Event selection and review](cycle-trace-review.md#check-when-the-release-total-increments)
 
+## Record one clock for cycle timing
+
+Use `verifyScanClock` in the cycle request and map the recorded clock column to `scanTimeMicroseconds` in `scanCapture.columns`. Use a nonnegative integer microsecond value at the same task position on every selected PLC scan through the first next hold. In an Automation Studio chart, use the captured clock signal as a data column. The chart's time coordinates still serve the chart alignment check. [Cycle clock review](cycle-trace-review.md#measure-the-cycle-intervals-with-a-recorded-clock)
+
 ## Review the output
 
 Run `br-studio run --request <request.json>` and retain the response with the descriptor, scan file and build receipts. Missing boundary scans or an internal gap leave the cycle incomplete. Duplicate or decreasing scan indexes, a changed scan file, malformed required values or unaligned chart signals produce issues. The existing cycle reviewer still checks request identity, event continuity, return and the next hold. Compare with a same-session HMI report when validating the page reopen. If `arsim_status_smoke` retained the file in that runtime, point `scanCsv` to the retained copy and set `requireSessionScanCapture` to require the receipt. [Same-run scan retention](arsim-status-smoke.md#retain-a-scan-file-from-the-same-runtime)

@@ -15,6 +15,7 @@ from .station_trace import (
 
 HOLD_RELEASE_TOTAL = "hold.releaseTotal"
 HOLD_HMI = ("hold.phase", HOLD_RELEASE_TOTAL, "hold.heartbeat")
+SCAN_TIME = "scanTimeMicroseconds"
 INSPECTION_MOTION = tuple(f"inspection.{field}" for field in RELEASE_MOTION_FIELDS)
 POSITION_COLUMNS = tuple(f"{phase}.{field}" for phase in ("inspection", "return", "hold")
                          for field in (*POSITION_FIELDS, POSITION_TIME))
@@ -197,7 +198,8 @@ def anchored_monitor_window(leg, rows, field):
     return {**leg, field: start, "scans": rows}, {"start": start, "end": end}
 
 
-def materialize_cycle(trace, path, summary, *, read_project_events=None, verify_release_total=False):
+def materialize_cycle(trace, path, summary, *, read_project_events=None, verify_release_total=False,
+                      verify_scan_clock=False):
     capture = trace.get("scanCapture") if isinstance(trace, dict) else None
     if not isinstance(capture, dict):
         raise ValueError("A CSV input needs a scanCapture object in the cycle trace")
@@ -258,7 +260,11 @@ def materialize_cycle(trace, path, summary, *, read_project_events=None, verify_
         raise ValueError("scanCapture.monitorCheckpoints must be a Boolean")
     if checkpoints:
         required.update(f"{phase}.{field}" for phase in ("inspection", "return") for field in MONITOR_CHECKPOINTS)
-    if set(columns) - (required | set(HOLD_HMI) | set(INSPECTION_MOTION) | set(POSITION_COLUMNS)):
+    scan_time_column = columns.get(SCAN_TIME, SCAN_TIME)
+    read_scan_time = verify_scan_clock and scan_time_column in header
+    if read_scan_time:
+        required.add(SCAN_TIME)
+    if set(columns) - (required | {SCAN_TIME} | set(HOLD_HMI) | set(INSPECTION_MOTION) | set(POSITION_COLUMNS)):
         raise ValueError("scanCapture.columns refers to an unknown scan field")
     motion_columns = {role: columns.get(role, role) for role in INSPECTION_MOTION if role in columns or role in header}
     position_columns = {role: columns.get(role, role) for role in POSITION_COLUMNS if role in columns or role in header}
@@ -284,6 +290,8 @@ def materialize_cycle(trace, path, summary, *, read_project_events=None, verify_
         summary["releaseMotionColumns"] = motion_columns
     if position_columns:
         summary["positionColumns"] = position_columns
+    if verify_scan_clock:
+        summary["scanTimeColumn"] = scan_time_column
 
     outbound_rows, return_rows, hold = [], [], None
     held_rows = []
@@ -301,8 +309,12 @@ def materialize_cycle(trace, path, summary, *, read_project_events=None, verify_
         previous = scan
         records += 1
         boundaries.discard(scan)
+        time_sample = {}
+        if read_scan_time and start <= scan <= hold_scan and (raw_time := row.get(SCAN_TIME)) != "":
+            time_sample[SCAN_TIME] = row.number(SCAN_TIME) if DECIMAL_INTEGER.fullmatch(raw_time) else raw_time
         if start <= scan <= end:
             outbound = row.inspection(scan, slots.get("inspection", 1), stations, events)
+            outbound.update(time_sample)
             if verify_release_total:
                 outbound["releaseTotal"] = row.number(HOLD_RELEASE_TOTAL)
             outbound.update({role.partition(".")[2]: row.get(role) for role in motion_columns})
@@ -312,6 +324,7 @@ def materialize_cycle(trace, path, summary, *, read_project_events=None, verify_
             outbound_rows.append(outbound)
         if return_start <= scan <= return_end:
             inbound = row.returned(scan, slots.get("return", 1), stations, events)
+            inbound.update(time_sample)
             if verify_release_total and scan <= hold_scan:
                 inbound["releaseTotal"] = row.number(HOLD_RELEASE_TOTAL)
             inbound.update(row.position("return", position_columns))
@@ -320,6 +333,7 @@ def materialize_cycle(trace, path, summary, *, read_project_events=None, verify_
             return_rows.append(inbound)
         if scan == hold_scan:
             hold = row.hold(scan, stations, status_fields)
+            hold.update(time_sample)
             hold.update(row.position("hold", position_columns))
         elif hold_scan < scan and (hold_through_last or scan <= hold_end):
             held_rows.append(row.hold(scan, stations, status_fields))

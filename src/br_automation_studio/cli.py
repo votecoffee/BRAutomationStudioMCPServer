@@ -754,8 +754,11 @@ def markdown_cycle_trace(cycle, text):
         lines.extend(["", "## Return and hold positions", ""])
         lines.extend(markdown_position_review("Return and hold positions", positions, text))
     if timing := cycle.get("scanTiming"):
+        clock = timing.get("clock")
+        measured = clock is not None and clock["state"] == "matched"
         lines.extend(["", "## Cycle scan intervals", "",
-                      "| Interval | Start scan | End scan | Elapsed scans |", "| --- | ---: | ---: | ---: |"])
+                      "| Interval | Start scan | End scan | Elapsed scans |" + (" Elapsed µs |" if measured else ""),
+                      "| --- | ---: | ---: | ---: |" + (" ---: |" if measured else "")])
         for key, label in (
             ("resultToRelease", "Approved result to Release"),
             ("releaseToDone", "Release to ReleaseDone"),
@@ -767,7 +770,10 @@ def markdown_cycle_trace(cycle, text):
             ("releaseToNextHold", "Release to next hold"),
         ):
             interval = timing["intervals"][key]
-            lines.append(f"| {label} | {interval['startScan']} | {interval['endScan']} | {interval['elapsedScans']} |")
+            line = f"| {label} | {interval['startScan']} | {interval['endScan']} | {interval['elapsedScans']} |"
+            lines.append(line + (f" {interval['elapsedMicroseconds']} |" if measured else ""))
+        if clock is not None:
+            lines.extend(["", f"- Scan acquisition clock {text(clock['state'])}"])
         if limit := timing.get("releaseToNextHoldLimit"):
             lines.extend(["", f"- Release-to-next-hold limit {text(limit['state'])} · Maximum {limit['maximumScans']} scans"])
     return lines

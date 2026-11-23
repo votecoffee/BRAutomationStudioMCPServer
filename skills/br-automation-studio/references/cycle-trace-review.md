@@ -56,6 +56,12 @@ An interval is zero when its two events were observed in one scan. The occupancy
 
 Set `maxReleaseToNextHoldScans` when the rehearsal has an approved upper limit in scans. The exact limit passes. An exceeded limit produces `cycle_trace_scan_limit` in phase `scan_timing`, preserves the measured intervals, and stops the acceptance review before HMI pairing.
 
+## Measure the cycle intervals with a recorded clock
+
+With br-studio 0.81.0 or later, set `verifyScanClock: true` when the trace records `scanTimeMicroseconds` from one acquisition clock. Sample the clock at a consistent PLC task position from the first outbound scan through the first next hold. For a CSV or Automation Studio chart export, use a captured signal mapped to `scanTimeMicroseconds`. In normalized JSON, use this field on each selected outbound and return row and on `nextHold`. [Scan file clock mapping](cycle-scan-capture.md#record-one-clock-for-cycle-timing)
+
+Distinct scan indexes must have strictly increasing nonnegative integer timestamps. When the two legs share a scan, their timestamps must agree. The review records the checked span in `cycleTraceReview.scanTiming.clock` and adds both endpoint times and `elapsedMicroseconds` to each interval. Missing timestamps leave the clock review incomplete. Invalid or conflicting timestamps fail it. Both outcomes retain the scan-count intervals.
+
 ## Check when the release total increments
 
 With br-studio 0.79.0 or later, set `releaseTotalEvent` for an isolated one-shuttle cycle when the project's counter semantics and sample timing are known.

@@ -7,7 +7,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
 
-from br_automation_studio.cycle_capture import FIELDS, HOLD_HMI, materialize_cycle
+from br_automation_studio.cycle_capture import FIELDS, HOLD_HMI, SCAN_TIME, materialize_cycle
 from br_automation_studio.cycle_trace import (
     bind_cycle_build, check_adjacent_scan, check_cycle, check_position_time_handoff, check_release_total,
     check_return_positions,
@@ -97,6 +97,40 @@ class CycleTraceTest(unittest.TestCase):
         self.assertEqual(rejected["phase"], "scan_timing")
         self.assertEqual(rejected["nextHold"], cycle["nextHold"])
         self.assertEqual(rejected["scanTiming"]["intervals"], timing["intervals"])
+
+    def test_cycle_intervals_require_one_increasing_clock_across_overlapping_legs(self):
+        outward = self.trace["inspectionLeg"]["scans"]
+        returned = self.trace["returnLeg"]["scans"]
+        for row in (*outward, *returned, self.trace["nextHold"]):
+            row[SCAN_TIME] = row["scan"] ** 2 * 100
+        result = {}
+        check_cycle(self.trace, self.identity, self.outbound, self.inbound, result, verify_scan_clock=True)
+        timing = result["scanTiming"]
+        self.assertEqual(timing["clock"], {"state": "matched", "firstScan": 10, "lastScan": 18, "checkedScans": 9})
+        self.assertEqual(timing["intervals"]["releaseToNextHold"], {
+            "startScan": 12, "endScan": 18, "elapsedScans": 6,
+            "startTimeMicroseconds": 14400, "endTimeMicroseconds": 32400, "elapsedMicroseconds": 18000,
+        })
+        for row, time, code, severity in (
+            (returned[0], 22501, "cycle_trace_scan_time_overlap", "error"),
+            (returned[1], 22500, "cycle_trace_scan_time_order", "error"),
+            (returned[2], "bad", "cycle_trace_scan_time_invalid", "error"),
+            (outward[0], None, "cycle_trace_scan_time_missing", "warning"),
+        ):
+            with self.subTest(code=code):
+                original = row.pop(SCAN_TIME)
+                if time is not None:
+                    row[SCAN_TIME] = time
+                try:
+                    rejected = {}
+                    with self.assertRaises(TraceIssue) as caught:
+                        check_cycle(self.trace, self.identity, self.outbound, self.inbound, rejected, verify_scan_clock=True)
+                    self.assertEqual((caught.exception.code, caught.exception.severity), (code, severity))
+                    self.assertEqual(rejected["phase"], "scan_clock")
+                    interval = rejected["scanTiming"]["intervals"]["releaseToNextHold"]
+                    self.assertEqual(interval, {"startScan": 12, "endScan": 18, "elapsedScans": 6})
+                finally:
+                    row[SCAN_TIME] = original
 
     def test_derive_omitted_build_hashes_only_from_matching_pinned_inputs(self):
         proof = {"sourceSha256": self.identity["launchPadSha256"], "readbackSha256": "c" * 64}
