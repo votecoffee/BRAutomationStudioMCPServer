@@ -1,8 +1,13 @@
+from hashlib import sha256
+import json
+import os
 from pathlib import Path
+from tempfile import TemporaryDirectory
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from br_automation_studio.cycle_hmi import bind_session_scan_capture, check_cycle_hmi, check_layout_svg_pairing, review_cycle_hmi
+from br_automation_studio.operations import InvalidRequest, execute
 from br_automation_studio.station_trace import TraceIssue
 
 
@@ -261,6 +266,69 @@ class CycleHmiTest(unittest.TestCase):
                 self.check()
             self.assertEqual(issue.exception.code, "cycle_hmi_environment_mismatch")
             report["environmentReport"]["sha256"] = environment["sha256"]
+
+    def test_review_rehashes_the_adjacent_or_explicit_workstation_file(self):
+        scratch = TemporaryDirectory(dir=os.environ.get("BR_STUDIO_TEST_SCRATCH"))
+        self.addCleanup(scratch.cleanup)
+        root = Path(scratch.name).resolve()
+        status_path = root / "status.json"
+        adjacent = root / "simulation-environment.json"
+        original = b'{"modeled":true}\n'
+        environment = {"path": adjacent.name, "sha256": sha256(original).hexdigest()}
+        self.ruc["environmentReport"] = environment
+        self.smoke["environmentReport"] = environment
+
+        def review(**options):
+            status_path.write_text(json.dumps(self.document), encoding="utf-8")
+            report = {"cycleTraceReview": self.cycle, "rucReview": self.ruc,
+                      "cycleHmiReview": {}, "diagnostics": []}
+            review_cycle_hmi(report, self.trace, status_path, **options)
+            return report
+
+        identities = review()["cycleHmiReview"]
+        self.assertEqual(identities["state"], "matched")
+        self.assertEqual(identities["environmentReport"], environment)
+        self.assertNotIn("environmentReportFile", identities)
+
+        adjacent.write_bytes(original)
+        matched = review()["cycleHmiReview"]
+        self.assertEqual(matched["state"], "matched")
+        self.assertEqual(matched["environmentReportFile"], {"path": str(adjacent), "sha256": environment["sha256"]})
+
+        adjacent.write_bytes(original + b"\n")
+        changed = review()
+        self.assertEqual(changed["cycleHmiReview"]["state"], "issues")
+        issue, = changed["diagnostics"]
+        self.assertEqual((issue["code"], issue["path"]), ("cycle_hmi_environment_file_mismatch", adjacent.as_posix()))
+
+        moved = root / "archived-workstation.json"
+        moved.write_bytes(original)
+        explicit = review(environment_report_path=moved)["cycleHmiReview"]
+        self.assertEqual(explicit["environmentReportFile"]["path"], str(moved))
+        missing = review(environment_report_path=root / "missing.json")
+        self.assertEqual(missing["diagnostics"][0]["code"], "cycle_hmi_environment_file_missing")
+
+        del self.smoke["environmentReport"]
+        self.assertEqual(review(environment_report_path=moved)["diagnostics"][0]["code"],
+                         "cycle_hmi_environment_file_unbound")
+        self.assertEqual(review()["cycleHmiReview"]["state"], "matched")
+
+    def test_explicit_workstation_file_requires_and_passes_the_status_response(self):
+        root = Path("workspace")
+        request = {
+            "schemaVersion": 1, "workspace": "test", "operation": "cycle_trace_review",
+            "arguments": {"project": "Loop.apj", "managerId": "Traffic", "jobDirectory": "job",
+                          "launchPadProject": "Layout.lpj", "launchPadReadback": "Layout.json",
+                          "sourceStation": "Load", "trace": "trace.json", "hmiEnvironmentReport": "archived-review.json"},
+        }
+        with self.assertRaisesRegex(InvalidRequest, "hmiEnvironmentReport needs hmiStatusReport"):
+            execute(request, root)
+
+        request["arguments"]["hmiStatusReport"] = "session/status.json"
+        with patch("br_automation_studio.operations.cycle_trace_review", return_value={"diagnostics": []}) as review:
+            self.assertEqual(execute(request, root)["status"], "complete")
+        self.assertEqual(review.call_args.kwargs["hmi_status_path"], root / "session/status.json")
+        self.assertEqual(review.call_args.kwargs["hmi_environment_report_path"], root / "archived-review.json")
 
     def test_same_package_needs_the_same_session_and_correct_capture_order(self):
         for fields, key, value, code in (

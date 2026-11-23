@@ -1,13 +1,16 @@
 """Correlate a selected cycle's next hold with a completed loopback status report."""
 
+from pathlib import Path
 import re
 
 from .arsim_smoke import HOST
 from .browser_smoke import ASSEMBLY_WIDGET, http_status, layout_asset_paths, numeric_text
 from .hmi_smoke import HELD_STATUS_ROLES, check_samples
-from .launchpad_route import json_snapshot
+from .json_io import json_snapshot
+from .native_build import RETAINED_ENVIRONMENT_REPORT, check_source
 from .opcua_smoke import CURRENT_READ, INTEGER_NODE_TYPES
 from .runtime_capture import CAPTURE_COPY
+from .simulation_preflight import ENVIRONMENT_REPORT_LIMIT
 from .station_trace import TRACE_LIMIT, TraceIssue, integer
 
 
@@ -352,9 +355,31 @@ def check_cycle_hmi(cycle, trace, ruc, document, result, *, require_session_capt
         check_assembly_widget(ruc, reviewed, hmi["browser"], assembly_route, result)
 
 
+def check_environment_file(path, expected, *, required):
+    if expected is None:
+        raise TraceIssue("cycle_hmi_environment_file_unbound",
+                         "The HMI status response must record the retained workstation package report")
+    found = False
+    try:
+        check_source(path, False)
+        found = True
+        _, snapshot = json_snapshot(path, ENVIRONMENT_REPORT_LIMIT)
+    except FileNotFoundError as error:
+        if not found and not required:
+            return None
+        raise TraceIssue("cycle_hmi_environment_file_missing", "The selected workstation report file is missing") from error
+    except (OSError, RecursionError, RuntimeError, ValueError) as error:
+        raise TraceIssue("cycle_hmi_environment_file_invalid",
+                         f"Could not read the retained workstation report as a regular JSON file. {error}") from error
+    if snapshot["sha256"] != expected["sha256"]:
+        raise TraceIssue("cycle_hmi_environment_file_mismatch",
+                         "The retained workstation report SHA-256 differs from the reviewed RUC and HMI status response")
+    return snapshot
+
+
 def review_cycle_hmi(report, trace, path, *, require_session_capture=False, require_assembly_widget=False,
                      require_hold_through_reopen=False, layout_report_path=None, captured_layout_review=None,
-                     status_snapshot=None):
+                     status_snapshot=None, environment_report_path=None):
     result = report["cycleHmiReview"]
     evidence_path = path
     try:
@@ -367,6 +392,14 @@ def review_cycle_hmi(report, trace, path, *, require_session_capture=False, requ
         check_cycle_hmi(report["cycleTraceReview"], trace, ruc, document, result,
                         require_session_capture=require_session_capture, require_hold_through_reopen=require_hold_through_reopen,
                         assembly_route=assembly_route)
+        environment = result.get("environmentReport")
+        if environment_report_path is not None or environment is not None:
+            evidence_path = environment_report_path or Path(result["statusReport"]["path"]).with_name(
+                RETAINED_ENVIRONMENT_REPORT.name)
+            snapshot = check_environment_file(evidence_path, environment, required=environment_report_path is not None)
+            if snapshot is not None:
+                result["environmentReportFile"] = snapshot
+            evidence_path = path
         if layout_report_path is not None:
             evidence_path = layout_report_path
             reviewed, result["layoutSvgReport"] = json_snapshot(layout_report_path, TRACE_LIMIT)

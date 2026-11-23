@@ -851,6 +851,8 @@ def markdown_cycle_hmi(hmi, text):
     lines = ["", "## Held status after HMI reopen", "", f"- State {text(hmi['state'])}"]
     if status_report := hmi.get("statusReport"):
         lines.append(f"- Status report SHA-256 {status_report['sha256']}")
+    if workstation := hmi.get("environmentReportFile"):
+        lines.append(f"- Retained workstation report {text(workstation['path'])} · SHA-256 {workstation['sha256']}")
     if "sessionId" in hmi:
         lines.append(f"- ARsim session {text(hmi['sessionId'])} · Cycle capture {text(hmi['captureKind'])}")
     if capture := hmi.get("scanCapture"):

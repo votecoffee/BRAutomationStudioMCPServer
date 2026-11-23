@@ -302,6 +302,9 @@ def run_station_trace_review(arguments, request_directory):
 
 def run_cycle_trace_review(arguments, request_directory):
     status_report = arguments.get("hmiStatusReport")
+    environment_report = arguments.get("hmiEnvironmentReport")
+    if environment_report and not status_report:
+        raise InvalidRequest("hmiEnvironmentReport needs hmiStatusReport")
     scan_csv = arguments.get("scanCsv")
     release_total_event = arguments.get("releaseTotalEvent")
     if release_total_event is not None and release_total_event not in RELEASE_TOTAL_EVENTS:
@@ -346,6 +349,7 @@ def run_cycle_trace_review(arguments, request_directory):
     return cycle_trace_review(*launchpad_inputs(arguments, request_directory), arguments["sourceStation"],
                               request_directory / arguments["trace"],
                               hmi_status_path=request_directory / status_report if status_report else None,
+                              hmi_environment_report_path=request_directory / environment_report if environment_report else None,
                               scan_csv_path=request_directory / scan_csv if scan_csv else None,
                               require_session_capture=require_capture, expected_motion=expected_release_motion(arguments),
                               position_tolerance_um=outbound_tolerance,
@@ -703,6 +707,8 @@ CYCLE_TRACE_REVIEW = Operation(
                     "description": "Recorded PLC scans. Strict review defaults to scan-capture.csv beside hmiStatusReport."},
         "hmiStatusReport": {"type": "string", "minLength": 1,
                             "description": "Completed arsim_status_smoke JSON for the same cycle RUC and session."},
+        "hmiEnvironmentReport": {"type": "string", "minLength": 1,
+                                 "description": "Require matching bytes from this retained workstation report. Requires hmiStatusReport."},
         "requireSessionScanCapture": {"type": "boolean", "default": False,
                                       "description": "Require the session's retained scan and completed HMI status receipt. Use the receipt for missing scan or HMI identities and the matched pinned build for missing inspection hashes."},
         "requireHoldThroughReopen": {"type": "boolean", "default": False,
