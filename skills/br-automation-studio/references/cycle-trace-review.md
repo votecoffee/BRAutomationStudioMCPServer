@@ -48,6 +48,20 @@ Capture `nextHold` after the outbound interval and both return observations. Use
 
 Keep the raw PLC export, normalized trace, review output and RUC job together. The review records the trace SHA-256, compiled paths and decisive scan indexes. A gap or missing witness yields `incomplete`. An identity conflict, premature hold or recorded adapter error yields `issues`.
 
+## Check when the release total increments
+
+With br-studio 0.79.0 or later, set `releaseTotalEvent` for an isolated one-shuttle cycle when the project's counter semantics and sample timing are known.
+
+| Value | Scan where the reviewer expects the increment |
+| --- | --- |
+| `release` | The accepted rising edge of Release |
+| `releaseDone` | The first observed ReleaseDone for that departure |
+| `arrival` | The accepted fresh arrival at the outbound destination |
+
+Record the same nonnegative count at the end of each PLC task scan throughout the selected outbound leg, return and first next hold. The reviewer expects the initial count before the chosen event, exactly one increment at the event and the resulting value through the next hold. In a normalized trace, include `releaseTotal` on each selected inspection and return row and on `nextHold`. In a scan file, use one column mapped to `hold.releaseTotal` across those scans. [Scan column mapping](cycle-scan-capture.md#check-the-release-total-across-both-legs)
+
+Read `cycleTraceReview.releaseTotalReview` for the event scan and before and after values. A requested review of the HMI still checks that the browser and OPC UA show the count observed on the next hold.
+
 ## Verify positions on return and at the next hold
 
 With br-studio 0.62.0 or later, set `returnPositionToleranceMicrometres` to the maximum difference on each axis. Use the same LaunchPad inputs as the RUC built with `verifyLaunchPadPositions` and explicit X and Y in `launchPadReadAxes`. Capture the same shuttle's valid XY sample on the first occupied return-source scan, the accepted return-arrival scan and the next held request scan. Use the [station sample fields](station-trace-review.md#check-position-at-the-two-station-events) in the selected `returnLeg.scans` and `nextHold` rows. Supply the outbound position tolerance as well when the capture includes both outbound witnesses.

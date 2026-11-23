@@ -111,6 +111,10 @@ The first inspection row begins after the old queue has been drained and before 
 
 For each scan the checker compares the before value with the running sequence, walks the ordered slots, then compares the after value with the result. A mismatch leaves the cycle incomplete, including when an unrecorded consumption occurs on the final scan. Keep monitor health and queue occupancy evidence available to assess loss before the application consumed an event. [B&R station monitor behavior](https://help.br-automation.com/#/en/4/motion/mapp_6d/bibliotheken/mptraffic/function_block/mptrafficstationmonitor/fb_mptrafficstationmonitor_functiondescription.html)
 
+## Check the release total across both legs
+
+When `releaseTotalEvent` is set on the cycle request, use `hold.releaseTotal` for the same sampled counter from the start of the outbound leg through the first next-hold scan. If the export uses a different header or chart title, map it through `scanCapture.columns`. Use the value published to the HMI when pairing with a status report. [Event selection and review](cycle-trace-review.md#check-when-the-release-total-increments)
+
 ## Review the output
 
 Run `br-studio run --request <request.json>` and retain the response with the descriptor, scan file and build receipts. Missing boundary scans or an internal gap leave the cycle incomplete. Duplicate or decreasing scan indexes, a changed scan file, malformed required values or unaligned chart signals produce issues. The existing cycle reviewer still checks request identity, event continuity, return and the next hold. Compare with a same-session HMI report when validating the page reopen. If `arsim_status_smoke` retained the file in that runtime, point `scanCsv` to the retained copy and set `requireSessionScanCapture` to require the receipt. [Same-run scan retention](arsim-status-smoke.md#retain-a-scan-file-from-the-same-runtime)

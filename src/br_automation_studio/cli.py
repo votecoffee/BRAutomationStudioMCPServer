@@ -747,6 +747,9 @@ def markdown_cycle_trace(cycle, text):
     if continuation := cycle.get("holdContinuation"):
         lines.append(f"- Hold continuity {text(continuation['state'])} · Checked through scan {continuation['lastScan']} "
                      f"of {continuation['throughScan']} · Last held heartbeat {continuation['lastHeartbeat']}")
+    if release_total := cycle.get("releaseTotalReview"):
+        lines.append(f"- Release total {text(release_total['state'])} · {text(release_total['event'])} scan {release_total['eventScan']} "
+                     f"· Before {text(release_total.get('before'))} · At hold {text(release_total.get('atHold'))}")
     if positions := cycle.get("returnPositionReview"):
         lines.extend(["", "## Return and hold positions", ""])
         lines.extend(markdown_position_review("Return and hold positions", positions, text))

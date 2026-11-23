@@ -94,6 +94,8 @@ Use `cycle_trace_review` to check the release, return and next held request for 
 
 Set `verifyCapturedLayout` to include the SVG geometry checks in the cycle receipt. [Combined cycle and layout review](skills/br-automation-studio/references/cycle-trace-review.md#verify-the-captured-layout-in-one-review)
 
+Set `releaseTotalEvent` to check whether the release count advances once at the project's selected event and remains steady through the next hold. [Release count review](skills/br-automation-studio/references/cycle-trace-review.md#check-when-the-release-total-increments)
+
 Use strict same-session scan review to take omitted scan and HMI identities from the status receipt. Keep the receipt beside its retained scan to omit `scanCsv`. Explicit held-status roles supply the binding map, and a matched pinned build can supply the LaunchPad and RUC hashes. [Retained scan location](skills/br-automation-studio/references/cycle-trace-review.md#review-the-scan-beside-its-status-response) · [Pinned build identity](skills/br-automation-studio/references/cycle-trace-review.md#use-the-pinned-build-for-inspection-hashes)
 
 Use `launchpad_recovery_review` to compare station recovery declarations and check the saved-to-compiled AS4 point sequence. [Recovery declaration workflow](skills/br-automation-studio/references/launchpad-recovery-review.md)

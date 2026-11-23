@@ -9,7 +9,8 @@ import unittest
 
 from br_automation_studio.cycle_capture import FIELDS, HOLD_HMI, materialize_cycle
 from br_automation_studio.cycle_trace import (
-    bind_cycle_build, check_adjacent_scan, check_cycle, check_position_time_handoff, check_return_positions,
+    bind_cycle_build, check_adjacent_scan, check_cycle, check_position_time_handoff, check_release_total,
+    check_return_positions,
 )
 from br_automation_studio.station_trace import ARRIVAL, FLAGS, MONITOR_CHECKPOINTS, TraceIssue
 
@@ -161,6 +162,30 @@ class CycleTraceTest(unittest.TestCase):
                     self.run_cycle(trace)
                 self.assertEqual((caught.exception.code, caught.exception.severity), (code, severity))
 
+    def test_release_total_increments_at_the_selected_outbound_event(self):
+        for event, event_scan in (("release", 12), ("arrival", 13), ("releaseDone", 14)):
+            with self.subTest(event=event):
+                trace = deepcopy(self.trace)
+                for row in (*trace["inspectionLeg"]["scans"], *trace["returnLeg"]["scans"], trace["nextHold"]):
+                    row["releaseTotal"] = 3 + int(row["scan"] >= event_scan)
+                cycle = self.run_cycle(trace)
+                check_release_total(trace, cycle, event)
+                self.assertEqual(cycle["releaseTotalReview"], {
+                    "state": "matched", "event": event, "eventScan": event_scan,
+                    "firstScan": 10, "lastScan": 18, "before": 3, "atHold": 4,
+                })
+                overlap = trace["returnLeg"]["scans"][0]
+                overlap["releaseTotal"] = 5
+                with self.assertRaises(TraceIssue) as mismatch:
+                    check_release_total(trace, cycle, event)
+                self.assertEqual(mismatch.exception.code, "cycle_trace_release_total_mismatch")
+                self.assertEqual(cycle["releaseTotalReview"]["mismatch"], {"scan": 15, "expected": 4, "observed": 5})
+                del overlap["releaseTotal"]
+                with self.assertRaises(TraceIssue) as missing:
+                    check_release_total(trace, cycle, event)
+                self.assertEqual((missing.exception.code, missing.exception.severity),
+                                 ("cycle_trace_release_total_missing", "warning"))
+
     def test_next_hold_is_a_new_pending_request_covered_by_the_capture(self):
         for changes, code, severity in (
             ({"scan": 16}, "cycle_trace_hold_order", "error"),
@@ -239,14 +264,15 @@ class CycleTraceTest(unittest.TestCase):
         trace["scanCapture"] = {"inspectionScans": [10, 15], "returnScans": [15, 17], "nextHoldScan": 18}
         return trace, columns, list(scans.values())
 
-    def materialize(self, trace, contents, update_digest=True, *, event_source=None):
+    def materialize(self, trace, contents, update_digest=True, *, event_source=None, verify_release_total=False):
         with TemporaryDirectory(dir=os.environ.get("BR_STUDIO_TEST_SCRATCH")) as directory:
             path = Path(directory) / "capture.csv"
             path.write_bytes(contents)
             if update_digest:
                 trace["scanCapture"]["sha256"] = sha256(contents).hexdigest()
             capture = {}
-            result = materialize_cycle(trace, path, capture, read_project_events=event_source)
+            result = materialize_cycle(trace, path, capture, read_project_events=event_source,
+                                       verify_release_total=verify_release_total)
             self.assertEqual(capture["sha256"], sha256(contents).hexdigest())
             return result, capture
 
@@ -266,6 +292,22 @@ class CycleTraceTest(unittest.TestCase):
         with self.assertRaises(TraceIssue) as error:
             self.materialize(trace, csv_bytes + b"\r\n", update_digest=False)
         self.assertEqual(error.exception.code, "cycle_capture_hash_mismatch")
+
+    def test_release_total_uses_one_mapped_column_across_the_saved_cycle(self):
+        trace, columns, rows = self.scan_csv()
+        columns = [column for column in columns if column not in HOLD_HMI]
+        columns.append("PLC releases")
+        trace["scanCapture"]["columns"] = {"hold.releaseTotal": "PLC releases"}
+        output = StringIO(newline="")
+        writer = csv.DictWriter(output, fieldnames=columns, extrasaction="ignore")
+        writer.writeheader()
+        writer.writerows(row | {"PLC releases": 3 + int(row["scan"] >= 12)} for row in rows)
+        normalized, _ = self.materialize(trace, output.getvalue().encode("utf-8"), verify_release_total=True)
+        self.assertEqual(normalized["nextHold"]["releaseTotal"], 4)
+        self.assertNotIn("heartbeat", normalized["nextHold"])
+        cycle = self.run_cycle(normalized)
+        check_release_total(normalized, cycle, "release")
+        self.assertEqual(cycle["releaseTotalReview"]["atHold"], 4)
 
     def test_saved_hold_window_checks_intervening_scans_and_transient_release(self):
         trace, columns, rows = self.scan_csv()

@@ -2,6 +2,7 @@
 
 from csv import Error as CsvError
 from functools import partial
+from itertools import chain
 from pathlib import Path
 from stat import FILE_ATTRIBUTE_REPARSE_POINT, S_ISREG
 
@@ -19,6 +20,7 @@ from .station_trace import (
 
 HOLD_FIELDS = ("station", "requestId", "shuttleId", "held", "release", "resultAccepted")
 BUILD_HASH_FIELDS = ("launchPadSha256", "rucSha256")
+RELEASE_TOTAL_EVENTS = ("release", "releaseDone", "arrival")
 
 
 def check_return(trace, outbound, inbound, result):
@@ -163,6 +165,37 @@ def check_cycle(trace, identity, outbound_path, inbound_path, result):
     result["phase"] = "complete"
 
 
+def check_release_total(trace, cycle, event):
+    outbound = cycle["outbound"]
+    event_scan = {
+        "release": outbound["releaseScans"][0],
+        "releaseDone": outbound["doneScan"],
+        "arrival": outbound["arrival"]["scan"],
+    }[event]
+    inspection = trace["inspectionLeg"]["scans"]
+    hold = trace["nextHold"]
+    result = cycle["releaseTotalReview"] = {
+        "state": "incomplete", "event": event, "eventScan": event_scan,
+        "firstScan": inspection[0]["scan"], "lastScan": hold["scan"],
+    }
+    initial = inspection[0].get("releaseTotal")
+    for row in chain(inspection, trace["returnLeg"]["scans"], (hold,)):
+        scan = row["scan"]
+        if scan > hold["scan"]:
+            continue
+        if "releaseTotal" not in row:
+            raise TraceIssue("cycle_trace_release_total_missing", f"Capture releaseTotal at PLC scan {scan}", "warning")
+        count = row["releaseTotal"]
+        if not integer(count):
+            result.update(state="issues", mismatch={"scan": scan, "observed": count})
+            raise TraceIssue("cycle_trace_release_total_invalid", f"Release total at scan {scan} needs a nonnegative integer")
+        expected = initial + int(scan >= event_scan)
+        if count != expected:
+            result.update(state="issues", mismatch={"scan": scan, "expected": expected, "observed": count})
+            raise TraceIssue("cycle_trace_release_total_mismatch", f"Release total at scan {scan} was {count}, expected {expected}")
+    result.update(state="matched", before=initial, atHold=hold["releaseTotal"])
+
+
 def check_return_positions(report, trace, tolerance_um, cycle):
     returned = cycle["returnLeg"]
     by_scan = {row["scan"]: row for row in trace["returnLeg"]["scans"]}
@@ -217,7 +250,7 @@ def cycle_trace_review(project, configuration, cpu, manager_id, lpj, readback, n
                        expected_motion=None, position_tolerance_um=None, return_position_tolerance_um=None,
                        waypoint_tolerance_um=None, verify_sampled_speed=False, max_sample_interval_us=None,
                        verify_position_time_handoff=False, require_assembly_widget=False, hmi_layout_report_path=None,
-                       captured_layout_checks=None, require_hold_through_reopen=False):
+                       captured_layout_checks=None, require_hold_through_reopen=False, release_total_event=None):
     report = launchpad_route_review(project, configuration, cpu, manager_id, lpj, readback, name_map, job_directory,
                                     include_stations=True)
     result = report["cycleTraceReview"] = {"state": "not_checked", "sourceStation": source_station}
@@ -264,11 +297,16 @@ def cycle_trace_review(project, configuration, cpu, manager_id, lpj, readback, n
             trace = materialize_cycle(
                 trace, scan_csv_path, result.setdefault("scanCapture", {}),
                 read_project_events=lambda: read_project_events(project, job_directory, report["rucReview"]),
+                verify_release_total=release_total_event is not None,
             )
             evidence_path = trace_path
         elif isinstance(trace, dict) and "scanCapture" in trace:
             raise ValueError("Supply scanCsv for a cycle trace with scanCapture")
         check_cycle(trace, identity, outbound, inbound, result)
+        if release_total_event is not None:
+            result["phase"] = "release_total"
+            evidence_path = scan_csv_path or trace_path
+            check_release_total(trace, result, release_total_event)
         if expected_motion is not None:
             result["phase"] = "release_motion"
             evidence_path = scan_csv_path or trace_path

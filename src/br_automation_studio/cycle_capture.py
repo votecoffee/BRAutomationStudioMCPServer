@@ -13,7 +13,8 @@ from .station_trace import (
 )
 
 
-HOLD_HMI = ("hold.phase", "hold.releaseTotal", "hold.heartbeat")
+HOLD_RELEASE_TOTAL = "hold.releaseTotal"
+HOLD_HMI = ("hold.phase", HOLD_RELEASE_TOTAL, "hold.heartbeat")
 INSPECTION_MOTION = tuple(f"inspection.{field}" for field in RELEASE_MOTION_FIELDS)
 POSITION_COLUMNS = tuple(f"{phase}.{field}" for phase in ("inspection", "return", "hold")
                          for field in (*POSITION_FIELDS, POSITION_TIME))
@@ -179,12 +180,11 @@ class Sample:
             values["positionValid"] = self.flag(f"{phase}.positionValid")
         return values
 
-    def hold(self, scan, stations, include_hmi):
+    def hold(self, scan, stations, status_fields):
         row = {"scan": scan, "station": self.label("hold.station", stations),
                "requestId": self.number("hold.requestId"), "shuttleId": self.number("hold.shuttleId")}
         row.update({flag: self.flag(f"hold.{flag}") for flag in ("held", "release", "resultAccepted")})
-        if include_hmi:
-            row.update({role.partition(".")[2]: self.number(role) for role in HOLD_HMI})
+        row.update({role.partition(".")[2]: self.number(role) for role in status_fields})
         return row
 
 
@@ -197,7 +197,7 @@ def anchored_monitor_window(leg, rows, field):
     return {**leg, field: start, "scans": rows}, {"start": start, "end": end}
 
 
-def materialize_cycle(trace, path, summary, *, read_project_events=None):
+def materialize_cycle(trace, path, summary, *, read_project_events=None, verify_release_total=False):
     capture = trace.get("scanCapture") if isinstance(trace, dict) else None
     if not isinstance(capture, dict):
         raise ValueError("A CSV input needs a scanCapture object in the cycle trace")
@@ -264,10 +264,12 @@ def materialize_cycle(trace, path, summary, *, read_project_events=None):
     position_columns = {role: columns.get(role, role) for role in POSITION_COLUMNS if role in columns or role in header}
     required.update(motion_columns)
     fields = {columns.get(role, role) for role in required}
-    hmi_fields = {columns.get(role, role) for role in HOLD_HMI}
-    include_hmi = extended_hold or bool(hmi_fields.intersection(header))
-    wanted = fields | (hmi_fields if include_hmi else set())
-    if (len(fields) != len(required) or (include_hmi and len(wanted) != len(required) + len(HOLD_HMI))):
+    detect_status = ("hold.phase", "hold.heartbeat") if verify_release_total else HOLD_HMI
+    status_fields = HOLD_HMI if extended_hold or any(columns.get(role, role) in header for role in detect_status) else ()
+    if verify_release_total and not status_fields:
+        status_fields = (HOLD_RELEASE_TOTAL,)
+    wanted = fields | {columns.get(role, role) for role in status_fields}
+    if len(fields) != len(required) or len(wanted) != len(required) + len(status_fields):
         raise ValueError("Each scan field needs a distinct CSV column")
     position_sources = {(column, role.partition(".")[2]) for role, column in position_columns.items()}
     position_headers = set(position_columns.values())
@@ -301,6 +303,8 @@ def materialize_cycle(trace, path, summary, *, read_project_events=None):
         boundaries.discard(scan)
         if start <= scan <= end:
             outbound = row.inspection(scan, slots.get("inspection", 1), stations, events)
+            if verify_release_total:
+                outbound["releaseTotal"] = row.number(HOLD_RELEASE_TOTAL)
             outbound.update({role.partition(".")[2]: row.get(role) for role in motion_columns})
             outbound.update(row.position("inspection", position_columns))
             if checkpoints:
@@ -308,15 +312,17 @@ def materialize_cycle(trace, path, summary, *, read_project_events=None):
             outbound_rows.append(outbound)
         if return_start <= scan <= return_end:
             inbound = row.returned(scan, slots.get("return", 1), stations, events)
+            if verify_release_total and scan <= hold_scan:
+                inbound["releaseTotal"] = row.number(HOLD_RELEASE_TOTAL)
             inbound.update(row.position("return", position_columns))
             if checkpoints:
                 inbound.update({field: row.number(f"return.{field}") for field in MONITOR_CHECKPOINTS})
             return_rows.append(inbound)
         if scan == hold_scan:
-            hold = row.hold(scan, stations, include_hmi)
+            hold = row.hold(scan, stations, status_fields)
             hold.update(row.position("hold", position_columns))
         elif hold_scan < scan and (hold_through_last or scan <= hold_end):
-            held_rows.append(row.hold(scan, stations, include_hmi))
+            held_rows.append(row.hold(scan, stations, status_fields))
     summary.update(records=records, inspectionScans=[start, end], returnScans=[return_start, return_end],
                    nextHoldScan=hold_scan)
     if boundaries:

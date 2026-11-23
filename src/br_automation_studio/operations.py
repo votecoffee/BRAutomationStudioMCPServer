@@ -9,7 +9,7 @@ from .arsim_smoke import arsim_smoke
 from .assembly_io import assembly_io_review
 from .binding_review import BindingTarget
 from .browser_smoke import ChromeProbe
-from .cycle_trace import cycle_trace_review
+from .cycle_trace import RELEASE_TOTAL_EVENTS, cycle_trace_review
 from .hmi_smoke import arsim_hmi_smoke, read_status_bindings
 from .inspection import inspect_project
 from .layout_device import layout_device_review
@@ -288,6 +288,9 @@ def run_station_trace_review(arguments, request_directory):
 def run_cycle_trace_review(arguments, request_directory):
     status_report = arguments.get("hmiStatusReport")
     scan_csv = arguments.get("scanCsv")
+    release_total_event = arguments.get("releaseTotalEvent")
+    if release_total_event is not None and release_total_event not in RELEASE_TOTAL_EVENTS:
+        raise InvalidRequest(f"releaseTotalEvent must be one of {', '.join(RELEASE_TOTAL_EVENTS)}")
     require_capture = arguments.get("requireSessionScanCapture", False)
     if require_capture and not status_report:
         raise InvalidRequest("requireSessionScanCapture needs hmiStatusReport")
@@ -325,6 +328,7 @@ def run_cycle_trace_review(arguments, request_directory):
                               require_assembly_widget=require_widget,
                               hmi_layout_report_path=request_directory / layout_report if layout_report else None,
                               captured_layout_checks=layout_checks if verify_layout else None,
+                              release_total_event=release_total_event,
                               **sampled_speed_options(arguments))
 
 
@@ -671,6 +675,8 @@ CYCLE_TRACE_REVIEW = Operation(
                                  "description": "Verify both SVGs beside hmiStatusReport in the cycle review. Use in place of hmiLayoutSvgReport."},
         "verifyMappingLineEndpoints": LAYOUT_SVG_REVIEW.arguments["verifyMappingLineEndpoints"],
         "verifyTrafficLabels": LAYOUT_SVG_REVIEW.arguments["verifyTrafficLabels"],
+        "releaseTotalEvent": {"type": "string", "minLength": 1, "enum": list(RELEASE_TOTAL_EVENTS),
+                              "description": "Require the sampled release total to increase once at the selected event scan and stay steady through the next hold."},
         "verifyPositionTimeHandoff": {"type": "boolean", "default": False,
                                       "description": "Compare outbound arrival and return occupancy timestamps using a common clock. Requires verifySampledSpeed."},
         "returnPositionToleranceMicrometres": {"type": "integer", "minimum": 0, "maximum": 9007199254740991,
