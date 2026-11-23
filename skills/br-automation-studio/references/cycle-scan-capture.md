@@ -119,7 +119,7 @@ When `releaseTotalEvent` is set on the cycle request, use `hold.releaseTotal` fo
 
 Use `verifyScanClock` in the cycle request and map the recorded clock column to `scanTimeMicroseconds` in `scanCapture.columns`. Use a nonnegative integer microsecond value at the same task position on every selected PLC scan through the first next hold. In an Automation Studio chart, use the captured clock signal as a data column. The chart's time coordinates still serve the chart alignment check. [Cycle clock review](cycle-trace-review.md#measure-the-cycle-intervals-with-a-recorded-clock)
 
-For `maxPositionSampleAgeMicroseconds`, record the PLC scan and the X/Y acquisition as separate timestamps on that same clock. Map the X/Y acquisition times through `inspection.positionTimeMicroseconds` and `return.positionTimeMicroseconds`. [Position sample age review](cycle-trace-review.md#check-position-sample-age)
+For `maxPositionSampleAgeMicroseconds`, record the PLC scan and the X/Y acquisition as separate timestamps on that same clock. Map the X/Y acquisition times through `inspection.positionTimeMicroseconds` and `return.positionTimeMicroseconds`. Include `hold.positionTimeMicroseconds` when checking the return and next-hold positions. [Position sample age review](cycle-trace-review.md#check-position-sample-age)
 
 ## Review the output
 

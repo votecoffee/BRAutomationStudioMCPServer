@@ -38,6 +38,8 @@ For each X/Y sample used by the speed review, the tool subtracts the acquisition
 
 Inspect `sampledSpeedReview.positionAge` on each leg for the approved maximum and the recorded scan and acquisition times of the oldest sample or the sample outside the limit. The age check applies to the same samples admitted to the speed calculation.
 
+With br-studio 0.83.0 or later, the age limit also applies to requested station positions. Set `positionToleranceMicrometres` for Release and outbound arrival and `returnPositionToleranceMicrometres` for return source occupancy, return arrival and the next hold. Station-only requests can use the age limit with `verifyScanClock`. Read `outbound.positionReview.positionAge` and `returnPositionReview.positionAge` for the aggregate results, and `samples` within each position review for each accepted sample's age. Missing position time leaves the station witness incomplete even when its coordinates match.
+
 ## Record the return leg
 
 Use the same PLC scan index as the outbound trace. Start while the inspected shuttle occupies the return source station. This may overlap the outbound capture from its accepted arrival onward. A return starting after the outbound interval must begin at the next scan.

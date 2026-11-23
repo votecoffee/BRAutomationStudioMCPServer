@@ -12,7 +12,7 @@ from br_automation_studio.cycle_trace import (
     bind_cycle_build, check_adjacent_scan, check_cycle, check_position_time_handoff, check_release_total,
     check_return_positions,
 )
-from br_automation_studio.station_trace import ARRIVAL, FLAGS, MONITOR_CHECKPOINTS, SCAN_TIME, TraceIssue
+from br_automation_studio.station_trace import ARRIVAL, FLAGS, MONITOR_CHECKPOINTS, POSITION_TIME, SCAN_TIME, TraceIssue
 
 
 class CycleTraceTest(unittest.TestCase):
@@ -281,7 +281,25 @@ class CycleTraceTest(unittest.TestCase):
         self.assertEqual({name: row["scan"] for name, row in positions["samples"].items()},
                          {"sourceOccupancy": 15, "returnArrival": 17, "nextHold": 18})
 
-        self.trace["nextHold"]["positionSampleScan"] = 17
+        hold = self.trace["nextHold"]
+        for row, age in ((rows[0], 1), (rows[-1], 2), (hold, 5)):
+            record_time = row["scan"] * 100
+            row.update({SCAN_TIME: record_time, POSITION_TIME: record_time - age})
+        check_return_positions(report, self.trace, 0, cycle, max_position_sample_age_us=5)
+        self.assertEqual(positions["positionAge"]["checkedSamples"], 3)
+        self.assertEqual(positions["positionAge"]["oldestSample"]["scan"], 18)
+        self.assertEqual(positions["samples"]["nextHold"]["positionAge"]["ageMicroseconds"], 5)
+        with self.assertRaises(TraceIssue) as old:
+            check_return_positions(report, self.trace, 0, cycle, max_position_sample_age_us=4)
+        self.assertEqual(old.exception.code, "station_trace_position_age_exceeded")
+        self.assertEqual(positions["samples"]["nextHold"]["state"], "incomplete")
+        del hold[POSITION_TIME]
+        with self.assertRaises(TraceIssue) as missing:
+            check_return_positions(report, self.trace, 0, cycle, max_position_sample_age_us=5)
+        self.assertEqual(missing.exception.code, "station_trace_position_time_missing")
+        self.assertEqual(positions["samples"]["nextHold"]["state"], "incomplete")
+
+        hold["positionSampleScan"] = 17
         with self.assertRaises(TraceIssue) as caught:
             check_return_positions(report, self.trace, 0, cycle)
         self.assertEqual((caught.exception.code, caught.exception.severity), ("station_trace_position_stale", "warning"))

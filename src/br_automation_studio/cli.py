@@ -632,12 +632,27 @@ def markdown_stations(station_review, text):
     return lines
 
 
+def markdown_position_age(age, text):
+    lines = [f"- Position sample age {text(age['state'])} · Samples checked {age['checkedSamples']}"
+             f" · Maximum allowed {age['maximumMicroseconds']} µs"]
+    if oldest := age.get("oldestSample"):
+        lines.append(f"- Oldest position {oldest['ageMicroseconds']} µs · Scan {oldest['scan']}")
+    if outside := age.get("outsideLimit"):
+        lines.append(f"- Position age outside limits {outside['ageMicroseconds']} µs · Scan {outside['scan']}")
+    return lines
+
+
 def markdown_position_review(label, positions, text):
     labels = {"release": "Release", "arrival": "Arrival", "sourceOccupancy": "Return source occupancy",
               "returnArrival": "Return arrival", "nextHold": "Next hold"}
     lines = [f"- {label} {text(positions['state'])} · Tolerance {positions['toleranceMicrometres']} µm per axis"]
     for event, point in positions["samples"].items():
-        lines.append(f"- {labels[event]} position at {text(point['station'])} · Scan {point['scan']} · {text(point['state'])}")
+        line = f"- {labels[event]} position at {text(point['station'])} · Scan {point['scan']} · {text(point['state'])}"
+        if age := point.get("positionAge"):
+            line += f" · Sample age {age['ageMicroseconds']} µs"
+        lines.append(line)
+    if age := positions.get("positionAge"):
+        lines.extend(markdown_position_age(age, text))
     return lines
 
 
@@ -661,12 +676,7 @@ def markdown_sampled_speed(review, text):
     if gap := review.get("firstOverlongInterval"):
         lines.append(f"- First interval over maximum {gap['elapsedMicroseconds']} µs · Scans {gap['fromScan']}–{gap['toScan']}")
     if age := review.get("positionAge"):
-        lines.append(f"- Position sample age {text(age['state'])} · Samples checked {age['checkedSamples']}"
-                     f" · Maximum allowed {age['maximumMicroseconds']} µs")
-        if oldest := age.get("oldestSample"):
-            lines.append(f"- Oldest position {oldest['ageMicroseconds']} µs · Scan {oldest['scan']}")
-        if outside := age.get("outsideLimit"):
-            lines.append(f"- Position age outside limits {outside['ageMicroseconds']} µs · Scan {outside['scan']}")
+        lines.extend(markdown_position_age(age, text))
     return lines
 
 

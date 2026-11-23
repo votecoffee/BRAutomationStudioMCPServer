@@ -317,15 +317,18 @@ def run_cycle_trace_review(arguments, request_directory):
         raise InvalidRequest("verifyPositionTimeHandoff requires verifySampledSpeed to be true")
     verify_scan_clock = arguments.get("verifyScanClock", False)
     max_position_age = arguments.get("maxPositionSampleAgeMicroseconds")
-    if max_position_age is not None and not (verify_scan_clock and arguments.get("verifySampledSpeed", False)):
-        raise InvalidRequest("maxPositionSampleAgeMicroseconds needs verifyScanClock and verifySampledSpeed")
+    outbound_tolerance = arguments.get("positionToleranceMicrometres")
+    return_tolerance = arguments.get("returnPositionToleranceMicrometres")
+    check_position = arguments.get("verifySampledSpeed", False) or outbound_tolerance is not None or return_tolerance is not None
+    if max_position_age is not None and not (verify_scan_clock and check_position):
+        raise InvalidRequest("maxPositionSampleAgeMicroseconds needs verifyScanClock and a station position or sampled speed check")
     return cycle_trace_review(*launchpad_inputs(arguments, request_directory), arguments["sourceStation"],
                               request_directory / arguments["trace"],
                               hmi_status_path=request_directory / status_report if status_report else None,
                               scan_csv_path=request_directory / scan_csv if scan_csv else None,
                               require_session_capture=require_capture, expected_motion=expected_release_motion(arguments),
-                              position_tolerance_um=arguments.get("positionToleranceMicrometres"),
-                              return_position_tolerance_um=arguments.get("returnPositionToleranceMicrometres"),
+                              position_tolerance_um=outbound_tolerance,
+                              return_position_tolerance_um=return_tolerance,
                               waypoint_tolerance_um=arguments.get("waypointToleranceMicrometres"),
                               verify_position_time_handoff=verify_time_handoff,
                               require_hold_through_reopen=require_hold,
@@ -688,7 +691,7 @@ CYCLE_TRACE_REVIEW = Operation(
         "verifyScanClock": {"type": "boolean", "default": False,
                             "description": "Measure cycle intervals from one recorded microsecond clock spanning both legs and the next hold."},
         "maxPositionSampleAgeMicroseconds": {"type": "integer", "minimum": 0, "maximum": 9007199254740991,
-                                             "description": "Maximum time between XY acquisition and the PLC scan record on one clock. Requires verifyScanClock and verifySampledSpeed."},
+                                             "description": "Maximum time between XY acquisition and the PLC scan record. Requires verifyScanClock and a station position or sampled speed check."},
         "verifyPositionTimeHandoff": {"type": "boolean", "default": False,
                                       "description": "Compare outbound arrival and return occupancy timestamps using a common clock. Requires verifySampledSpeed."},
         "returnPositionToleranceMicrometres": {"type": "integer", "minimum": 0, "maximum": 9007199254740991,

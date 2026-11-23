@@ -280,7 +280,7 @@ def within_position_tolerance(delta, tolerance_um):
     return all(value.copy_abs() <= tolerance_um for value in delta)
 
 
-def check_position_sample(row, shuttle, expected, tolerance_um, witness):
+def check_position_sample(row, shuttle, expected, tolerance_um, witness, *, age_review=None):
     scan = row["scan"]
     values = {key: row.get(key) for key in POSITION_FIELDS}
     witness["observed"] = values
@@ -293,6 +293,8 @@ def check_position_sample(row, shuttle, expected, tolerance_um, witness):
     witness["deltaMicrometres"] = [str(value) for value in delta]
     if not within_position_tolerance(delta, tolerance_um):
         raise TraceIssue("station_trace_position_mismatch", f"Scan {scan} exceeds the position tolerance at {witness['station']!r}")
+    if age_review is not None:
+        witness["positionAge"] = check_position_age(scan, row.get(POSITION_TIME), row.get(SCAN_TIME), age_review)
     witness["state"] = "matched"
 
 
@@ -307,28 +309,37 @@ def verified_position_context(report, trace):
     return positions["compiled"]
 
 
-def check_station_positions(report, trace, tolerance_um, samples, result):
+def check_station_positions(report, trace, tolerance_um, samples, result, *, max_position_sample_age_us=None):
     result.update(state="unverified", toleranceMicrometres=tolerance_um, samples={})
+    result.pop("positionAge", None)
     compiled = verified_position_context(report, trace)
+    age_review = None
+    if max_position_sample_age_us is not None:
+        age_review = result["positionAge"] = new_position_age_review(max_position_sample_age_us)
     for event, station, sample in samples:
         expected = compiled[station]["xyMetres"]
         witness = result["samples"][event] = {"state": "unverified", "station": station, "scan": sample["scan"],
                                                "expectedXYMetres": expected, "configurationPath": compiled[station]["path"]}
         try:
-            check_position_sample(sample, trace["shuttleId"], expected, tolerance_um, witness)
+            check_position_sample(sample, trace["shuttleId"], expected, tolerance_um, witness, age_review=age_review)
         except TraceIssue as error:
-            if error.severity == "error":
+            if age_review is not None and age_review["state"] != "unverified":
+                witness["state"] = result["state"] = age_review["state"]
+            elif error.severity == "error":
                 witness["state"] = result["state"] = "issues"
             raise
+    if age_review is not None:
+        age_review["state"] = "matched"
     result["state"] = "matched"
 
 
-def check_leg_positions(report, trace, tolerance_um, leg):
+def check_leg_positions(report, trace, tolerance_um, leg, *, max_position_sample_age_us=None):
     endpoints = (("release", trace["sourceStation"], leg["releaseScans"][0]),
                  ("arrival", trace["destinationStation"], leg["arrival"]["scan"]))
     by_scan = {row["scan"]: row for row in trace["scans"]}
     samples = [(event, station, by_scan[scan]) for event, station, scan in endpoints]
-    check_station_positions(report, trace, tolerance_um, samples, leg.setdefault("positionReview", {}))
+    check_station_positions(report, trace, tolerance_um, samples, leg.setdefault("positionReview", {}),
+                            max_position_sample_age_us=max_position_sample_age_us)
 
 
 def check_waypoint_positions(report, trace, rows, path, first_scan, last_scan, tolerance_um, leg):
@@ -391,25 +402,37 @@ def sampled_speed_interval(before, after, elapsed_us, limit):
         return distance_squared.sqrt() / elapsed_us, exceeds_limit, delta
 
 
+def new_position_age_review(maximum_us):
+    return {"state": "unverified", "maximumMicroseconds": maximum_us, "checkedSamples": 0, "oldestSample": None}
+
+
 def check_position_age(scan, position_time, scan_time, review):
     if not integer(scan_time):
+        review["state"] = "incomplete"
         raise TraceIssue("station_trace_scan_time_missing", f"Capture the PLC scan time for the position at scan {scan}", "warning")
+    if position_time in (None, ""):
+        review["state"] = "incomplete"
+        raise TraceIssue("station_trace_position_time_missing", f"Capture the X/Y acquisition time at scan {scan}", "warning")
+    if not integer(position_time):
+        review["state"] = "issues"
+        raise TraceIssue("station_trace_position_time_invalid", f"Position time at scan {scan} needs nonnegative integer microseconds")
     age = scan_time - position_time
     sample = {"scan": scan, "scanTimeMicroseconds": scan_time, "positionTimeMicroseconds": position_time,
               "ageMicroseconds": age}
     review["checkedSamples"] += 1
     if age < 0:
-        review["outsideLimit"] = sample
+        review.update(state="issues", outsideLimit=sample)
         raise TraceIssue("station_trace_position_time_after_scan",
                          f"The position at scan {scan} was recorded {abs(age)} µs after the PLC scan time")
     oldest = review["oldestSample"]
     if oldest is None or age > oldest["ageMicroseconds"]:
         review["oldestSample"] = sample
     if age > review["maximumMicroseconds"]:
-        review["outsideLimit"] = sample
+        review.update(state="incomplete", outsideLimit=sample)
         raise TraceIssue("station_trace_position_age_exceeded",
                          f"The position at scan {scan} is {age} µs old, above the requested maximum of {review['maximumMicroseconds']} µs",
                          "warning")
+    return sample
 
 
 def check_sampled_speed(report, trace, rows, first_scan, last_scan, leg, *, max_sample_interval_us=None,
@@ -422,10 +445,7 @@ def check_sampled_speed(report, trace, rows, first_scan, last_scan, leg, *, max_
         result.update(maxSampleIntervalMicroseconds=max_sample_interval_us, overlongIntervals=0, firstOverlongInterval=None)
     age_review = None
     if max_position_sample_age_us is not None:
-        age_review = result["positionAge"] = {
-            "state": "unverified", "maximumMicroseconds": max_position_sample_age_us,
-            "checkedSamples": 0, "oldestSample": None,
-        }
+        age_review = result["positionAge"] = new_position_age_review(max_position_sample_age_us)
     verified_position_context(report, trace)
     limits = bound_launchpad_evidence(report, trace["managerId"]).get("motionLimits", {})
     if limits.get("state") != "matched":
@@ -458,8 +478,8 @@ def check_sampled_speed(report, trace, rows, first_scan, last_scan, leg, *, max_
         if age_review is not None:
             try:
                 check_position_age(scan, time, row.get(SCAN_TIME), age_review)
-            except TraceIssue as error:
-                result["state"] = age_review["state"] = "incomplete" if error.severity == "warning" else "issues"
+            except TraceIssue:
+                result["state"] = age_review["state"]
                 raise
         result["acceptedSamples"] += 1
         result.setdefault("firstSampleScan", scan)

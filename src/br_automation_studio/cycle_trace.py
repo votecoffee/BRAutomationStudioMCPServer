@@ -263,14 +263,14 @@ def check_release_total(trace, cycle, event):
     result.update(state="matched", before=initial, atHold=hold["releaseTotal"])
 
 
-def check_return_positions(report, trace, tolerance_um, cycle):
+def check_return_positions(report, trace, tolerance_um, cycle, *, max_position_sample_age_us=None):
     returned = cycle["returnLeg"]
     by_scan = {row["scan"]: row for row in trace["returnLeg"]["scans"]}
     samples = (("sourceOccupancy", returned["path"][0], by_scan[returned["occupiedScan"]]),
                ("returnArrival", returned["path"][-1], by_scan[returned["arrival"]["scan"]]),
                ("nextHold", cycle["nextHold"]["station"], trace["nextHold"]))
     check_station_positions(report, trace["inspectionLeg"], tolerance_um, samples,
-                            cycle.setdefault("returnPositionReview", {}))
+                            cycle.setdefault("returnPositionReview", {}), max_position_sample_age_us=max_position_sample_age_us)
 
 
 def check_position_time_handoff(cycle):
@@ -384,11 +384,13 @@ def cycle_trace_review(project, configuration, cpu, manager_id, lpj, readback, n
         if position_tolerance_um is not None:
             result["phase"] = "position_witnesses"
             evidence_path = scan_csv_path or trace_path
-            check_leg_positions(report, trace["inspectionLeg"], position_tolerance_um, result["outbound"])
+            check_leg_positions(report, trace["inspectionLeg"], position_tolerance_um, result["outbound"],
+                                max_position_sample_age_us=max_position_sample_age_us)
         if return_position_tolerance_um is not None:
             result["phase"] = "return_position_witnesses"
             evidence_path = scan_csv_path or trace_path
-            check_return_positions(report, trace, return_position_tolerance_um, result)
+            check_return_positions(report, trace, return_position_tolerance_um, result,
+                                   max_position_sample_age_us=max_position_sample_age_us)
         if waypoint_tolerance_um is not None:
             evidence_path = scan_csv_path or trace_path
             leg, returned = result["outbound"], result["returnLeg"]
