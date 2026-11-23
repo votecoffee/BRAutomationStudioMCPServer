@@ -12,6 +12,8 @@ from zipfile import ZipFile
 from br_automation_studio.cli import markdown
 from br_automation_studio.native_build import execute_build, stage_inputs
 from br_automation_studio.operations import InvalidRequest, execute
+from br_automation_studio.project import SavedFiles
+from br_automation_studio.ruc_review import bound_receipts
 
 FIXTURE = Path(__file__).resolve().parent / "fixtures/Loop"
 PACKAGES = Path("AS/TechnologyPackages")
@@ -218,6 +220,75 @@ class BuildPreflightTests(unittest.TestCase):
         self.assertEqual(response["status"], "issues")
         self.assertIn("build_plan_changed", [item["code"] for item in response["result"]["diagnostics"]])
         self.assertFalse((self.root / "job1").exists())
+
+    @patch("br_automation_studio.simulation_preflight.installed_product",
+           return_value={"stateCode": -1, "version": None})
+    def test_native_build_pins_and_retains_workstation_report(self, msi):
+        self.prepare_simulation()
+        request = {
+            "schemaVersion": 1, "workspace": "preflight", "operation": "simulation_environment",
+            "arguments": {"studioRoot": "Install/AS412", "targetMapp6D": "2.7", "mapp6DSelector": "2.7.0",
+                          "mappMotionSelector": "5.29.1", "mappViewSelector": "5.24.5"},
+        }
+        receipt = self.root / "workstation.json"
+        self.put(receipt, json.dumps(execute(request, self.root)))
+        original = receipt.read_bytes()
+        options = {"environmentReport": receipt.name}
+        planned = self.native_request("build_plan", **options)
+        self.assertEqual(planned["status"], "complete", planned["result"]["diagnostics"])
+        self.assertIn("### Workstation package review", markdown(planned))
+        plan = planned["result"]["buildPlan"]
+        review = plan["manifest"]["environmentReview"]
+        self.assertEqual(review["state"], "matched")
+        self.assertEqual(review["receipt"]["sha256"], sha256(original).hexdigest())
+
+        with patch("br_automation_studio.native_build.run_build") as worker:
+            omitted = self.native_request("build_execute", planSha256=plan["sha256"], jobDirectory="omitted")
+            receipt.write_bytes(original + b"\n")
+            changed = self.native_request("build_execute", **options, planSha256=plan["sha256"], jobDirectory="changed")
+            worker.assert_not_called()
+        for response in (omitted, changed):
+            self.assertEqual(response["result"]["diagnostics"][-1]["code"], "build_plan_changed")
+        self.assertFalse((self.root / "omitted").exists())
+        self.assertFalse((self.root / "changed").exists())
+        receipt.write_bytes(original)
+
+        def stage_and_change(manifest, destination):
+            stage_inputs(manifest, destination)
+            receipt.write_bytes(original + b"\n")
+
+        with (patch("br_automation_studio.native_build.stage_inputs", side_effect=stage_and_change),
+              patch("br_automation_studio.native_build.run_build") as worker):
+            late = self.native_request("build_execute", **options, planSha256=plan["sha256"],
+                                       jobDirectory="after-stage")["result"]
+            worker.assert_not_called()
+        self.assertEqual(late["nativeBuild"]["status"], "not_dispatched")
+        self.assertIn("workstation package report changed before dispatch", late["diagnostics"][-1]["message"])
+        receipt.write_bytes(original)
+
+        job_dir = self.root / "retained"
+
+        def modeled_builder(args, project, dispatch, log, timeout):
+            self.assertEqual((job_dir / "simulation-environment.json").read_bytes(), original)
+            dispatch(42)
+            ruc = Path(args[args.index("-o") + 1]) / "ARsim/PC/RUCPackage/RUCPackage.zip"
+            ruc.parent.mkdir(parents=True)
+            with ZipFile(ruc, "w") as archive:
+                archive.writestr("FilesToTransfer/Data0/Test.br", "modeled package payload")
+            log.write(b"Build: 0 error(s), 0 warning(s)\r\n")
+            return 0, False, "empty"
+
+        with patch("br_automation_studio.native_build.run_build", side_effect=modeled_builder) as worker:
+            completed = self.native_request("build_execute", **options, planSha256=plan["sha256"],
+                                            jobDirectory=job_dir.name)
+            worker.assert_called_once()
+        self.assertEqual(completed["result"]["nativeBuild"]["status"], "succeeded")
+        receipt.write_bytes(original + b"\n")
+        _, job, _, _ = bound_receipts(SavedFiles(job_dir))
+        self.assertEqual(job["environmentReport"]["sha256"], sha256(original).hexdigest())
+        (job_dir / "simulation-environment.json").write_bytes(original + b"\n")
+        with self.assertRaisesRegex(ValueError, "retained workstation package report does not match"):
+            bound_receipts(SavedFiles(job_dir))
 
     def test_native_result_retains_warning_and_ruc(self):
         self.local_core("5.29.1")

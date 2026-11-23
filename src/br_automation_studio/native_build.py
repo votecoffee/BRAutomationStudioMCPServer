@@ -21,8 +21,10 @@ from .motion_symbols import plan_motion_symbols, read_motion_symbols
 from .mptraffic_definition import check_installed_definition, verify_packaged_mptraffic
 from .preflight import build_preflight
 from .project import SavedFiles
+from .simulation_preflight import ENVIRONMENT_REPORT_LIMIT, check_environment_report
 from .windows_job import run_build
 
+RETAINED_ENVIRONMENT_REPORT = Path("simulation-environment.json")
 GENERATED_ROOTS = {".git", ".local", "binaries", "temp", "buildonly", "temponly"}
 SUMMARY = re.compile(rb"(?im)^\s*Build:\s*(\d+)\s+error\(s\),\s*(\d+)\s+warning\(s\)[ \t]*\r?$")
 
@@ -86,7 +88,7 @@ def source_tree(root):
 
 def plan_build(path, studio_root, runtime_root=None, configuration=None, cpu=None, *,
                verify_mptraffic_enum=False, verify_motion_payloads=False, verify_motion_declarations=False,
-               verify_motion_symbols=False, launchpad_inputs=None):
+               verify_motion_symbols=False, launchpad_inputs=None, environment_report=None):
     verify_layout = launchpad_inputs is not None and launchpad_inputs.verify_layout
     verify_positions = launchpad_inputs is not None and launchpad_inputs.verify_positions
     verify_recovery = launchpad_inputs is not None and launchpad_inputs.verify_recovery
@@ -115,6 +117,14 @@ def plan_build(path, studio_root, runtime_root=None, configuration=None, cpu=Non
         issue(report, "error", "unsupported_runtime_override", "Native builds use the shared AS4 Runtime catalog")
     if blocked(report):
         return report
+
+    environment = None
+    if environment_report is not None:
+        reader = SavedFiles(studio_root)
+        environment = report["environmentReview"] = check_environment_report(reader, environment_report, preflight)
+        report["diagnostics"].extend(dict(item, scope="native_build") for item in reader.diagnostics)
+        if environment["state"] != "matched":
+            return report
 
     definition = None
     if verify_mptraffic_enum:
@@ -161,6 +171,8 @@ def plan_build(path, studio_root, runtime_root=None, configuration=None, cpu=Non
         "runtimeRoot": preflight["runtimeRoot"], "runtimeSha256": preflight["runtimeSnapshot"]["sha256"],
         "inputs": inputs,
     }
+    if environment is not None:
+        plan["environmentReview"] = environment
     if definition is not None:
         plan["mpTrafficDefinition"] = definition
     if motion is not None:
@@ -281,13 +293,25 @@ def package_evidence(path, job_dir, *, mptraffic=None, motion=None):
         return evidence
 
 
+def retain_environment_report(job_dir, receipt):
+    with Path(receipt["path"]).open("rb") as stream:
+        data = stream.read(ENVIRONMENT_REPORT_LIMIT + 1)
+    digest = sha256(data).hexdigest()
+    if len(data) > ENVIRONMENT_REPORT_LIMIT or digest != receipt["sha256"]:
+        raise ValueError("The workstation package report changed before dispatch")
+    (job_dir / RETAINED_ENVIRONMENT_REPORT).write_bytes(data)
+    return {"path": RETAINED_ENVIRONMENT_REPORT.as_posix(), "sha256": digest}
+
+
 def execute_build(path, studio_root, runtime_root, configuration, cpu, plan_sha256, job_directory,
                   timeout_seconds=180, *, verify_mptraffic_enum=False, verify_motion_payloads=False,
-                  verify_motion_declarations=False, verify_motion_symbols=False, launchpad_inputs=None):
+                  verify_motion_declarations=False, verify_motion_symbols=False, launchpad_inputs=None,
+                  environment_report=None):
     report = plan_build(path, studio_root, runtime_root, configuration, cpu,
                         verify_mptraffic_enum=verify_mptraffic_enum, verify_motion_payloads=verify_motion_payloads,
                         verify_motion_declarations=verify_motion_declarations,
-                        verify_motion_symbols=verify_motion_symbols, launchpad_inputs=launchpad_inputs)
+                        verify_motion_symbols=verify_motion_symbols, launchpad_inputs=launchpad_inputs,
+                        environment_report=environment_report)
     plan = report["buildPlan"]
     if plan is None:
         return report
@@ -332,6 +356,8 @@ def execute_build(path, studio_root, runtime_root, configuration, cpu, plan_sha2
 
     try:
         stage_inputs(manifest, staged)
+        if environment := manifest.get("environmentReview"):
+            job["environmentReport"] = retain_environment_report(job_dir, environment["receipt"])
         if route := manifest.get("launchPadRoute"):
             files = retain_launchpad_route(job_dir, route)
             job["launchPadRoute"] = {"manager": route["manager"], "files": files}

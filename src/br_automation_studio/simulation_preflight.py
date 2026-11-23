@@ -338,7 +338,9 @@ def reviewed_environment(document, family):
             or document["schemaVersion"] != 1 or document.get("operation") != "simulation_environment"):
         raise ValueError("Select a schemaVersion 1 simulation_environment JSON response")
     environment = document["result"]["simulationEnvironment"]
-    if environment["targetMapp6D"] != family:
+    target = environment["targetMapp6D"]
+    pair = simulator_pair(target)
+    if family is not None and target != family:
         raise ValueError(f"The workstation report must cover the requested mapp 6D {family} family")
     selection = environment["packageSelection"]
     if selection["state"] != "inputs_present":
@@ -365,10 +367,17 @@ def reviewed_environment(document, family):
         if not isinstance(digest, str) or not SHA256.fullmatch(digest):
             raise ValueError(f"The workstation report lacks a manifest SHA-256 for {name}")
         packages[name] = {"selector": selector, "internalVersion": build, "manifest": manifest, "sha256": digest}
+    six_d = packages["mapp6D"]
+    if (not all(same_family(six_d[key], target) for key in ("selector", "internalVersion"))
+            or not eligible_package_versions(six_d["selector"], six_d["internalVersion"], pair.minimumSelector)):
+        raise ValueError(f"The workstation package selection does not meet the reviewed mapp 6D {target} requirements")
+    motion = packages["mappMotion"]
+    if not eligible_package_versions(motion["selector"], motion["internalVersion"], MINIMUM_MOTION):
+        raise ValueError(f"The workstation package selection requires mapp Motion {MINIMUM_MOTION} or later")
     return studio, packages
 
 
-def check_environment_report(reader, path, family, preflight):
+def check_environment_report(reader, path, preflight, *, family=None, target_catalog=None):
     review = {"state": "unverified", "receipt": None}
     try:
         document, review["receipt"] = json_snapshot(path, ENVIRONMENT_REPORT_LIMIT)
@@ -401,7 +410,8 @@ def check_environment_report(reader, path, family, preflight):
         if not matched:
             reader.issue("error", "simulation_environment_package_mismatch", path,
                          f"The saved project's {name} selector, build or manifest SHA-256 differs from the workstation review")
-        elif name == "mapp6D" and reader.sources.get(expected["manifest"]) != expected["sha256"]:
+        elif (name == "mapp6D" and target_catalog is not None
+              and target_catalog.get(expected["manifest"]) != expected["sha256"]):
             checks[name]["matched"] = False
             reader.issue("error", "simulation_environment_catalog_changed", Path(expected["manifest"]),
                          "The mapp 6D manifest changed between the saved-project preflight and target catalog scan")
@@ -420,8 +430,10 @@ def simulation_preflight(project, studio, runtime_root, configuration, cpu, fami
     reader = SavedFiles(studio)
     candidates = check_target_catalog(reader, family, pair, catalog_selectors(reader, "mapp6D"))
     check_project(reader, report, family, pair, candidates)
-    environment = (check_environment_report(reader, environment_report, family, report["preflight"])
-                   if environment_report is not None else None)
+    environment = None
+    if environment_report is not None:
+        environment = check_environment_report(reader, environment_report, report["preflight"], family=family,
+                                               target_catalog=reader.sources)
     simulator = check_simulator(reader, pair)
     archive = check_simulator_media(reader, pair, simulator_zip)
     media_checks = check_companion_media(reader, family, companion_media)

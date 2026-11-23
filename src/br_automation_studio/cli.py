@@ -115,6 +115,8 @@ def markdown(response):
                 lines.append(f"- LaunchPad export structure {text(structure['state'])}")
                 for group in structure.get("groups", ()):
                     lines.append(f"  - {text(group['id'])} · Records {group['count']}")
+    if environment := report.get("environmentReview"):
+        lines.extend(markdown_environment_review(environment, text))
     if definition := report.get("mpTrafficDefinition"):
         lines.extend(["", "## MpTraffic build verification", "", *markdown_mptraffic_definition(definition, text)])
     if declarations := report.get("motionDeclarations"):
@@ -304,21 +306,26 @@ def markdown_simulation_prerequisites(simulation, text):
             if reference := result["reference"]:
                 lines.append(f"  - Reviewed archive {text(reference['filename'])} · Payload {text(reference['payload'])}")
     if environment := simulation.get("environmentReview"):
-        lines.extend(["", "### Workstation package review", "", f"- State **{text(environment['state'])}**"])
-        if receipt := environment["receipt"]:
-            lines.append(f"- {text(receipt['path'])} · SHA-256 {text(receipt['sha256'])}")
-        if packages := environment.get("packages"):
-            lines.append(f"- Reviewed AS {text(environment['reviewedStudioVersion'])}"
-                         f" · selected AS {text(environment['observedStudioVersion'])}")
-            for name, check in packages.items():
-                expected, actual = check["reviewed"], check["observed"] or {}
-                lines.append(f"- {text(name)} · reviewed {text(expected['selector'])} build {text(expected['internalVersion'])}"
-                             f" · selected {text(actual.get('selector'))} build {text(actual.get('internalVersion'))}"
-                             f" · matched {text(check['matched'])}")
-                lines.append(f"  - Reviewed manifest SHA-256 {text(expected['sha256'])}"
-                             f" · observed {text(actual.get('sha256'))}")
+        lines.extend(markdown_environment_review(environment, text))
     if definition := simulation.get("mpTrafficDefinition"):
         lines.extend(markdown_mptraffic_definition(definition, text))
+    return lines
+
+
+def markdown_environment_review(environment, text):
+    lines = ["", "### Workstation package review", "", f"- State **{text(environment['state'])}**"]
+    if receipt := environment["receipt"]:
+        lines.append(f"- {text(receipt['path'])} · SHA-256 {text(receipt['sha256'])}")
+    if packages := environment.get("packages"):
+        lines.append(f"- Reviewed AS {text(environment['reviewedStudioVersion'])}"
+                     f" · selected AS {text(environment['observedStudioVersion'])}")
+        for name, check in packages.items():
+            expected, actual = check["reviewed"], check["observed"] or {}
+            lines.append(f"- {text(name)} · reviewed {text(expected['selector'])} build {text(expected['internalVersion'])}"
+                         f" · selected {text(actual.get('selector'))} build {text(actual.get('internalVersion'))}"
+                         f" · matched {text(check['matched'])}")
+            lines.append(f"  - Reviewed manifest SHA-256 {text(expected['sha256'])}"
+                         f" · observed {text(actual.get('sha256'))}")
     return lines
 
 

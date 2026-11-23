@@ -8,6 +8,12 @@ Create the same request as for [build preflight](build-preflight.md) with `opera
 
 Review the selected project, configuration, builder and diagnostics. Planning is read-only. It stops on preflight errors and can return a plan with warnings. Use a self-contained project copy whose dependencies and build behavior you trust. The worker invokes the vendor build, including any build behavior configured in the project.
 
+### Keep the workstation package review with the build
+
+With br-studio 0.90.0 or later, pass the same `environmentReport` in `build_plan` and `build_execute` that you used for the [saved-project simulation preflight](simulation-preflight.md#carry-the-workstation-package-review-into-the-saved-project). The plan rechecks the three saved selectors, installed builds and manifest hashes and includes the matched review and its receipt SHA-256 in `buildPlan.manifest.environmentReview`.
+
+Build execution repeats the comparison and requires the same plan SHA-256. It retains the exact JSON as `simulation-environment.json` in the job directory, records its hash in `job.json`, and rechecks the installed read set before dispatch. Keep that file with the plan, job receipt and RUC. RUC review rehashes the retained file when the plan includes this evidence.
+
 ### Bind the reviewed LaunchPad export to the build
 
 With br-studio 0.51.0 or later, use the same `launchPadProject`, `launchPadReadback` and `launchPadExport` inputs from [export review](launchpad-route-review.md#compare-the-export-before-import) and add the imported `managerId` to both build requests. Supply `nameMap` if the imported objects were renamed. The plan checks that the export matches its save and that the selected saved manager has the same named, typed objects and directed edges. The reviewed input hashes become part of the build plan SHA-256.

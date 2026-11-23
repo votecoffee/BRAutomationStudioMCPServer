@@ -87,7 +87,7 @@ With br-studio 0.89.0 or later, save the JSON response from `simulation_environm
 
 The tool compares the reviewed Automation Studio version and all three exact selectors, internal build versions and manifest SHA-256 values with the selected catalog and saved project. Read `simulationPreflight.environmentReview` for the receipt hash and the compared values. An unavailable comparison or changed selector, Studio build, or manifest blocks the preflight. A different catalog root can match when it provides the same reviewed versions and manifest bytes.
 
-A matched comparison covers the selected packages. Continue with the CPU Runtime, simulator registration, native export and library checks in the same preflight.
+A matched comparison covers the selected packages. Continue with the CPU Runtime, simulator registration, native export and library checks in the same preflight. Use the same receipt to [pin the workstation review in the native build](native-build.md#keep-the-workstation-package-review-with-the-build).
 
 ## Verify the installed companion builds
 

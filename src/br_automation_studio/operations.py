@@ -131,13 +131,17 @@ def run_simulation_environment(arguments, request_directory):
                                   package_selectors=selectors or None)
 
 
+def environment_report_path(arguments, request_directory):
+    report = arguments.get("environmentReport")
+    return request_directory / report if report is not None else None
+
+
 def run_simulation_preflight(arguments, request_directory):
     family = arguments["targetMapp6D"]
     if family not in PAIRS:
         raise InvalidRequest("targetMapp6D must be a supported AS4 family (2.4 or 2.7)")
     media = arguments.get("simulatorZip")
     export = arguments.get("launchPadExport")
-    environment = arguments.get("environmentReport")
     return simulation_preflight(
         *build_inputs(arguments, request_directory), family,
         request_directory / media if media is not None else None,
@@ -146,7 +150,7 @@ def run_simulation_preflight(arguments, request_directory):
         verify_motion_declarations=arguments.get("verifyMotionDeclarations", False),
         companion_media=simulation_companion_media(arguments, request_directory),
         inspect_launchpad_export=arguments.get("inspectLaunchPadExport", False),
-        environment_report=request_directory / environment if environment is not None else None,
+        environment_report=environment_report_path(arguments, request_directory),
     )
 
 
@@ -190,7 +194,8 @@ def build_plan(arguments, request_directory):
                       verify_motion_payloads=arguments.get("verifyMotionPayloads", False),
                       verify_motion_declarations=arguments.get("verifyMotionDeclarations", False),
                       verify_motion_symbols=arguments.get("verifyMotionSymbols", False),
-                      launchpad_inputs=launchpad_build_inputs(arguments, request_directory))
+                      launchpad_inputs=launchpad_build_inputs(arguments, request_directory),
+                      environment_report=environment_report_path(arguments, request_directory))
 
 
 def build_execute(arguments, request_directory):
@@ -202,6 +207,7 @@ def build_execute(arguments, request_directory):
         verify_motion_declarations=arguments.get("verifyMotionDeclarations", False),
         verify_motion_symbols=arguments.get("verifyMotionSymbols", False),
         launchpad_inputs=launchpad_build_inputs(arguments, request_directory),
+        environment_report=environment_report_path(arguments, request_directory),
     )
 
 
@@ -544,6 +550,7 @@ BUILD_PLAN = Operation(
         **BUILD_PREFLIGHT.arguments,
         **LAUNCHPAD_ROUTE_INPUTS,
         "launchPadExport": SIMULATION_PREFLIGHT.arguments["launchPadExport"],
+        "environmentReport": SIMULATION_PREFLIGHT.arguments["environmentReport"],
         "verifyLaunchPadLayout": {"type": "boolean", "default": False,
                                   "description": "Verify and pin the linked 240 mm S3-AS LaunchPad segment grid."},
         "verifyLaunchPadPositions": {"type": "boolean", "default": False,
