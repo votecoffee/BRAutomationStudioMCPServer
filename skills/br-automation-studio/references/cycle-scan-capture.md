@@ -64,6 +64,8 @@ Read only the window-specific columns for each selected phase. A fault needs its
 
 With br-studio 0.67.0 or later, set `scanCapture.holdThroughScan` to the inclusive end of the hold window, later than `nextHoldScan`. Record every PLC scan from the first hold through that end, with all six next-hold fields and the three HMI fields in the table. Use the same heartbeat exposed by the HMI and capture a window within one nondecreasing span of that counter. [Hold and HMI review criteria](cycle-trace-review.md#verify-the-held-request-through-the-reopen)
 
+With br-studio 0.78.0 or later, use `holdThroughScan: "last"` when the capture ends while the next request is still held. The review uses every recorded scan after `nextHoldScan` through the end of the file and reports the resolved index in `cycleTraceReview.scanCapture.holdThroughScan`. It requires at least one subsequent scan. Use an explicit scan index when the file continues past the held interval.
+
 ## Verify the motion inputs in the saved scan file
 
 With br-studio 0.59.0 or later, record the outbound station's `ExitVelocity` and `ExitAcceleration` in the same PLC task sample as Release. The optional default column names are `inspection.exitVelocityMps` and `inspection.exitAccelerationMps2`. Map other CSV headers or AS chart titles under `scanCapture.columns`. Preserve the original decimal strings including exponent notation and trailing zeros. Use m/s and m/s².

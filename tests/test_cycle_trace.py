@@ -316,6 +316,33 @@ class CycleTraceTest(unittest.TestCase):
                     self.run_cycle(normalized)
                 self.assertEqual((error.exception.code, error.exception.severity), (expected, severity))
 
+    def test_hold_through_last_recorded_scan_needs_a_consecutive_tail(self):
+        trace, columns, rows = self.scan_csv()
+        trace["scanCapture"]["holdThroughScan"] = "last"
+        tail = [rows[-1] | {"scan": 19}, rows[-1] | {"scan": 20, "hold.heartbeat": 25}]
+        for selected, expected in (
+            (rows, "cycle_capture_hold_end_missing"),
+            (rows + tail, None),
+            (rows + tail[1:], "cycle_trace_hold_gap"),
+            (rows + tail + [tail[-1] | {"scan": 21, "hold.release": True}], "cycle_trace_hold_changed"),
+        ):
+            with self.subTest(expected=expected):
+                output = StringIO(newline="")
+                writer = csv.DictWriter(output, fieldnames=columns)
+                writer.writeheader()
+                writer.writerows(selected)
+                raw = output.getvalue().encode("utf-8")
+                if expected:
+                    with self.assertRaises(TraceIssue) as error:
+                        normalized, _ = self.materialize(trace, raw)
+                        self.run_cycle(normalized)
+                    self.assertEqual(error.exception.code, expected)
+                else:
+                    normalized, capture = self.materialize(trace, raw)
+                    self.assertEqual(capture["holdThroughScan"], 20)
+                    self.assertEqual(capture["holdThroughScanSource"], "last_recorded_scan")
+                    self.assertEqual(self.run_cycle(normalized)["holdContinuation"]["lastHeartbeat"], 25)
+
     def test_optional_release_motion_columns_keep_the_original_decimal_text(self):
         trace, columns, rows = self.scan_csv()
         velocity = "inspection.exitVelocityMps"

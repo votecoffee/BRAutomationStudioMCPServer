@@ -291,6 +291,9 @@ def run_cycle_trace_review(arguments, request_directory):
     require_capture = arguments.get("requireSessionScanCapture", False)
     if require_capture and not status_report:
         raise InvalidRequest("requireSessionScanCapture needs hmiStatusReport")
+    require_hold = arguments.get("requireHoldThroughReopen", False)
+    if require_hold and not status_report:
+        raise InvalidRequest("requireHoldThroughReopen needs hmiStatusReport")
     require_widget = arguments.get("requireHmiAssemblyWidget", False)
     if require_widget and not status_report:
         raise InvalidRequest("requireHmiAssemblyWidget needs hmiStatusReport")
@@ -318,6 +321,7 @@ def run_cycle_trace_review(arguments, request_directory):
                               return_position_tolerance_um=arguments.get("returnPositionToleranceMicrometres"),
                               waypoint_tolerance_um=arguments.get("waypointToleranceMicrometres"),
                               verify_position_time_handoff=verify_time_handoff,
+                              require_hold_through_reopen=require_hold,
                               require_assembly_widget=require_widget,
                               hmi_layout_report_path=request_directory / layout_report if layout_report else None,
                               captured_layout_checks=layout_checks if verify_layout else None,
@@ -657,6 +661,8 @@ CYCLE_TRACE_REVIEW = Operation(
                             "description": "Completed arsim_status_smoke JSON for the same cycle RUC and session."},
         "requireSessionScanCapture": {"type": "boolean", "default": False,
                                       "description": "Require the session's retained scan and completed HMI status receipt. Use the receipt for missing scan or HMI identities and the matched pinned build for missing inspection hashes."},
+        "requireHoldThroughReopen": {"type": "boolean", "default": False,
+                                     "description": "Require consecutive held PLC scans reaching the last direct heartbeat after HMI reopen. Requires hmiStatusReport."},
         "requireHmiAssemblyWidget": {"type": "boolean", "default": False,
                                      "description": "Require the cycle's Assembly6D widget and both layout SVGs in both HMI documents."},
         "hmiLayoutSvgReport": {"type": "string", "minLength": 1,

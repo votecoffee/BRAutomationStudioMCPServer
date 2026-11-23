@@ -212,8 +212,9 @@ def materialize_cycle(trace, path, summary, *, read_project_events=None):
         raise ValueError("scanCapture.nextHoldScan needs the observed PLC scan index")
     hold_end = capture.get("holdThroughScan", hold_scan)
     extended_hold = "holdThroughScan" in capture
-    if extended_hold and not integer(hold_end, hold_scan + 1):
-        raise ValueError("scanCapture.holdThroughScan must be an integer after nextHoldScan")
+    hold_through_last = hold_end == "last"
+    if extended_hold and not hold_through_last and not integer(hold_end, hold_scan + 1):
+        raise ValueError("scanCapture.holdThroughScan must be an integer after nextHoldScan or 'last'")
     format_name = capture.get("format", "csv")
     delimiter = capture.get("delimiter", ",")
     if format_name not in ("csv", "as-chart"):
@@ -284,7 +285,9 @@ def materialize_cycle(trace, path, summary, *, read_project_events=None):
 
     outbound_rows, return_rows, hold = [], [], None
     held_rows = []
-    boundaries = {start, end, return_start, return_end, hold_scan, hold_end}
+    boundaries = {start, end, return_start, return_end, hold_scan}
+    if not hold_through_last:
+        boundaries.add(hold_end)
     previous, records = -1, 0
     for record, cells in enumerate(reader, 1):
         if len(cells) != len(header):
@@ -312,7 +315,7 @@ def materialize_cycle(trace, path, summary, *, read_project_events=None):
         if scan == hold_scan:
             hold = row.hold(scan, stations, include_hmi)
             hold.update(row.position("hold", position_columns))
-        elif hold_scan < scan <= hold_end:
+        elif hold_scan < scan and (hold_through_last or scan <= hold_end):
             held_rows.append(row.hold(scan, stations, include_hmi))
     summary.update(records=records, inspectionScans=[start, end], returnScans=[return_start, return_end],
                    nextHoldScan=hold_scan)
@@ -326,6 +329,11 @@ def materialize_cycle(trace, path, summary, *, read_project_events=None):
         summary["monitorSequences"] = {"inspection": inspection_sequence, "return": return_sequence}
     normalized = {**trace, "inspectionLeg": leg, "returnLeg": returned, "nextHold": hold}
     if extended_hold:
+        if hold_through_last:
+            if not held_rows:
+                raise TraceIssue("cycle_capture_hold_end_missing", "The scan file ends at the first held request", "warning")
+            hold_end = previous
+            summary["holdThroughScanSource"] = "last_recorded_scan"
         summary["holdThroughScan"] = hold_end
         normalized["holdContinuation"] = {"throughScan": hold_end, "scans": held_rows}
     return normalized

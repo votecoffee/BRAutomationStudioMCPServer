@@ -713,6 +713,8 @@ def markdown_cycle_trace(cycle, text):
         if "records" in capture:
             lines.append(f"- CSV records {capture['records']} · Inspection scans {capture['inspectionScans']} "
                          f"· Return scans {capture['returnScans']} · Hold scan {capture['nextHoldScan']}")
+        if capture.get("holdThroughScanSource") == "last_recorded_scan":
+            lines.append(f"- Held window uses final recorded scan {capture['holdThroughScan']}")
         if encoding := capture.get("eventEncoding"):
             lines.append(f"- Detection enum from mapp 6D {text(encoding['mapp6DVersion'])} "
                          f"· MpTraffic {text(encoding['libraryVersion'])} · SHA-256 {encoding['typeSha256']}")

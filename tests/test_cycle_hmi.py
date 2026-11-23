@@ -47,10 +47,11 @@ class CycleHmiTest(unittest.TestCase):
                          "result": {"rucReview": self.ruc, "arsimSmoke": self.smoke, "diagnostics": [],
                                     "evidence": "arsim_loopback_status"}}
 
-    def check(self, require_capture=False, assembly_route=None):
+    def check(self, require_capture=False, assembly_route=None, *, require_hold=False):
         checked = {}
         check_cycle_hmi(self.cycle, self.trace, self.ruc, self.document, checked,
-                        require_session_capture=require_capture, assembly_route=assembly_route)
+                        require_session_capture=require_capture, require_hold_through_reopen=require_hold,
+                        assembly_route=assembly_route)
         return checked
 
     def test_matching_synthetic_capture_retains_request_and_order(self):
@@ -67,12 +68,16 @@ class CycleHmiTest(unittest.TestCase):
         self.assertEqual(issue.exception.code, "cycle_hmi_scan_capture_missing")
 
     def test_extended_hold_reaches_last_direct_heartbeat_after_reopen(self):
+        self.assertNotIn("holdCoverage", self.check())
+        with self.assertRaises(TraceIssue) as missing:
+            self.check(require_hold=True)
+        self.assertEqual(missing.exception.code, "cycle_hmi_hold_missing")
         continuation = self.cycle["holdContinuation"] = {"state": "matched", "lastScan": 25, "lastHeartbeat": 15}
-        coverage = self.check()["holdCoverage"]
+        coverage = self.check(require_hold=True)["holdCoverage"]
         self.assertEqual((coverage["state"], coverage["lastHoldScan"], coverage["directAfterLast"]), ("matched", 25, 15))
         continuation["lastHeartbeat"] = 14
         with self.assertRaises(TraceIssue) as issue:
-            self.check()
+            self.check(require_hold=True)
         self.assertEqual(issue.exception.code, "cycle_hmi_hold_coverage")
 
     def attach_assembly_widget(self):

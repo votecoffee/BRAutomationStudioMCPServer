@@ -128,7 +128,7 @@ Use `maxSampleIntervalMicroseconds` with the speed check to require a maximum ti
 
 Use `verifyPositionTimeHandoff` in the cycle review to compare acquisition times at the outbound-to-return handoff on a shared clock. [Timestamp handoff review](skills/br-automation-studio/references/cycle-trace-review.md#compare-timestamps-at-the-handoff-between-legs)
 
-Use `scanCapture.holdThroughScan` to verify the next held request on each recorded PLC scan and check that the capture covers the HMI reopen. [Hold continuity review](skills/br-automation-studio/references/cycle-trace-review.md#verify-the-held-request-through-the-reopen)
+Use `scanCapture.holdThroughScan` to review each held PLC scan through a selected index or the last record in the capture. Set `requireHoldThroughReopen` to require that window to reach the final direct heartbeat after the HMI reopens. [Hold continuity review](skills/br-automation-studio/references/cycle-trace-review.md#verify-the-held-request-through-the-reopen)
 
 Use `requireHmiAssemblyWidget` to pair the cycle with the Assembly6D startup widget and its rendered layout in both HMI documents. [Cycle widget review](skills/br-automation-studio/references/cycle-trace-review.md#verify-the-cycles-assembly6d-widget)
 

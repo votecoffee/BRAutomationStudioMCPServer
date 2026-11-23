@@ -113,6 +113,8 @@ The held request, station, shuttle, phase and release total must agree on all sc
 
 With a supplied HMI report, the last held heartbeat must reach the final direct OPC UA heartbeat after the reopen. Read `cycleHmiReview.holdCoverage` for both values. Use `requireSessionScanCapture` with the raw scan file retained by the HMI session when the original file is part of acceptance.
 
+With br-studio 0.78.0 or later, include `requireHoldThroughReopen: true` with `hmiStatusReport` to require this check. A trace with only the first held sample can establish the return and next hold. The HMI review returns `cycle_hmi_hold_missing` for that trace when the full window is required. For CSV or chart exports that end while the request is held, use `scanCapture.holdThroughScan: "last"`. Use a numeric endpoint for a selected window or `holdContinuation` for a normalized trace. [Saved hold window](cycle-scan-capture.md#keep-recording-the-next-held-request)
+
 ## Verify the cycle's Assembly6D widget
 
 With br-studio 0.68.0 or later, set `requireHmiAssemblyWidget: true` with `hmiStatusReport`. In the [status smoke request](arsim-status-smoke.md#select-the-assembly6d-widget-and-layout), select the Assembly6D DOM ID and enable the start-page and layout checks. Use the RUC from the cycle review. The startup widget must link to the compiled assembly and Traffic Manager used for the observed cycle.

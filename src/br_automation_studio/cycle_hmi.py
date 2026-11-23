@@ -308,7 +308,8 @@ def pair_layout_geometry(ruc, smoke, reviewed, result):
     geometry.update(state="matched", layoutId=svg["layoutId"], positionToleranceMm=svg["positionToleranceMm"])
 
 
-def check_cycle_hmi(cycle, trace, ruc, document, result, *, require_session_capture=False, assembly_route=None):
+def check_cycle_hmi(cycle, trace, ruc, document, result, *, require_session_capture=False,
+                    require_hold_through_reopen=False, assembly_route=None):
     hmi, witness, reviewed = check_run(document, ruc, trace, result)
     check_session_capture(hmi, cycle, result, require_session_capture)
     identifiers = witness["bindings"]
@@ -322,7 +323,10 @@ def check_cycle_hmi(cycle, trace, ruc, document, result, *, require_session_capt
     if type(hold.get("phase")) is not int or not integer(hold.get("releaseTotal")):
         raise ValueError("The next hold needs integer phase and nonnegative releaseTotal values")
     check_heartbeat(hmi, witness, hold.get("heartbeat"), result)
-    if continuation := cycle.get("holdContinuation"):
+    continuation = cycle.get("holdContinuation")
+    if require_hold_through_reopen and not continuation:
+        raise TraceIssue("cycle_hmi_hold_missing", "Capture consecutive held scans through the last direct heartbeat after reopen")
+    if continuation:
         after_last = hmi["opcUaAfter"]["samples"][-1]["value"]
         end_heartbeat = continuation["lastHeartbeat"]
         coverage = result["holdCoverage"] = {
@@ -342,7 +346,8 @@ def check_cycle_hmi(cycle, trace, ruc, document, result, *, require_session_capt
 
 
 def review_cycle_hmi(report, trace, path, *, require_session_capture=False, require_assembly_widget=False,
-                     layout_report_path=None, captured_layout_review=None, status_snapshot=None):
+                     require_hold_through_reopen=False, layout_report_path=None, captured_layout_review=None,
+                     status_snapshot=None):
     result = report["cycleHmiReview"]
     evidence_path = path
     try:
@@ -353,7 +358,8 @@ def review_cycle_hmi(report, trace, path, *, require_session_capture=False, requ
         check_widget = require_assembly_widget or layout_report_path is not None or captured_layout_review is not None
         assembly_route = report["routeReview"] if check_widget else None
         check_cycle_hmi(report["cycleTraceReview"], trace, ruc, document, result,
-                        require_session_capture=require_session_capture, assembly_route=assembly_route)
+                        require_session_capture=require_session_capture, require_hold_through_reopen=require_hold_through_reopen,
+                        assembly_route=assembly_route)
         if layout_report_path is not None:
             evidence_path = layout_report_path
             reviewed, result["layoutSvgReport"] = json_snapshot(layout_report_path, TRACE_LIMIT)

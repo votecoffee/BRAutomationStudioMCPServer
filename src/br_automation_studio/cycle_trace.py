@@ -217,7 +217,7 @@ def cycle_trace_review(project, configuration, cpu, manager_id, lpj, readback, n
                        expected_motion=None, position_tolerance_um=None, return_position_tolerance_um=None,
                        waypoint_tolerance_um=None, verify_sampled_speed=False, max_sample_interval_us=None,
                        verify_position_time_handoff=False, require_assembly_widget=False, hmi_layout_report_path=None,
-                       captured_layout_checks=None):
+                       captured_layout_checks=None, require_hold_through_reopen=False):
     report = launchpad_route_review(project, configuration, cpu, manager_id, lpj, readback, name_map, job_directory,
                                     include_stations=True)
     result = report["cycleTraceReview"] = {"state": "not_checked", "sourceStation": source_station}
@@ -320,6 +320,7 @@ def cycle_trace_review(project, configuration, cpu, manager_id, lpj, readback, n
                 layout = partial(layout_svg_review, project, job_directory, manager_id, None, None,
                                  hmi_status_path=hmi_status_path, **captured_layout_checks)
             review_cycle_hmi(report, trace, hmi_status_path, require_session_capture=require_session_capture,
+                             require_hold_through_reopen=require_hold_through_reopen,
                              require_assembly_widget=require_assembly_widget, layout_report_path=hmi_layout_report_path,
                              captured_layout_review=layout, status_snapshot=status_snapshot)
     return report

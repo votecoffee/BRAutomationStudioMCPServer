@@ -1,6 +1,6 @@
 # Rehearse one ACOPOS 6D inspection cycle with its HMI
 
-Use this workflow with br-studio 0.77.0 or later for a saved AS4 PC simulation project, a two-station LaunchPad route and a PLC-hosted mapp View page. Work in one run directory with a reviewed project and build as inputs. Keep installation paths, project identifiers and captures in the local run directory.
+Use this workflow with br-studio 0.78.0 or later for a saved AS4 PC simulation project, a two-station LaunchPad route and a PLC-hosted mapp View page. Work in one run directory with a reviewed project and build as inputs. Keep installation paths, project identifiers and captures in the local run directory.
 
 ## Qualify the project and build
 
@@ -116,12 +116,12 @@ Save as `cycle-trace.json`. Use the recorded monitor baselines, captured request
     "inspectionScans": [100, 107],
     "returnScans": [107, 110],
     "nextHoldScan": 111,
-    "holdThroughScan": 115
+    "holdThroughScan": "last"
   }
 }
 ```
 
-The example uses canonical CSV column names and named detection events. Set `scanCapture.columns` for differing headers, `detectionSlots` for multiple consumed events on a scan, and `monitorCheckpoints` if the capture includes the before-and-after counters. Use `eventEncoding: "project-mptraffic"` for the selected verified library's numeric event values, or preserve an explicit versioned event map. Choose the first new hold and every following sample through at least the final direct heartbeat after reopening. [Scan windows and mapping](cycle-scan-capture.md) · [Hold window](cycle-trace-review.md#verify-the-held-request-through-the-reopen)
+The example uses canonical CSV column names and named detection events. Set `scanCapture.columns` for differing headers, `detectionSlots` for multiple consumed events on a scan, and `monitorCheckpoints` if the capture includes the before-and-after counters. Use `eventEncoding: "project-mptraffic"` for the selected verified library's numeric event values, or preserve an explicit versioned event map. Keep the request held through the end of the captured scan file. For a capture that continues beyond the hold, give the inclusive last held scan index. [Scan windows and mapping](cycle-scan-capture.md) · [Hold window](cycle-trace-review.md#verify-the-held-request-through-the-reopen)
 
 Save as `cycle-request.json`. If the build retained a name map, supply the same file as `nameMap`.
 
@@ -142,12 +142,13 @@ Save as `cycle-request.json`. If the build retained a name map, supply the same 
     "verifyCapturedLayout": true,
     "verifyMappingLineEndpoints": true,
     "verifyTrafficLabels": true,
+    "requireHoldThroughReopen": true,
     "requireSessionScanCapture": true
   }
 }
 ```
 
-The review uses `scan-capture.csv` and `layout-assets/` beside the selected status response. Supply `scanCsv` explicitly when the retained scan copy is stored elsewhere. `verifyCapturedLayout` enables the Assembly6D widget and SVG checks. Set the mapping endpoint and traffic label flags to match the test and captured format. Add motion checks when their source evidence is present and the test defines the expected values.
+The review uses `scan-capture.csv` and `layout-assets/` beside the selected status response. Supply `scanCsv` explicitly when the retained scan copy is stored elsewhere. `requireHoldThroughReopen` requires consecutive held scans that reach the final direct heartbeat after the reopen. `verifyCapturedLayout` enables the Assembly6D widget and SVG checks. Set the mapping endpoint and traffic label flags to match the test and captured format. Add motion checks when their source evidence is present and the test defines the expected values.
 
 | Check | Request inputs | Evidence needed |
 | --- | --- | --- |
