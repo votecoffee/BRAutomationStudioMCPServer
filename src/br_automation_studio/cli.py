@@ -37,6 +37,7 @@ def markdown(response):
         "project_inspect": "Saved Automation Studio project inspection",
         "assembly_io_review": "Saved ACOPOS 6D assembly I/O review",
         "saved_binding_review": "Saved mapp View value binding review",
+        "saved_assembly_widget_review": "Saved Assembly6D start page review",
         "layout_device_review": "Saved Assembly6D file-device review",
         "launchpad_route_review": "Saved Traffic Manager route review",
         "launchpad_station_review": "Saved Traffic Manager station review",
@@ -116,6 +117,16 @@ def markdown(response):
                 lines.append(f"- {text(module['name'])} · Saved revision {text(module['savedVersion'])}"
                              f" · Catalog revision {text(module['catalogVersion'])} · {text(module['state'])}"
                              f" · {text(module['catalog'])}")
+    if assembly_widget := report.get("savedAssemblyWidgetReview"):
+        links = assembly_widget.get("widget", {})
+        lines.extend(["", "## Assembly6D startup widget", "",
+                      f"- {text(assembly_widget['domId'])} · {text(assembly_widget['state'])}",
+                      f"- Assembly {text(links.get('assembly'))} · Expected {text(assembly_widget['expectedAssembly'])}",
+                      f"- Traffic Manager {text(links.get('manager'))} · Expected {text(assembly_widget['expectedManager'])}"])
+        if placement := assembly_widget["saved"]:
+            route = " → ".join(text(placement[key]) for key in
+                               ("visualizationId", "pageId", "layoutId", "areaId", "contentId"))
+            lines.append(f"- {route}")
     if binding := report.get("savedBindingReview"):
         details = binding["saved"]
         lines.extend(["", "## PLC value binding", "",

@@ -28,7 +28,7 @@ from .ruc_review import review_ruc
 from .runtime_capture import RuntimeScanCapture
 from .simulation_preflight import (COMPANION_MEDIA_27, PAIRS, SIMULATION_PACKAGES, simulation_environment,
                                    simulation_preflight)
-from .start_page import StartPageWidget
+from .start_page import StartPageWidget, review_saved_assembly_widget
 from .station_trace import station_trace_review, trace_decimal
 from .widget_packages import widget_package_review
 
@@ -241,6 +241,12 @@ def run_assembly_io_review(arguments, request_directory):
     return assembly_io_review(project_path(arguments, request_directory), arguments.get("configuration"),
                               arguments.get("cpu"), arguments["assemblyId"],
                               request_directory / job if job is not None else None)
+
+
+def saved_assembly_widget_review(arguments, request_directory):
+    return review_saved_assembly_widget(project_path(arguments, request_directory), arguments.get("configuration"),
+                                       arguments.get("cpu"), arguments.get("startPageWidgetId"),
+                                       arguments["assemblyId"], arguments["managerId"])
 
 
 def run_layout_device_review(arguments, request_directory):
@@ -661,6 +667,18 @@ ASSEMBLY_IO_REVIEW = Operation(
     required=("project", "assemblyId"),
     handler=run_assembly_io_review,
 )
+SAVED_ASSEMBLY_WIDGET_REVIEW = Operation(
+    name="saved_assembly_widget_review",
+    summary="Verify the saved Assembly6D widget's startup placement, assembly and Traffic Manager.",
+    arguments={
+        **PROJECT_INSPECT.arguments,
+        "startPageWidgetId": RUC_REVIEW.arguments["startPageWidgetId"],
+        "assemblyId": ASSEMBLY_IO_REVIEW.arguments["assemblyId"],
+        "managerId": {"type": "string", "minLength": 1, "description": "Expected saved Traffic Manager element ID."},
+    },
+    required=("project", "assemblyId", "managerId"),
+    handler=saved_assembly_widget_review,
+)
 LAYOUT_DEVICE_REVIEW = Operation(
     name="layout_device_review",
     summary="Verify the saved and packaged AS4 CPU file device used by the Assembly6D layout.",
@@ -938,7 +956,7 @@ ARSIM_STATUS_SMOKE = Operation(
 )
 OPERATIONS = {item.name: item for item in (
     PROJECT_INSPECT, WIDGET_PACKAGE_REVIEW, BUILD_PREFLIGHT, MOTION_INTERFACE_REVIEW, SIMULATION_ENVIRONMENT, SIMULATION_PREFLIGHT, BUILD_PLAN, BUILD_EXECUTE, RUC_REVIEW,
-    ASSEMBLY_IO_REVIEW, SAVED_BINDING_REVIEW, LAYOUT_DEVICE_REVIEW, LAYOUT_SVG_REVIEW,
+    ASSEMBLY_IO_REVIEW, SAVED_BINDING_REVIEW, SAVED_ASSEMBLY_WIDGET_REVIEW, LAYOUT_DEVICE_REVIEW, LAYOUT_SVG_REVIEW,
     LAUNCHPAD_ROUTE_REVIEW, LAUNCHPAD_EXPORT_REVIEW, LAUNCHPAD_STATION_REVIEW, STATION_TRACE_REVIEW, CYCLE_TRACE_REVIEW,
     LAUNCHPAD_RECOVERY_REVIEW, LAUNCHPAD_MOTION_REVIEW,
     LAUNCHPAD_GEOMETRY_REVIEW, LAUNCHPAD_LAYOUT_REVIEW, LAUNCHPAD_FRAME_REVIEW, RUC_BINDING_REVIEW,

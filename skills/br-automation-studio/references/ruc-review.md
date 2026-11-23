@@ -20,6 +20,12 @@ Discover the contract with `br-studio operation-help ruc_review`. Write a UTF-8 
 
 Run `br-studio run --request <review-request.json>`. Add `--format markdown` to read the result as a report. If you save both formats, confirm that the RUC and plan hashes agree.
 
+## Check the saved Assembly6D widget before build
+
+With br-studio 0.102.0 or later, run `saved_assembly_widget_review` with the saved project, the expected `assemblyId` and `managerId`, and the selected configuration and CPU. Set `startPageWidgetId` to the exact `ContentId_WidgetId` when several Assembly6D widgets exist. The review follows the default visualization, start page and layout area to a unique saved content and widget. It then verifies both widget links and the Traffic Manager's base assembly. [B&R Assembly6D widget and Traffic Manager](https://help.br-automation.com/#/en/4/motion/mapp_6d/leitfaden/getting_started_mapp_6d/widget_verwenden_und_traffic_manager_verlinken.html)
+
+Read `savedAssemblyWidgetReview` for the widget links, placement and registered assembly and manager paths. A conflict or unresolved reference produces `saved_assembly_widget_mismatch`. Carry the selected widget ID into the RUC and browser checks to verify the generated and running HMI.
+
 ## Verify the default page placement of Assembly6D
 
 With br-studio 0.39.0 or later, add `"startPageWidgetId": "Overview_PlanarDisplay"` to the `ruc_review` request arguments. Use the exact `ContentId_WidgetId` of the Assembly6D widget expected on the default page. The review follows the selected CPU's registered mapp View server configuration and visualization to the saved start page, layout, and area with a direct content assignment.

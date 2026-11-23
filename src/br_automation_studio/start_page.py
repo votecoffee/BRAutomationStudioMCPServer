@@ -9,8 +9,9 @@ from .binding_review import (
     SERVER, VISUALIZATION, BindingProblem, RenderedWidget, default_visualizations,
     nested, one, packaged_bytes, require, saved_documents, unpack_xml,
 )
+from .inspection import inspect_saved, registered_assembly
 from .json_io import invalid_constant, unique_object
-from .project import SavedFiles, package_files
+from .project import SavedFiles, children, package_files, tag
 from .ruc_review import VIEW, blank_equivalent
 
 
@@ -18,6 +19,7 @@ RESOURCE_ID = re.compile(r"[a-zA-Z0-9_-]+")
 PAGE = "{http://www.br-automation.com/iat2015/pageDefinition/v2}Page"
 LAYOUT = "{http://www.br-automation.com/iat2015/layoutDefinition/v2}Layout"
 WIDGET_TYPE = "widgets/mapp6D/Assembly6D"
+SAVED_CONTENT = "{http://www.br-automation.com/iat2015/contentDefinition/v2}Content"
 
 
 def resource_id(value, path, label):
@@ -135,6 +137,18 @@ def compiled_start(archive, saved, rendered, widget_id):
             "assembly": rendered["assembly"], "manager": rendered["manager"]}
 
 
+def select_saved_widget(widgets, widget_id):
+    candidates = [(f"{row['contentId']}_{row['id']}", row) for row in widgets]
+    return one((item for item in candidates if widget_id is None or item[0] == widget_id),
+               ".", "selected saved Assembly6D widget")
+
+
+def require_widget_links(dom_id, widget, assembly, manager):
+    require(assembly and widget["assembly"] == assembly and
+            widget["manager"] in (manager, f"mapp6D::{manager}"), widget["path"],
+            f"Assembly6D widget {dom_id!r} must show reviewed Traffic Manager {manager!r} and assembly {assembly!r}")
+
+
 @dataclass(frozen=True)
 class StartPageWidget:
     dom_id: str | None
@@ -143,15 +157,10 @@ class StartPageWidget:
         return {"state": "not_checked", "domId": self.dom_id}
 
     def check_saved(self, source, manifest, widgets, report, route_manager=None):
-        candidates = [(f"{row['contentId']}_{row['id']}", row) for row in widgets]
-        dom_id, widget = one((item for item in candidates if self.dom_id is None or item[0] == self.dom_id),
-                             ".", "selected saved Assembly6D widget")
+        dom_id, widget = select_saved_widget(widgets, self.dom_id)
         report["domId"] = dom_id
         if route_manager is not None:
-            manager, assembly = route_manager["manager"], route_manager["assembly"]
-            require(assembly and widget["assembly"] == assembly and
-                    widget["manager"] in (manager, f"mapp6D::{manager}"), widget["path"],
-                    f"Assembly6D widget {dom_id!r} must show reviewed Traffic Manager {manager!r} and assembly {assembly!r}")
+            require_widget_links(dom_id, widget, route_manager["assembly"], route_manager["manager"])
         report["saved"] = saved_start(source, manifest, widget)
         pinned = {row["path"]: row["sha256"] for row in manifest["inputs"]["files"]}
         snapshot = report["savedReadSet"] = source.snapshot()
@@ -175,3 +184,58 @@ class StartPageWidget:
         except BindingProblem as error:
             archive.diagnostics.issue("error", "start_page_widget_mismatch", error.path, str(error))
         archive.diagnostics.diagnostics.extend(dict(issue, scope="start_page_source") for issue in source.diagnostics)
+
+
+def check_registered_manager_base(source, project, manager_id, assembly_id):
+    module = one((row for row in project["motionModules"] if row["type"] == "trafficmanager"
+                  and row["id"] == manager_id), project["project"], f"registered Traffic Manager {manager_id!r}")
+    path = Path(module["path"])
+    root, _ = source.xml(path, "Configuration")
+    manager = one((node for node in children(root, "Element") if node.get("ID") == manager_id
+                   and node.get("Type") == "trafficmanager"), path, f"Traffic Manager element {manager_id!r}")
+    selector = one((node for node in children(manager, "Selector") if node.get("ID") == "Base"),
+                   path, "Traffic Manager Base selector")
+    require(selector.get("Value") == "AssemblyAcp6D", path, "The Traffic Manager must use an ACOPOS 6D assembly base")
+    base = one((node for node in children(selector, "Property") if node.get("ID") == "BaseRef"),
+               path, "Traffic Manager BaseRef")
+    require(base.get("Value") == assembly_id, path,
+            f"Traffic Manager {manager_id!r} must also use assembly {assembly_id!r}")
+    return path
+
+
+def check_start_widget_content(source, widget):
+    content_id = resource_id(widget["contentId"], widget["path"], "content ID")
+    widget_id = resource_id(widget["id"], widget["path"], "widget ID")
+    paths = package_files(source, Path("Logical/Package.pkg"), "Package", {"content"})
+    path, content = saved_resource(source, paths, ".content", SAVED_CONTENT, content_id, widget["path"])
+    require(path.as_posix() == widget["path"], path, "The start page content differs from the selected widget's content")
+    one((node for node in content.iter() if tag(node) == "Widget" and node.get("id") == widget_id),
+        path, f"widget {widget_id!r} in its saved content")
+
+
+def review_saved_assembly_widget(path, configuration, cpu, widget_id, assembly_id, manager_id):
+    source = SavedFiles(path.parent)
+    result = inspect_saved(source, Path(path.name), configuration, cpu)
+    review = {"state": "unverified", "domId": widget_id, "expectedAssembly": assembly_id,
+              "expectedManager": manager_id, "saved": {}}
+    result["savedAssemblyWidgetReview"] = review
+    if result["selectedCpu"]:
+        try:
+            dom_id, widget = select_saved_widget(result["widgets"], widget_id)
+            review["domId"] = dom_id
+            review["widget"] = widget
+            check_start_widget_content(source, widget)
+            selection = {"configuration": result["selectedConfiguration"], "cpu": result["selectedCpu"]}
+            review["saved"] = saved_start(source, selection, widget)
+            require_widget_links(dom_id, widget, assembly_id, manager_id)
+            assembly_path, _ = registered_assembly(source, result, assembly_id)
+            require(assembly_path is not None, widget["path"], f"Expected one registered assembly {assembly_id!r}")
+            review["assemblyPath"] = assembly_path.as_posix()
+            review["managerPath"] = check_registered_manager_base(source, result, manager_id, assembly_id).as_posix()
+        except BindingProblem as error:
+            review["state"] = "mismatched"
+            source.issue("error", "saved_assembly_widget_mismatch", error.path, str(error))
+        else:
+            review["state"] = "matched"
+    result["snapshot"] = source.snapshot()
+    return result

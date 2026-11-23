@@ -135,6 +135,65 @@ class RucReviewTests(unittest.TestCase):
         self.assertEqual(found["compiled"]["assembly"], "FixtureAssembly")
         self.assertIn("CounterPanel → Overview → Panel → Main → DemoOverview", markdown(response))
 
+    def test_saved_assembly_widget_checks_start_page_and_expected_manager_base(self):
+        self.add_start_page()
+        args = {"project": "Loop/Loop.apj", "assemblyId": "FixtureAssembly", "managerId": "DemoTraffic",
+                "startPageWidgetId": "DemoOverview_LoopOverview"}
+        request = {"schemaVersion": 1, "workspace": "saved-widget", "operation": "saved_assembly_widget_review",
+                   "arguments": args}
+
+        response = execute(request, self.root)
+        review = response["result"]["savedAssemblyWidgetReview"]
+        self.assertEqual(response["status"], "complete", response["result"]["diagnostics"])
+        self.assertEqual(review["state"], "matched")
+        self.assertEqual(review["widget"]["manager"], "mapp6D::DemoTraffic")
+        self.assertEqual(review["managerPath"], "Physical/ARsim/PC/mapp6D/DemoTraffic.trafficmanager")
+        self.assertEqual(review["assemblyPath"], "Physical/ARsim/PC/mapp6D/FixtureAssembly.assembly6d")
+        self.assertEqual((review["saved"]["pageId"], review["saved"]["layoutId"], review["saved"]["areaId"]),
+                         ("Overview", "Panel", "Main"))
+        self.assertIn("CounterPanel → Overview → Panel → Main → DemoOverview", markdown(response))
+        paths = {row["path"] for row in response["result"]["snapshot"]["files"]}
+        self.assertIn("Logical/mappView/Overview.page", paths)
+        self.assertIn(review["managerPath"], paths)
+
+        args["managerId"] = "OtherTraffic"
+        mismatch = execute(request, self.root)
+        self.assertEqual(mismatch["status"], "issues")
+        self.assertEqual(self.codes(mismatch), ["saved_assembly_widget_mismatch"])
+        self.assertEqual(mismatch["result"]["savedAssemblyWidgetReview"]["saved"]["areaId"], "Main")
+        args["managerId"] = "DemoTraffic"
+
+        manager = self.project / review["managerPath"]
+        original = manager.read_bytes()
+        base = b'<Property ID="BaseRef" Value="FixtureAssembly" />'
+        self.assertEqual(original.count(base), 1)
+        manager.write_bytes(original.replace(base, base + base.replace(b"FixtureAssembly", b"Different")))
+        ambiguous = execute(request, self.root)
+        self.assertEqual(ambiguous["status"], "issues")
+        self.assertEqual(self.codes(ambiguous), ["saved_assembly_widget_mismatch"])
+        self.assertIn("Traffic Manager BaseRef", ambiguous["result"]["diagnostics"][0]["message"])
+        manager.write_bytes(original)
+
+        logical = self.project / "Logical/mappView/Package.pkg"
+        manifest = logical.read_bytes()
+        alternate = logical.with_name("Copy.content")
+        alternate.write_bytes(b'<Content xmlns="http://www.br-automation.com/iat2015/contentDefinition/v2"'
+                              b' id="DemoOverview"><Widgets /></Content>')
+        logical.write_bytes(manifest.replace(b"</Objects>", b'<Object Type="File">Copy.content</Object></Objects>'))
+        duplicate = execute(request, self.root)
+        self.assertEqual(duplicate["status"], "issues")
+        self.assertEqual(self.codes(duplicate), ["saved_assembly_widget_mismatch"])
+        self.assertIn("saved Content 'DemoOverview', found 2", duplicate["result"]["diagnostics"][0]["message"])
+        logical.write_bytes(manifest)
+
+        page = self.project / review["saved"]["page"]
+        original = page.read_bytes()
+        page.write_bytes(original.replace(b'baseContentRefId="DemoOverview"', b'baseContentRefId="Other"'))
+        misplaced = execute(request, self.root)
+        self.assertEqual(misplaced["status"], "issues")
+        self.assertEqual(self.codes(misplaced), ["saved_assembly_widget_mismatch"])
+        self.assertIn("start page assignment", misplaced["result"]["diagnostics"][0]["message"])
+
     def test_widget_options_cannot_substitute_for_the_generated_placement_or_dom(self):
         client = self.add_start_page()
         path = f"{VIEW}/CounterPanel.json"
