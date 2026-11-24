@@ -12,6 +12,7 @@
     "contentId": "Overview",
     "widgetId": "HeartbeatValue",
     "stringIdentifier": "::Status:Heartbeat",
+    "verifyIecType": true,
     "assemblyWidgetId": "Overview_PlanarDisplay",
     "requireTrafficDetails": true,
     "captureLayoutAssets": true,

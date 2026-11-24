@@ -14,13 +14,14 @@ from .hardware_timing import parameter_values, selected_cpu_module, single_value
 from .inspection import inspect_saved
 from .motion_interfaces import declared_members, lexical_view
 from .project import ProjectXml, SavedFiles, XML_LIMIT, children, choices, package_files
-from .ruc_review import CONTENT, DATA, VIEW, open_configuration
+from .ruc_review import CONTENT, DATA, VIEW, Archive, open_configuration
 
 SERVER = VIEW.removesuffix("/wwwRoot") + "/server"
 NODESETS = "FilesToTransfer/AddonsData/OPCUA/NodeSet/Generated"
 VISUALIZATION = "{http://www.br-automation.com/iat2015/visualizationDefinition/v2}Visualization"
 XSI_TYPE = "{http://www.w3.org/2001/XMLSchema-instance}type"
 NAMESPACE = "urn:B&R/pv/"
+BINDING_FIELDS = ("visualizationId", "contentId", "widgetId", "stringIdentifier")
 TASK_VARIABLE = re.compile(r"::([a-zA-Z_][a-zA-Z0-9_]*):([a-zA-Z_][a-zA-Z0-9_]*)")
 VAR_BLOCK = re.compile(r"^[ \t]*VAR(?:[ \t]+(?:CONSTANT|RETAIN|NON_RETAIN))?[ \t]*\n"
                        r"(.*?)^[ \t]*END_VAR[ \t]*;?[ \t]*$", re.I | re.M | re.S)
@@ -435,3 +436,22 @@ def review_saved_binding(path, configuration, cpu, target, *, require_start_page
                 check_saved_binding_placement(source, target, review)
     result["snapshot"] = source.snapshot()
     return result
+
+
+def verify_packaged_heartbeat_binding(bundle, project_root, manifest):
+    pinned = manifest["heartbeatBinding"]
+    target = BindingTarget(*(pinned[field] for field in BINDING_FIELDS), require_default=True, verify_iec_type=True)
+    report = target.receipt()
+    source = SavedFiles(project_root)
+    archive = Archive(bundle, SavedFiles(project_root))
+    target.check(archive, source, manifest, report)
+    problems = source.diagnostics + archive.diagnostics.diagnostics
+    if problems:
+        raise ValueError(problems[0]["message"])
+    expected = {key: value for key, value in pinned["saved"].items() if key != "cpuOpcUa"}
+    if report["state"] != "matched" or report["saved"] != expected:
+        raise ValueError("The saved heartbeat binding differs from the build plan")
+    hashes = {Path(row["path"]): row["sha256"] for row in manifest["inputs"]["files"]}
+    if any(hashes.get(Path(path)) != digest for path, digest in source.sources.items()):
+        raise ValueError("The saved heartbeat binding files differ from the build plan")
+    return report

@@ -10,7 +10,7 @@ Combine the viewport, label checks, widget bundle, SVG capture and direct PLC co
 
 With br-studio 0.126.0 or later, copy the [HMI check](../../../examples/inspection-cycle/hmi-check.json) and [SVG review](../../../examples/inspection-cycle/hmi-layout-review.json) requests into the first-build run directory. Use the same project and job directory as the completed build. Set the HMI witness IDs to the compiled values and the Assembly6D DOM ID to the pinned widget. Select the actual PVI and Chrome executables. Keep the `hmi-session` directory new and keep the SVG request's `hmiReport` path relative to the same run directory. [First-build requests](native-build.md#prepare-the-first-matched-simulation-build) · [Select the HMI witness](#select-the-hmi-witness)
 
-Save the reviewed `ruc_review` JSON as `receipts/ruc-review.json`. Copy the two validated SHA-256 values into the HMI request before starting the rehearsal. Use PowerShell 7 from the run directory.
+Save the reviewed `ruc_review` JSON as `receipts/ruc-review.json`. Copy the two validated SHA-256 values into the HMI request before starting the rehearsal. With br-studio 0.127.0 or later, take the four heartbeat identifiers from `rucReview.heartbeatBinding` when the build includes it. Use PowerShell 7 from the run directory.
 
 ```powershell
 $request = Get-Content -Raw -LiteralPath ./hmi-check.json | ConvertFrom-Json -AsHashtable
@@ -23,6 +23,11 @@ if ($review.operation -ne 'ruc_review' -or $review.status -notin 'complete', 'pa
 }
 $request.arguments.expectedPlanSha256 = $ruc.planSha256
 $request.arguments.expectedPackageSha256 = $ruc.archive.sha256
+if ($ruc.heartbeatBinding) {
+    foreach ($name in 'visualizationId', 'contentId', 'widgetId', 'stringIdentifier') {
+        $request.arguments[$name] = $ruc.heartbeatBinding[$name]
+    }
+}
 $request | ConvertTo-Json -Depth 20 |
     Set-Content -LiteralPath ./hmi-check-reviewed.json -Encoding utf8NoBOM
 

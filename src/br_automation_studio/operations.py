@@ -216,6 +216,7 @@ def build_plan(arguments, request_directory):
                       verify_motion_declarations=arguments.get("verifyMotionDeclarations", False),
                       verify_motion_symbols=arguments.get("verifyMotionSymbols", False),
                       verify_layout_device=arguments.get("verifyLayoutDevice", False),
+                      heartbeat_binding=build_heartbeat_binding(arguments),
                       launchpad_inputs=launchpad_build_inputs(arguments, request_directory),
                       environment_report=report_path(arguments, request_directory, "environmentReport"),
                       simulation_preflight_report=report_path(arguments, request_directory, "simulationPreflightReport"))
@@ -230,6 +231,7 @@ def build_execute(arguments, request_directory):
         verify_motion_declarations=arguments.get("verifyMotionDeclarations", False),
         verify_motion_symbols=arguments.get("verifyMotionSymbols", False),
         verify_layout_device=arguments.get("verifyLayoutDevice", False),
+        heartbeat_binding=build_heartbeat_binding(arguments),
         launchpad_inputs=launchpad_build_inputs(arguments, request_directory),
         environment_report=report_path(arguments, request_directory, "environmentReport"),
         simulation_preflight_report=report_path(arguments, request_directory, "simulationPreflightReport"),
@@ -443,6 +445,15 @@ def binding_target(arguments):
                          arguments["widgetId"], arguments["stringIdentifier"],
                          require_default=arguments.get("requireDefaultVisualization", False),
                          verify_iec_type=arguments.get("verifyIecType", False))
+
+
+def build_heartbeat_binding(arguments):
+    selected = arguments.keys() & BINDING_SELECTION.keys()
+    if not selected:
+        return None
+    if missing := BINDING_SELECTION.keys() - selected:
+        raise InvalidRequest(f"The build heartbeat binding requires {', '.join(sorted(missing))}")
+    return binding_target(arguments)
 
 
 def saved_binding_review(arguments, request_directory):
@@ -676,12 +687,19 @@ SIMULATION_PREFLIGHT = Operation(
     required=(*BUILD_PREFLIGHT.required, "targetMapp6D"),
     handler=run_simulation_preflight,
 )
+BINDING_SELECTION = {
+    "visualizationId": {"type": "string", "minLength": 1, "description": "Saved visualization ID."},
+    "contentId": {"type": "string", "minLength": 1, "description": "Saved content ID."},
+    "widgetId": {"type": "string", "minLength": 1, "description": "Saved widget ID within that content."},
+    "stringIdentifier": {"type": "string", "minLength": 1, "description": "Expected V1 OPC UA ::Task:Variable identifier."},
+}
 BUILD_PLAN = Operation(
     name="build_plan",
     summary="Pin an offline AS4 PC_any simulation build to the source and installation read sets.",
     arguments={
         **BUILD_PREFLIGHT_INPUTS,
         **LAUNCHPAD_ROUTE_INPUTS,
+        **BINDING_SELECTION,
         "launchPadExport": SIMULATION_PREFLIGHT.arguments["launchPadExport"],
         "environmentReport": SIMULATION_PREFLIGHT.arguments["environmentReport"],
         "simulationPreflightReport": {
@@ -944,12 +962,6 @@ LAUNCHPAD_FRAME_REVIEW = Operation(
     required=LAUNCHPAD_ROUTE_REVIEW.required,
     handler=run_launchpad_frame_review,
 )
-BINDING_SELECTION = {
-    "visualizationId": {"type": "string", "minLength": 1, "description": "Saved visualization ID."},
-    "contentId": {"type": "string", "minLength": 1, "description": "Saved content ID."},
-    "widgetId": {"type": "string", "minLength": 1, "description": "Saved widget ID within that content."},
-    "stringIdentifier": {"type": "string", "minLength": 1, "description": "Expected V1 OPC UA ::Task:Variable identifier."},
-}
 SAVED_BINDING_REVIEW = Operation(
     name="saved_binding_review",
     summary="Follow a saved one-way mapp View value binding to a local CPU OPC UA endpoint and IEC task scalar.",

@@ -231,6 +231,9 @@ def markdown(response):
             lines.append(f"- Expected generated motion globals {sum(map(len, symbols.values()))}")
         if device := plan["manifest"].get("layoutDevice"):
             lines.append(f"- Pinned 6DData slot {text(device['slot'])} · Target {text(device['target'])}")
+        if heartbeat := plan["manifest"].get("heartbeatBinding"):
+            lines.append(f"- Pinned heartbeat {text(heartbeat['stringIdentifier'])} → {text(heartbeat['domId'])}"
+                         f" · IEC {text(heartbeat['saved']['iecDeclaration']['type'])}")
         if route := plan["manifest"].get("launchPadRoute"):
             lines.append(f"- LaunchPad route for {text(route['manager'])} · Export SHA-256 {route['files']['export']['sha256']}")
             if layout := route.get("layout"):
@@ -265,6 +268,9 @@ def markdown(response):
                              f" · System configuration SHA-256 {device['systemConfigSha256']}")
             if details := package.get("trafficDetails"):
                 lines.append(f"- Verified enabled Traffic Manager details in {text(details['compiled']['path'])}")
+            if heartbeat := package.get("heartbeatBinding"):
+                lines.append(f"- Verified compiled heartbeat {text(heartbeat['stringIdentifier'])} → "
+                             f"{text(heartbeat['domId'])} · OPC UA type {text(heartbeat['compiled']['dataType'])}")
         if symbols := job.get("motionSymbols"):
             lines.extend(markdown_motion_symbols(symbols, text))
     lines.extend(markdown_diagnostics(report["diagnostics"], text))
@@ -530,6 +536,9 @@ def markdown_ruc(response, text):
         if device := review.get("layoutDevice"):
             lines.append(f"- Verified compiled 6DData · {text(device['compiled']['deviceParameter'])}"
                          f" · System configuration SHA-256 {device['systemConfigSha256']}")
+        if heartbeat := review.get("heartbeatBinding"):
+            lines.append(f"- Verified compiled heartbeat {text(heartbeat['stringIdentifier'])} → "
+                         f"{text(heartbeat['domId'])} · OPC UA type {text(heartbeat['compiled']['dataType'])}")
         if binding is None or review["modules"] or review["widgets"]:
             lines.append(f"- 6D module elements read {len(review['modules'])} · Rendered widgets read {len(review['widgets'])}")
     if environment := review.get("environmentReport"):

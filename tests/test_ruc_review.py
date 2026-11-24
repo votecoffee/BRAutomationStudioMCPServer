@@ -13,7 +13,8 @@ from xml.etree import ElementTree as ET
 from zipfile import ZipFile
 
 from br_automation_studio.assembly_io import pinned_assembly_io
-from br_automation_studio.binding_review import NODESETS, SERVER
+from br_automation_studio.binding_review import (NODESETS, SERVER, BindingTarget, review_saved_binding,
+                                                verify_packaged_heartbeat_binding)
 from br_automation_studio.cli import markdown
 from br_automation_studio.inspection import inspect_project
 from br_automation_studio.native_build import identity, source_tree
@@ -1335,6 +1336,39 @@ END_VAR
         failed = self.binding_review(verifyIecType=True)
         self.assertEqual(self.codes(failed), ["binding_readback_mismatch"])
         self.assertIn("Compiled node type i=7 differs from saved IEC DINT", failed["result"]["diagnostics"][0]["message"])
+
+    def test_pinned_heartbeat_requires_the_compiled_iec_type_even_in_general_ruc_review(self):
+        node_map = self.configure_display()
+        self.configure_counter_declaration()
+        hardware = self.project / "Physical/ARsim/Hardware.hw"
+        hardware.write_bytes(b'<Hardware><Module Name="PC" Type="PC_any">'
+                             b'<Parameter ID="ActivateOpcUa" Value="1" /><Parameter ID="OpcUaPort" Value="14840" />'
+                             b'</Module></Hardware>')
+        target = BindingTarget("CounterPanel", "DemoOverview", "CountView", "::Pulse:Count",
+                               require_default=True, verify_iec_type=True)
+        saved = review_saved_binding(self.project / "Loop.apj", "ARsim", "PC", target)
+        self.assertEqual(saved["savedBindingReview"]["state"], "matched", saved["diagnostics"])
+        manifest = self.plan["manifest"]
+        manifest["inputs"] = source_tree(self.project)
+        manifest["heartbeatBinding"] = saved["savedBindingReview"]
+        self.plan["sha256"] = identity(manifest)
+        self.write("plan.json", self.plan)
+        job = self.package()
+        with ZipFile(self.archive) as archive:
+            heartbeat = verify_packaged_heartbeat_binding(archive, self.project, manifest)
+        job["package"]["heartbeatBinding"] = heartbeat
+        self.write("job.json", job)
+        response = self.review()
+        self.assertEqual(response["status"], "complete", response["result"]["diagnostics"])
+        self.assertEqual(response["result"]["rucReview"]["heartbeatBinding"], heartbeat)
+        self.assertIn("Verified compiled heartbeat", markdown(response))
+
+        self.members[MAP] = compress(node_map.replace(b'DataType="i=6"', b'DataType="i=7"'))
+        job = self.package()
+        job["package"]["heartbeatBinding"] = heartbeat
+        self.write("job.json", job)
+        self.assertEqual(self.codes(self.review()), ["ruc_review_input"])
+        self.assertEqual(self.codes(self.binding_review()), ["ruc_review_input"])
 
     def test_saved_binding_reads_task_and_checks_the_local_cpu_endpoint(self):
         self.configure_display()

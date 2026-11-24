@@ -4,13 +4,13 @@ Use `build_plan` and `build_execute` for a trusted saved project with an English
 
 ## Prepare the first matched simulation build
 
-Use the three requests below from one run directory. Adjust the Automation Studio and Runtime roots, saved project filename, configuration, CPU, selectors, and route and widget IDs to the reviewed target. The workstation example uses proposed AS4 2.7 selections. Update those fields when the exact vendor package builds are known. Keep the saved LaunchPad project, decoded readback and native export in `launchpad/`, the complete saved project in `source-project/`, the verified ZIPs in `media/` and the JSON responses in `receipts/`.
+Use the three requests below from one run directory. Adjust the Automation Studio and Runtime roots, saved project filename, configuration, CPU, selectors, heartbeat binding, and route and widget IDs to the reviewed target. The workstation example uses proposed AS4 2.7 selections. Update those fields when the exact vendor package builds are known. Keep the saved LaunchPad project, decoded readback and native export in `launchpad/`, the complete saved project in `source-project/`, the verified ZIPs in `media/` and the JSON responses in `receipts/`.
 
 | Request | Save its response | Review before continuing |
 | --- | --- | --- |
 | [Workstation check](../../../examples/inspection-cycle/workstation-check.json) | `receipts/workstation.json` | The exact three-package selection, simulator registration and the four media roles. |
 | [Saved-project preflight](../../../examples/inspection-cycle/simulation-preflight.json) | `receipts/simulation-preflight.json` | The project, CPU and Runtime, matched workstation receipt, native export and selected IEC declarations and MpTraffic definition. |
-| [Native build plan](../../../examples/inspection-cycle/build-plan.json) | `receipts/build-plan.json` | The plan SHA-256 and its saved-project preflight, workstation, route, widget and Traffic Manager display, 6DData device, X/Y read axes, assembly limits and motion pins. |
+| [Native build plan](../../../examples/inspection-cycle/build-plan.json) | `receipts/build-plan.json` | The plan SHA-256 and its saved-project preflight, workstation, route, widget and Traffic Manager display, 6DData device, heartbeat binding, X/Y read axes, assembly limits and motion pins. |
 
 Copy the examples into the run root as `workstation-request.json`, `simulation-preflight-request.json` and `build-plan-request.json`. Run each stage with `br-studio run --request <request.json>` and retain the JSON response before selecting the next stage. Use the same saved project, CPU, native export and workstation receipt for preflight and planning. A blocked workstation or preflight calls for resolving the reported dependency. Review the diagnostics when the preflight reports `review_required` or the planner returns a plan with warnings. The plan can carry the selected IEC declarations, the six motion binaries and generated motion globals into package verification. [Workstation and project prerequisites](simulation-preflight.md)
 
@@ -50,6 +50,12 @@ Review the selected project, configuration, builder and diagnostics. Planning is
 ### Pin the Assembly6D layout device
 
 With br-studio 0.124.0 or later, use `verifyLayoutDevice` in both build requests for an ARsim project with `6DData` explicitly declared on `USER_PATH` in the selected CPU's `Hardware.hw`. Planning records the device slot and target in `buildPlan.manifest.layoutDevice`. Execution verifies the `/DEVICE=USER_PATH` parameter in the RUC system configuration. A successful job records the device and system configuration hash in `nativeBuild.package.layoutDevice`. RUC review repeats the check against the saved project and job. [Layout device review](layout-device-review.md)
+
+### Pin the startup heartbeat binding
+
+With br-studio 0.127.0 or later, supply `visualizationId`, `contentId`, `widgetId` and `stringIdentifier` together in both build requests. Use the numeric heartbeat widget's saved IDs and the expected local OPC UA `::Task:Variable` identifier. Planning checks the one-way binding, saved default page placement, CPU endpoint and registered IEC integer declaration. Read `buildPlan.manifest.heartbeatBinding` for the selected source and type.
+
+Before accepting the RUC, the build verifies the compiled binding, widget, node type and CurrentRead access. Read `nativeBuild.package.heartbeatBinding` for the readback. RUC review repeats the check automatically. The HMI rehearsal uses the same four identifiers when the build pins a heartbeat. [Saved and compiled binding review](ruc-binding-review.md) · [First HMI rehearsal](arsim-hmi-smoke.md#rehearse-the-first-reviewed-build)
 
 ### Keep the workstation package review with the build
 

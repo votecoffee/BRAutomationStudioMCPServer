@@ -36,6 +36,8 @@ With br-studio 0.101.0 or later, set `requireStartPage` to `true` to check the d
 
 After build, use `ruc_binding_review` to confirm the generated node's type and read access. The saved trace establishes the browser binding direction and source. Verify effective OPC UA access and changing values during the runtime check.
 
+With br-studio 0.127.0 or later, supply the four binding identifiers in both build requests to pin the startup heartbeat. Planning requires the saved start page and a directly declared IEC integer. The build and general `ruc_review` check the compiled binding, type and access automatically. Use `ruc_binding_review` for additional status bindings in the same RUC. [Pin the startup heartbeat binding](native-build.md#pin-the-startup-heartbeat-binding)
+
 ## Verify the saved IEC type
 
 With br-studio 0.47.0 or later, set `verifyIecType` to `true` in the request arguments. The check follows the task in the selected `Cpu.sw` through the registered Logical packages to its `IEC.prg` and local `.var` files. Read `bindingReview.saved.iecDeclaration` for the task class, program, IEC type, source line, file hash and expected OPC UA type. The saved declarations join the pinned source read set.

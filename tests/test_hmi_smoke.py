@@ -38,6 +38,14 @@ class HmiSmokeTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "same completed build and RUC"):
             probe.prepare(review | {"archive": {"sha256": "other"}}, {}, {})
 
+    def test_runtime_heartbeat_must_match_the_binding_pinned_in_the_build(self):
+        review = {"jobId": "job-1", "planSha256": "plan-1", "archive": {"sha256": "package"}}
+        pin = BindingTarget("Default", "Main", "Heartbeat", "::Pulse:Count").receipt()
+        selected = dict(pin, stringIdentifier="::Pulse:Other")
+        probe = HmiProbe({"rucReview": review, "bindingReview": selected}, None, 20)
+        with self.assertRaisesRegex(ValueError, "heartbeat must use the binding pinned"):
+            probe.prepare(review | {"heartbeatBinding": pin}, {}, {})
+
     def test_status_smoke_keeps_an_explicit_role_with_its_reviewed_binding(self):
         target = BindingTarget("Default", "Main", "Heartbeat", "::Status:Heartbeat")
         first = {"widgetId": "Request", "stringIdentifier": "::Status:Request", "expectedValue": 7, "role": "requestId"}

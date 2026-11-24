@@ -5,6 +5,7 @@ from decimal import Decimal
 from typing import ClassVar
 
 from .arsim_smoke import HOST, arsim_smoke
+from .binding_review import BINDING_FIELDS
 from .browser_smoke import ChromeProbe
 from .json_io import read_json
 from .opcua_smoke import INTEGER_NODE_TYPES, OpcUaProbe, StatusNode
@@ -88,6 +89,9 @@ class HmiProbe:
         if any(reviewed[key] != original[key] for key in ("jobId", "planSha256", "archive")):
             raise ValueError("The binding and 6D reviews do not identify the same completed build and RUC")
         binding = self.reviewed_binding["bindingReview"]
+        if heartbeat := reviewed.get("heartbeatBinding"):
+            if any(binding[key] != heartbeat[key] for key in BINDING_FIELDS):
+                raise ValueError("The HMI heartbeat must use the binding pinned in the build")
         compiled = binding["compiled"]
         endpoint = compiled["endpoint"]
         port = profile["opcUaPort"]

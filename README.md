@@ -148,7 +148,7 @@ Use `verifyMappingLineEndpoints` in the SVG review to check the directed lines d
 
 Use `verifyTrafficLabels` in the SVG review to check the name and anchor of each station and waypoint label. [Traffic label review](skills/br-automation-studio/references/layout-svg-review.md#check-station-and-waypoint-labels)
 
-Use `saved_binding_review` to trace a selected one-way mapp View value binding to the saved CPU OPC UA endpoint and registered numeric task variable before build. Set `requireStartPage` to verify its saved startup page placement. Use `ruc_binding_review` to follow the same binding through the compiled widget and OPC UA exposure map. Set `verifyIecType` to compare the compiled node type with the selected CPU task's registered IEC declaration. [Binding readback workflow](skills/br-automation-studio/references/ruc-binding-review.md)
+Use `saved_binding_review` to trace a selected one-way mapp View value binding to the saved CPU OPC UA endpoint and registered numeric task variable. Set `requireStartPage` to verify its saved startup page placement. Supply the four heartbeat identifiers in both build requests to pin the saved binding and verify its compiled widget, OPC UA type and read access. Use `ruc_binding_review` for an individual binding check. [Startup heartbeat workflow](skills/br-automation-studio/references/native-build.md#pin-the-startup-heartbeat-binding) · [Binding readback](skills/br-automation-studio/references/ruc-binding-review.md)
 
 For a private loopback fixture, `arsim_smoke` materializes the reviewed RUC and compares served mapp View assets with their packaged bytes. [ARsim smoke workflow](skills/br-automation-studio/references/arsim-smoke.md)
 

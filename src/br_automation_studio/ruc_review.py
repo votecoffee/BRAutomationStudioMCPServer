@@ -418,6 +418,13 @@ def review_ruc(path, job_directory, binding=None, *, geometry_manager=None, incl
                     review["environmentReport"] = job["environmentReport"]
                 if "simulationPreflightReview" in manifest:
                     review["simulationPreflightReport"] = job["simulationPreflightReport"]
+                if "heartbeatBinding" in manifest:
+                    from .binding_review import verify_packaged_heartbeat_binding
+
+                    heartbeat = verify_packaged_heartbeat_binding(package, path.parent, manifest)
+                    if heartbeat != job["package"].get("heartbeatBinding"):
+                        raise ValueError("The compiled heartbeat binding differs from the build receipt")
+                    review["heartbeatBinding"] = heartbeat
                 if pinned_layout_device:
                     layout_device = verify_packaged_layout_device(package)
                     if layout_device != job["package"].get("layoutDevice"):

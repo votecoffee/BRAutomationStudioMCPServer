@@ -1,6 +1,7 @@
 
 """Plan and run a pinned native AS4 simulation build on a private project copy."""
 
+from dataclasses import replace
 from datetime import datetime, timezone
 from hashlib import file_digest, sha256
 import json
@@ -139,7 +140,7 @@ def read_simulation_review(path, current):
 def plan_build(path, studio_root, runtime_root=None, configuration=None, cpu=None, *,
                verify_mptraffic_enum=False, verify_motion_payloads=False, verify_motion_declarations=False,
                verify_motion_symbols=False, launchpad_inputs=None, environment_report=None,
-               simulation_preflight_report=None, verify_layout_device=False):
+               simulation_preflight_report=None, verify_layout_device=False, heartbeat_binding=None):
     verify_layout = launchpad_inputs is not None and launchpad_inputs.verify_layout
     verify_positions = launchpad_inputs is not None and launchpad_inputs.verify_positions
     verify_recovery = launchpad_inputs is not None and launchpad_inputs.verify_recovery
@@ -176,6 +177,24 @@ def plan_build(path, studio_root, runtime_root=None, configuration=None, cpu=Non
             observed = device.get("reason", device.get("target", device["state"]))
             issue(report, "error", "layout_device_unverified",
                   f"{device['path']} needs one {DEVICE_NAME} file device targeting {USER_PARTITION}, found {observed!r}")
+            return report
+
+    heartbeat = None
+    if heartbeat_binding is not None:
+        from .binding_review import review_saved_binding
+        from .opcua_smoke import INTEGER_NODE_TYPES
+
+        binding_review = review_saved_binding(path, report["selectedConfiguration"], report["selectedCpu"],
+                                              replace(heartbeat_binding, verify_iec_type=True), require_start_page=True)
+        heartbeat = report["savedBindingReview"] = binding_review["savedBindingReview"]
+        report["diagnostics"].extend(dict(item, scope="heartbeat_binding") for item in binding_review["diagnostics"])
+        if blocked(report):
+            return report
+        if heartbeat["state"] != "matched":
+            issue(report, "error", "heartbeat_binding_unverified", "Could not verify the saved startup heartbeat binding")
+            return report
+        if heartbeat["saved"]["iecDeclaration"]["expectedDataType"] not in INTEGER_NODE_TYPES:
+            issue(report, "error", "heartbeat_binding_unverified", "The startup heartbeat needs a directly declared IEC integer")
             return report
 
     simulation_review = None
@@ -228,6 +247,8 @@ def plan_build(path, studio_root, runtime_root=None, configuration=None, cpu=Non
         issue(report, "error", "ambiguous_source_paths", "Source files have conflicting names on this platform")
         return report
     reviewed_sources = list(report["snapshot"]["files"])
+    if heartbeat is not None:
+        reviewed_sources.extend(binding_review["snapshot"]["files"])
     if definition is not None:
         reviewed_sources.extend(definition["saved"]["snapshot"]["files"])
     if motion is not None:
@@ -261,6 +282,8 @@ def plan_build(path, studio_root, runtime_root=None, configuration=None, cpu=Non
         plan["motionDeclarations"] = report["motionDeclarations"]
     if verify_layout_device:
         plan["layoutDevice"] = device
+    if heartbeat is not None:
+        plan["heartbeatBinding"] = heartbeat
     if verify_motion_symbols:
         try:
             plan["motionSymbols"] = plan_motion_symbols(report)
@@ -413,13 +436,14 @@ def retain_simulation_preflight_report(directory, receipt):
 def execute_build(path, studio_root, runtime_root, configuration, cpu, plan_sha256, job_directory,
                   timeout_seconds=180, *, verify_mptraffic_enum=False, verify_motion_payloads=False,
                   verify_motion_declarations=False, verify_motion_symbols=False, launchpad_inputs=None,
-                  environment_report=None, simulation_preflight_report=None, verify_layout_device=False):
+                  environment_report=None, simulation_preflight_report=None, verify_layout_device=False,
+                  heartbeat_binding=None):
     report = plan_build(path, studio_root, runtime_root, configuration, cpu,
                         verify_mptraffic_enum=verify_mptraffic_enum, verify_motion_payloads=verify_motion_payloads,
                         verify_motion_declarations=verify_motion_declarations,
                         verify_motion_symbols=verify_motion_symbols, launchpad_inputs=launchpad_inputs,
                         environment_report=environment_report, simulation_preflight_report=simulation_preflight_report,
-                        verify_layout_device=verify_layout_device)
+                        verify_layout_device=verify_layout_device, heartbeat_binding=heartbeat_binding)
     plan = report["buildPlan"]
     if plan is None:
         return report
@@ -506,6 +530,12 @@ def execute_build(path, studio_root, runtime_root, configuration, cpu, plan_sha2
             try:
                 job["package"] = package_evidence(ruc, job_dir, mptraffic=definition, motion=motion,
                                                   verify_layout_device="layoutDevice" in manifest)
+                if "heartbeatBinding" in manifest:
+                    from .binding_review import verify_packaged_heartbeat_binding
+
+                    artifact_error = "heartbeat_binding_unverified"
+                    with ZipFile(ruc) as bundle:
+                        job["package"]["heartbeatBinding"] = verify_packaged_heartbeat_binding(bundle, staged, manifest)
                 if "trafficDetails" in manifest.get("launchPadRoute", {}):
                     from .start_page import verify_packaged_traffic_details
 
