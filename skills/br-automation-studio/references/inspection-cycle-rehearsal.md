@@ -181,6 +181,8 @@ If the capture includes the raw station monitor inputs and outputs, add the opti
 
 When reviewing a release command and count together, take the setpoints from the Release-edge row and the counter from the same PLC samples that supply the next held status. [Capture the command and the release count together](cycle-scan-capture.md#capture-the-command-and-the-release-count-together)
 
+When one X/Y acquisition stream covers the cycle, map it across outbound, return and the next hold. Preserve the same timestamp on a shared handoff scan. [Review one timed X/Y stream](cycle-scan-capture.md#review-one-timed-xy-stream-across-both-legs)
+
 ## Rehearse the capture with synthetic station observations
 
 Use a disposable PC simulation configuration to exercise the capture and review chain ahead of the motion run. Keep the motion and Traffic Manager command function blocks disabled. In the capture task, script the outbound Release and arrival, the return and the next inspection hold. Record them with the same column names and scan boundaries planned for the target task. Advance the heartbeat from that task and bind the four held-status fields read-only to mapp View and OPC UA.

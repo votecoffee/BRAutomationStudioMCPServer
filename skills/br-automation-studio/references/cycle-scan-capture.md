@@ -94,6 +94,16 @@ Set `maxSampleIntervalMicroseconds` in the review request to enforce the permitt
 
 For a shared clock, add `verifyPositionTimeHandoff` to compare the last outbound and first return timestamps. When both windows use the same recorded acquisition signal, map both time fields to that one column. [Handoff rules](cycle-trace-review.md#compare-timestamps-at-the-handoff-between-legs)
 
+### Review one timed X/Y stream across both legs
+
+Pin the route positions and explicit X and Y read axes in both native build requests. Pin the in-plane motion limits when sampling speed. Record the position's own scan index, shuttle ID, validity, X and Y in metres, and acquisition time in microseconds. Preserve the separate scan record time on the same clock when checking sample age. [Pin assembly read axes and positions](native-build.md)
+
+When one position stream feeds the cycle, map each recorded position column to its same role under `inspection.`, `return.` and `hold.`. If outbound arrival and return occupancy share a PLC scan, map them to the same observed position and acquisition time. Select the station and waypoint tolerances, the sample age limit, and the sampled-speed and clock-handoff checks that apply to the run. Retain the accepted scan and shuttle for each position witness. [Review the position handoff](cycle-trace-review.md#compare-timestamps-at-the-handoff-between-legs)
+
+Use the position review results with the captured clock and HMI receipts. The sampled-speed result describes displacement over recorded intervals. Preserve the compiled assembly limit and the contributing samples for any reported interval. [Sampled-speed inputs and outputs](station-trace-review.md#check-sampled-in-plane-speed)
+
+The AS4.12 / J4.93 synthetic rehearsal published nine X/Y samples using the PLC task clock. It matched the station positions, all three waypoints and the common outbound and return sample at scan 107, then matched the HMI reopen. Peak displacement rates were about 0.30 m/s outbound and 0.60 m/s on return against the compiled 0.75 m/s limit. Separate replay controls flagged an over-age waypoint, a position from a different PLC scan, and a timestamp disagreement at the handoff.
+
 ## Decode events from the saved project and RUC
 
 Use the [enum declaration lookup](build-preflight.md#read-explicit-enumeration-values) to inspect the selected library's event map during preflight. The scan review below verifies the definition against the retained build and RUC.
