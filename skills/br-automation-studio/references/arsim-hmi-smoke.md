@@ -66,6 +66,8 @@ Set `requireTrafficLabelsInBounds` to require every verified label to fit in bot
 
 Set `requireNonOverlappingTrafficLabels` to require the verified label rectangles to have no shared area in either browser document. This option is available in all three browser checks. [Label overlap workflow](arsim-browser-smoke.md#check-for-overlapping-labels)
 
+Set `minimumTrafficLabelGapCssPx` to enforce a project-selected space between the closest labels on both page loads. [Label gap workflow](arsim-browser-smoke.md#check-the-gap-between-labels)
+
 ## Read the evidence
 
 1. Confirm the binding, compiled default visualization, 6D configuration and rendered Assembly6D links belong to the same completed build. A binding or default visualization mismatch stops before runtime materialization.

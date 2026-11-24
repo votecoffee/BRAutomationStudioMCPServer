@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from hashlib import sha256
 from http.client import HTTPConnection, HTTPException
-from math import isfinite
+from math import hypot, inf, isfinite
 from pathlib import Path
 import json
 import re
@@ -124,22 +124,31 @@ def label_overlap_observation(labels, verified):
             rectangles.append((left, left + width, top, top + height, name))
     rectangles.sort()
     pairs = []
+    nearest = (inf, [])
     for index, (_, right, top, bottom, name) in enumerate(rectangles):
         for following in range(index + 1, len(rectangles)):
             other_left, _, other_top, other_bottom, other_name = rectangles[following]
-            if other_left >= right:
+            horizontal = max(0, other_left - right)
+            # The sorted left edges bound the distance to every later rectangle.
+            if horizontal > nearest[0]:
                 break
-            if other_top < bottom and top < other_bottom:
-                pairs.append(sorted((name, other_name)))
+            pair = sorted((name, other_name))
+            vertical = max(0, other_top - bottom, top - other_bottom)
+            nearest = min(nearest, (hypot(horizontal, vertical), pair))
+            if other_left < right and other_top < bottom and top < other_bottom:
+                pairs.append(pair)
     state = "observed"
     if len(rectangles) != len(labels):
         state = "unverified"
     elif pairs:
         state = "overlapping"
-    return {"state": state, "checkedLabels": len(rectangles), "pairs": sorted(pairs)}
+    return {"state": state, "checkedLabels": len(rectangles), "pairs": sorted(pairs),
+            "minGapCssPx": nearest[0] if nearest[1] and state != "unverified" else None,
+            "closestPair": nearest[1] if nearest[1] and state != "unverified" else None}
 
 
-def traffic_label_observation(value, expected, minimum_height=None, require_in_bounds=False, require_no_overlap=False):
+def traffic_label_observation(value, expected, minimum_height=None, require_in_bounds=False, require_no_overlap=False,
+                              minimum_gap=None):
     value = value if isinstance(value, dict) else {}
     observed = value.get("labels")
     observed = observed if isinstance(observed, dict) else {}
@@ -155,11 +164,13 @@ def traffic_label_observation(value, expected, minimum_height=None, require_in_b
     outside_widget = [name for name in heights if labels[name].get("insideWidget") is False]
     outside_viewport = [name for name in heights if labels[name].get("insideViewport") is False]
     overlap = label_overlap_observation(labels, heights)
+    gap = overlap["minGapCssPx"]
+    separation_required = require_no_overlap or minimum_gap is not None
     bounds_missing = require_in_bounds and any(
         type(labels[name].get(key)) is not bool for name in heights for key in ("insideWidget", "insideViewport")
     )
     state = "observed"
-    if len(heights) != len(labels) or bounds_missing or (require_no_overlap and overlap["state"] == "unverified"):
+    if len(heights) != len(labels) or bounds_missing or (separation_required and overlap["state"] == "unverified"):
         state = "unverified"
     elif below:
         state = "below_minimum"
@@ -167,6 +178,8 @@ def traffic_label_observation(value, expected, minimum_height=None, require_in_b
         state = "out_of_bounds"
     elif require_no_overlap and overlap["pairs"]:
         state = "overlapping"
+    elif minimum_gap is not None and gap is not None and gap < minimum_gap:
+        state = "gap_below_minimum"
     return {"state": state, "labels": labels, "viewport": value.get("viewport"),
             "viewportContent": value.get("viewportContent"), "minObservedHeightCssPx": min(heights.values(), default=None),
             "belowMinimum": below, "outsideWidget": outside_widget, "outsideViewport": outside_viewport,
@@ -402,7 +415,7 @@ def check_document_status(state, receipt, expected):
 def collect_samples(page, expression, url, receipt, count, prior_origins=(), after=Decimal(0),
                     *, layout_paths=None, require_layout=False, check_assembly=True, expected_status=None,
                     resource_paths=None, traffic_labels=(), minimum_label_height=None, requested_viewport=None,
-                    require_label_bounds=False, require_label_separation=False):
+                    require_label_bounds=False, require_label_separation=False, minimum_label_gap=None):
     latest = after
     resource_paths = resource_paths or {}
     while time.monotonic() < page.deadline:
@@ -434,7 +447,7 @@ def collect_samples(page, expression, url, receipt, count, prior_origins=(), aft
             if traffic_labels:
                 receipt["trafficLabels"] = traffic_label_observation(
                     result.get("trafficLabels"), traffic_labels, minimum_label_height, require_label_bounds,
-                    require_label_separation)
+                    require_label_separation, minimum_label_gap)
             for key, path in resource_paths.items():
                 receipt[key] = resource_observation(result.get(key), path)
             value = result.get("value")
@@ -470,6 +483,9 @@ def collect_samples(page, expression, url, receipt, count, prior_origins=(), aft
             if observed["state"] == "overlapping":
                 first, second = observed["overlap"]["pairs"][0]
                 raise TimeoutError(f"Traffic label rectangles overlap: {first} and {second}")
+            if observed["state"] == "gap_below_minimum":
+                first, second = observed["overlap"]["closestPair"]
+                raise TimeoutError(f"Traffic label gap below {minimum_label_gap} CSS px: {first} and {second}")
             if observed["state"] != "observed":
                 raise TimeoutError("The expected station and waypoint labels were not verified in the Assembly6D widget")
     if expected_status:
@@ -495,7 +511,8 @@ def verify_navigation(page, url, receipt):
                "expected_status": expected, "resource_paths": resources, "traffic_labels": labels,
                "minimum_label_height": receipt.get("minimumTrafficLabelHeightCssPx"),
                "requested_viewport": viewport, "require_label_bounds": receipt.get("requireTrafficLabelsInBounds", False),
-               "require_label_separation": receipt.get("requireNonOverlappingTrafficLabels", False)}
+               "require_label_separation": receipt.get("requireNonOverlappingTrafficLabels", False),
+               "minimum_label_gap": receipt.get("minimumTrafficLabelGapCssPx")}
     expression = widget_expression(assembly, receipt["counterWidgetId"], paths, expected, resource_paths=resources,
                                    traffic_labels=labels)
     if viewport:
@@ -578,6 +595,7 @@ class ChromeProbe:
     viewport: tuple[int, int] | None = None
     require_label_bounds: bool = False
     require_label_separation: bool = False
+    minimum_label_gap: int | None = None
     key: ClassVar[str] = "browser"
     evidence: ClassVar[str] = "arsim_loopback_browser"
 
@@ -597,7 +615,7 @@ class ChromeProbe:
             widget = assembly_dom_id(reviewed["widgets"], selected, self.counter_widget)
         paths = layout_asset_paths(reviewed["widgets"], widget) if widget is not None else {}
         check_labels = (self.require_traffic_labels or self.minimum_label_height is not None
-                        or self.require_label_bounds or self.require_label_separation)
+                        or self.require_label_bounds or self.require_label_separation or self.minimum_label_gap is not None)
         require_layout = self.require_layout or self.capture_layout or check_labels
         if require_layout and not paths:
             raise ValueError("The reviewed widget has no supported 6DData SVG paths")
@@ -618,6 +636,8 @@ class ChromeProbe:
             receipt["requireTrafficLabelsInBounds"] = True
         if self.require_label_separation:
             receipt["requireNonOverlappingTrafficLabels"] = True
+        if self.minimum_label_gap is not None:
+            receipt["minimumTrafficLabelGapCssPx"] = self.minimum_label_gap
         if self.minimum_label_height is not None:
             receipt["minimumTrafficLabelHeightCssPx"] = self.minimum_label_height
         if self.viewport is not None:

@@ -338,7 +338,7 @@ class TestBrowserSmoke(unittest.TestCase):
             "state": "below_minimum", "labels": {"S1": short}, "viewport": viewport,
             "viewportContent": None, "minObservedHeightCssPx": 4.999, "belowMinimum": ["S1"],
             "outsideWidget": [], "outsideViewport": [],
-            "overlap": {"state": "unverified", "checkedLabels": 0, "pairs": []},
+            "overlap": {"state": "unverified", "checkedLabels": 0, "pairs": [], "minGapCssPx": None, "closestPair": None},
         })
 
     def test_traffic_label_overlap_requires_area_on_both_axes(self):
@@ -348,11 +348,21 @@ class TestBrowserSmoke(unittest.TestCase):
         labels = {"A": box(0, 0, 10, 5), "B": box(9, 1, 10, 4), "C": box(19, 1, 10, 4),
                   "D": box(0, 5, 9, 5)}
         self.assertEqual(label_overlap_observation(labels, labels), {
-            "state": "overlapping", "checkedLabels": 4, "pairs": [["A", "B"]],
+            "state": "overlapping", "checkedLabels": 4, "pairs": [["A", "B"]], "minGapCssPx": 0,
+            "closestPair": ["A", "B"],
         })
         self.assertEqual(label_overlap_observation(labels, ("B", "C", "D")), {
-            "state": "unverified", "checkedLabels": 3, "pairs": [],
+            "state": "unverified", "checkedLabels": 3, "pairs": [], "minGapCssPx": None, "closestPair": None,
         })
+
+    def test_label_gap_measures_the_shortest_edge_distance_including_diagonals(self):
+        labels = {"A": {"leftCssPx": 0, "topCssPx": 0, "widthCssPx": 10, "heightCssPx": 10},
+                  "B": {"leftCssPx": 13, "topCssPx": 14, "widthCssPx": 10, "heightCssPx": 10},
+                  "C": {"leftCssPx": 40, "topCssPx": 5, "widthCssPx": 10, "heightCssPx": 10}}
+        self.assertEqual(label_overlap_observation(labels, labels), {
+            "state": "observed", "checkedLabels": 3, "pairs": [], "minGapCssPx": 5, "closestPair": ["A", "B"],
+        })
+        self.assertIsNone(label_overlap_observation({"A": labels["A"]}, ("A",))["minGapCssPx"])
 
     @patch("br_automation_studio.browser_smoke.time.sleep")
     @patch("br_automation_studio.browser_smoke.time.monotonic", side_effect=range(8))
@@ -377,9 +387,35 @@ class TestBrowserSmoke(unittest.TestCase):
         self.assertEqual(receipt["initial"]["trafficLabels"]["overlap"]["state"], "observed")
         reopened = receipt["reopened"]["trafficLabels"]
         self.assertEqual(reopened["state"], "overlapping")
-        self.assertEqual(reopened["overlap"], {"state": "overlapping", "checkedLabels": 2, "pairs": [["A", "B"]]})
+        self.assertEqual(reopened["overlap"], {"state": "overlapping", "checkedLabels": 2, "pairs": [["A", "B"]],
+                                               "minGapCssPx": 0, "closestPair": ["A", "B"]})
         self.assertEqual(reopened["outsideViewport"], [])
         self.assertEqual(reopened["minObservedHeightCssPx"], 7)
+
+    @patch("br_automation_studio.browser_smoke.time.sleep")
+    @patch("br_automation_studio.browser_smoke.time.monotonic", side_effect=range(8))
+    def test_reopened_labels_reject_a_positive_gap_below_the_requested_minimum(self, now, pause):
+        label = {"count": 1, "visible": True, "text": "A", "widthCssPx": 12, "heightCssPx": 7,
+                 "insideWidget": True, "insideViewport": True, "leftCssPx": 5, "topCssPx": 10}
+
+        def seen(value, origin, second_x=22):
+            second = dict(label, text="B", leftCssPx=second_x)
+            return dict(hmi(value, origin), trafficLabels={"labels": {"A": label, "B": second}})
+
+        page = Mock(deadline=7)
+        page.read.side_effect = [
+            seen("1", 10), seen("2", 10), seen("3", 10),
+            {"url": "about:blank", "timeOrigin": 11},
+            seen("100", 10), seen("4", 12, 21), seen("5", 12, 21),
+        ]
+        receipt = dict(self.receipt(), expectedTrafficLabels=["A", "B"], minimumTrafficLabelGapCssPx=5)
+        with self.assertRaisesRegex(TimeoutError, "Traffic label gap below 5 CSS px: A and B"):
+            verify_navigation(page, URL, receipt)
+        self.assertEqual(receipt["initial"]["trafficLabels"]["overlap"]["minGapCssPx"], 5)
+        reopened = receipt["reopened"]["trafficLabels"]
+        self.assertEqual(reopened["state"], "gap_below_minimum")
+        self.assertEqual(reopened["overlap"], {"state": "observed", "checkedLabels": 2, "pairs": [],
+                                               "minGapCssPx": 4, "closestPair": ["A", "B"]})
 
     @patch("br_automation_studio.browser_smoke.time.sleep")
     @patch("br_automation_studio.browser_smoke.time.monotonic", side_effect=range(8))

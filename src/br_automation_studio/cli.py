@@ -1095,6 +1095,8 @@ def markdown_browser(browser, text):
             lines.append(f"- Counter {text(browser['counterWidgetId'])}")
     if minimum_height := browser.get("minimumTrafficLabelHeightCssPx"):
         lines.append(f"- Required traffic label height {text(minimum_height)} CSS px")
+    if minimum_gap := browser.get("minimumTrafficLabelGapCssPx"):
+        lines.append(f"- Required traffic label gap {text(minimum_gap)} CSS px")
     if requested := browser.get("requestedViewport"):
         lines.append(f"- Requested viewport {text(requested['widthCssPx'])} × {text(requested['heightCssPx'])} CSS px")
     for phase, label in (("initial", "Initial document"), ("reopened", "Reopened document")):
@@ -1134,6 +1136,9 @@ def markdown_browser(browser, text):
                     lines.append(f"    - Smallest observed height {text(height)} CSS px")
                 if overlap := labels.get("overlap"):
                     lines.append(f"    - Label overlap {text(overlap['state'])} · Labels checked {text(overlap['checkedLabels'])}")
+                    if (gap := overlap.get("minGapCssPx")) is not None:
+                        first, second = overlap["closestPair"]
+                        lines.append(f"    - Closest label gap {text(gap)} CSS px · {text(first)} and {text(second)}")
                     for first, second in overlap["pairs"]:
                         lines.append(f"      - {text(first)} and {text(second)}")
                 for name, label in labels["labels"].items():

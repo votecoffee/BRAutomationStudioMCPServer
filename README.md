@@ -154,7 +154,7 @@ With the optional `browser` extra and Google Chrome, `arsim_browser_smoke` verif
 
 With the optional `opcua` extra, `arsim_opcua_smoke` reads an explicitly selected PLC counter directly from the reviewed ARsim instance and records the reported access levels and advancing values. [Direct OPC UA workflow](skills/br-automation-studio/references/arsim-opcua-smoke.md)
 
-Use `arsim_hmi_smoke` with both extras to verify the binding and default visualization, then check that the displayed counter stays within direct OPC UA readings in one ARsim session. The browser receipt records the Assembly6D widget's rendered dimensions. Set `requireTrafficLabels` to verify the compiled station and waypoint names. Apply label height, bounds and overlap checks when validating a chosen viewport. Use `captureLayoutAssets` to retain the generated SVGs. [Combined HMI workflow](skills/br-automation-studio/references/arsim-hmi-smoke.md)
+Use `arsim_hmi_smoke` with both extras to verify the binding and default visualization, then check that the displayed counter stays within direct OPC UA readings in one ARsim session. The browser receipt records the Assembly6D widget's rendered dimensions. Set `requireTrafficLabels` to verify the compiled station and waypoint names. Apply label height, bounds, overlap or minimum gap checks when validating a chosen viewport. Use `captureLayoutAssets` to retain the generated SVGs. [Combined HMI workflow](skills/br-automation-studio/references/arsim-hmi-smoke.md)
 
 Use `arsim_status_smoke` to verify expected numeric status such as a held request and shuttle in the initial and reopened HMI and in direct OPC UA. [Status reconnect workflow](skills/br-automation-studio/references/arsim-status-smoke.md)
 

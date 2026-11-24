@@ -97,6 +97,12 @@ Starting with br-studio 0.112.0, `trafficLabels.overlap` records the number of l
 
 Set `requireNonOverlappingTrafficLabels` to `true` to enable the label check and require distinct label rectangles on both loads. It can run alongside the minimum height and bounds checks. Review the reported pairs when repositioning station or waypoint labels, and confirm legibility on the panel.
 
+#### Check the gap between labels
+
+Starting with br-studio 0.113.0, `trafficLabels.overlap` also records `minGapCssPx` and `closestPair` for each document. The gap is the shortest distance between the text rectangles, including diagonally separated labels. Touching or overlapping rectangles have a gap of zero. A view with one verified label has no pair. [CSSOM View geometry](https://www.w3.org/TR/cssom-view/#dom-element-getboundingclientrect)
+
+Set `minimumTrafficLabelGapCssPx` to a positive whole number to enable the label check and require the project-selected clearance on both loads. A measured gap equal to the requested minimum passes. The receipt records the closest pair and the full-precision measurement.
+
 ### Save the generated SVGs
 
 Set `captureLayoutAssets` to `true` in the request arguments. This also enables the required layout check in both browser documents. After the browser closes, the CLI makes a fresh GET for each expected URL on the same owned ARsim HTTP listener. Each response must be HTTP 200 with an `image/svg+xml` body and a namespaced SVG root. The browser status and capture refer to separate requests inside the same ARsim session.
