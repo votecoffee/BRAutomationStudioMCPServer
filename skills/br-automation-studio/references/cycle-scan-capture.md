@@ -72,6 +72,14 @@ With br-studio 0.59.0 or later, record the outbound station's `ExitVelocity` and
 
 Pass both expected inputs as decimal strings to `cycle_trace_review` and use the RUC and LaunchPad files from a build with `verifyLaunchPadMotionLimits`. The check uses the exact Release-edge row. A blank cell or an absent observation on that scan leaves the motion check incomplete. Read `cycleTraceReview.scanCapture.releaseMotionColumns` for the source columns and `cycleTraceReview.outbound.releaseMotion` for the comparison. [Expected inputs](station-trace-review.md#check-the-motion-inputs-on-the-release-edge)
 
+### Capture the command and the release count together
+
+Use one task sample for the rising Release flag and the two command inputs applied to the station function block. Preserve the inputs at that invocation and serialize the latched values into the corresponding scan row. Keep the same application release counter in `hold.releaseTotal` from the first outbound scan through the first next hold and the HMI reopen window.
+
+For a counter of release attempts, count the low-to-high Release transition once. For a counter tied to completion or arrival, capture its actual increment and set the matching `releaseTotalEvent`. In the combined review request, supply both expected command values and the counter event. Retain the matched HMI session and the build with `verifyLaunchPadMotionLimits`. The resulting `outbound.releaseMotion` shows the recorded inputs and compiled settings, and `releaseTotalReview` shows the counter's baseline and next-hold value. [Counter milestone review](cycle-trace-review.md#check-when-the-release-total-increments)
+
+In the AS4.12 / J4.93 synthetic rehearsal, the PLC published 0.5 m/s and 4 m/s² at Release scan 103 and incremented the attempt counter from zero to one once. The RUC matched the saved in-plane assembly limits of 0.75 m/s and 8 m/s². The count held at one through the HMI reopen. The replay flagged a different expected acceleration and a ReleaseDone counter milestone. Moving the commands to the following scan left the Release-edge check incomplete.
+
 ## Check station positions in the scan file
 
 Map the five optional position columns to the recorded PLC sample fields and set `positionToleranceMicrometres` in the cycle review request. Check the source position on the Release edge and the destination position on the accepted arrival scan. Use the position sample's own scan index and shuttle ID. Preserve coordinate text in metres and the sample validity flag. Blank values are permitted where the capture provides no observation. Read `cycleTraceReview.scanCapture.positionColumns` for the selected headers and `cycleTraceReview.outbound.positionReview` for the comparison. [Position checks and required RUC evidence](station-trace-review.md#check-position-at-the-two-station-events)
