@@ -6,8 +6,9 @@ from itertools import chain
 from pathlib import Path
 from stat import FILE_ATTRIBUTE_REPARSE_POINT, S_ISREG
 
+from .arsim_smoke import SESSION_RECEIPT
 from .cycle_capture import materialize_cycle
-from .cycle_hmi import bind_session_scan_capture, review_cycle_hmi
+from .cycle_hmi import bind_session_scan_capture, check_session_receipt, review_cycle_hmi, status_run
 from .layout_svg import layout_svg_review
 from .launchpad_route import json_snapshot, launchpad_route_review
 from .mptraffic_events import read_project_events
@@ -336,7 +337,7 @@ def cycle_trace_review(project, configuration, cpu, manager_id, lpj, readback, n
                        captured_layout_checks=None, require_hold_through_reopen=False, release_total_event=None,
                        max_release_to_next_hold_scans=None, verify_scan_clock=False, max_position_sample_age_us=None,
                        max_release_to_next_hold_us=None, hmi_environment_report_path=None,
-                       require_traffic_mapping_lines=False):
+                       require_traffic_mapping_lines=False, require_hmi_session_receipt=False):
     report = launchpad_route_review(project, configuration, cpu, manager_id, lpj, readback, name_map, job_directory,
                                     include_stations=True)
     result = report["cycleTraceReview"] = {"state": "not_checked", "sourceStation": source_station}
@@ -353,6 +354,23 @@ def cycle_trace_review(project, configuration, cpu, manager_id, lpj, readback, n
             raise TraceIssue("cycle_trace_route", "The compiled route needs two station legs that close the cycle")
         identity = leg_identity(report, manager_id, outbound)
         trace, result["trace"] = json_snapshot(trace_path, TRACE_LIMIT)
+        if require_hmi_session_receipt and hmi_status_path is not None:
+            result["phase"] = "verify_session_receipt"
+            evidence_path = hmi_status_path
+            status_snapshot = json_snapshot(hmi_status_path, TRACE_LIMIT)
+            document, snapshot = status_snapshot
+            hmi_review = report["cycleHmiReview"]
+            hmi_review["statusReport"] = snapshot
+            try:
+                _, smoke = status_run(document, report["rucReview"])
+            except (AttributeError, KeyError, TypeError) as error:
+                raise ValueError("The status report has missing or malformed ARsim session fields") from error
+            evidence_path = Path(snapshot["path"]).with_name(SESSION_RECEIPT)
+            hmi_review["sessionReceipt"] = check_session_receipt(
+                evidence_path, smoke, code="cycle_hmi_session_receipt",
+            )
+            del result["phase"]
+            evidence_path = trace_path
         if require_session_capture and hmi_status_path is not None and isinstance(trace, dict):
             scan, hmi = trace.get("scanCapture"), trace.get("hmi", {})
             if scan_csv_path is None and (not isinstance(scan, dict) or not isinstance(hmi, dict)):
@@ -366,7 +384,8 @@ def cycle_trace_review(project, configuration, cpu, manager_id, lpj, readback, n
                         or not {"sessionId", "heartbeatIdentifier", "bindings"} <= hmi.keys()):
                     result["phase"] = "bind_session_scan"
                     evidence_path = hmi_status_path
-                    status_snapshot = json_snapshot(hmi_status_path, TRACE_LIMIT)
+                    if status_snapshot is None:
+                        status_snapshot = json_snapshot(hmi_status_path, TRACE_LIMIT)
                     trace, binding = bind_session_scan_capture(trace, status_snapshot[0], report["rucReview"])
                     if scan_csv_path is None:
                         evidence_path = Path(status_snapshot[1]["path"]).with_name(CAPTURE_COPY)
@@ -441,6 +460,8 @@ def cycle_trace_review(project, configuration, cpu, manager_id, lpj, readback, n
         severity = error.severity if isinstance(error, TraceIssue) else "error"
         code = error.code if isinstance(error, TraceIssue) else "cycle_trace_invalid"
         result["state"] = "incomplete" if severity == "warning" else "issues"
+        if result.get("phase") == "verify_session_receipt":
+            report["cycleHmiReview"]["state"] = "issues"
         report["diagnostics"].append({"scope": "cycle_trace", "severity": severity, "code": code,
                                       "path": evidence_path.as_posix(), "message": str(error)})
     else:

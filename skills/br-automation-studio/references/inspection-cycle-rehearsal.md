@@ -1,6 +1,6 @@
 # Rehearse one ACOPOS 6D inspection cycle with its HMI
 
-Use this workflow with br-studio 0.117.0 or later for a saved AS4 PC simulation project, a two-station LaunchPad route and a PLC-hosted mapp View page. Work in one run directory with a reviewed project and build as inputs. Keep installation paths, project identifiers and captures in the local run directory.
+Use this workflow with br-studio 0.118.0 or later for a saved AS4 PC simulation project, a two-station LaunchPad route and a PLC-hosted mapp View page. Work in one run directory with a reviewed project and build as inputs. Keep installation paths, project identifiers and captures in the local run directory.
 
 ## Qualify the project and build
 
@@ -140,6 +140,7 @@ Save as `cycle-request.json`. If the build retained a name map, supply the same 
     "launchPadReadback": "build/launchpad/readback.json",
     "trace": "cycle-trace.json",
     "hmiStatusReport": "session/status-response.json",
+    "requireHmiSessionReceipt": true,
     "requireHmiTrafficMappingLines": true,
     "verifyCapturedLayout": true,
     "verifyMappingLineEndpoints": true,
@@ -150,7 +151,7 @@ Save as `cycle-request.json`. If the build retained a name map, supply the same 
 }
 ```
 
-The review uses `scan-capture.csv` and `layout-assets/` beside the selected status response. Supply `scanCsv` explicitly when the retained scan copy is stored elsewhere. `requireHoldThroughReopen` requires consecutive held scans that reach the final direct heartbeat after the reopen. `requireHmiTrafficMappingLines` compares the recorded mapping lines in both browser documents with the cycle's compiled one-way mappings. `verifyCapturedLayout` checks the archived SVGs separately. Select the mapping checks for a supported one-way layout. Add motion checks when their source evidence is present and the test defines the expected values. [Cycle mapping-line check](cycle-trace-review.md#verify-the-cycles-rendered-mapping-lines)
+The review uses `session.json`, `scan-capture.csv` and `layout-assets/` beside the selected status response. The session comparison runs before the scan is bound to the response. Supply `scanCsv` explicitly when the retained scan copy is stored elsewhere. `requireHoldThroughReopen` requires consecutive held scans that reach the final direct heartbeat after the reopen. `requireHmiTrafficMappingLines` compares the recorded mapping lines in both browser documents with the cycle's compiled one-way mappings. `verifyCapturedLayout` checks the archived SVGs separately. Select the mapping checks for a supported one-way layout. Add motion checks when their source evidence is present and the test defines the expected values. [Session receipt check](cycle-trace-review.md#verify-the-retained-arsim-session-receipt) · [Cycle mapping-line check](cycle-trace-review.md#verify-the-cycles-rendered-mapping-lines)
 
 | Check | Request inputs | Evidence needed |
 | --- | --- | --- |
@@ -180,6 +181,6 @@ $LASTEXITCODE
 | Status | `result.arsimSmoke.sessionId`, retained scan SHA-256, both browser documents and cleanup |
 | Geometry | `result.layoutSvgReview.state`, assembly and manager, `statusCapture`, both SVG hashes, requested line and label results |
 | Cycle | `result.cycleTraceReview.state` and phase, derived hashes in `buildBinding`, milestone intervals in `scanTiming`, requested motion and release count checks |
-| Same-run HMI | `result.cycleHmiReview.state`, `scanCapture`, `holdCoverage`, `assemblyWidget`, `trafficMappings` and `layoutGeometry` |
+| Same-run HMI | `result.cycleHmiReview.state`, `sessionReceipt`, `scanCapture`, `holdCoverage`, `assemblyWidget`, `trafficMappings` and `layoutGeometry` |
 
 Record an incomplete scan window or unsupported SVG format with its diagnostic and the last accepted evidence. Keep the JSON receipts alongside the exact files they reference. The first rehearsal handoff covers the saved project, compiled build and observed simulation. Record hardware observations separately if they are later collected.

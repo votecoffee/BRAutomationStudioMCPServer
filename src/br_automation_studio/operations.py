@@ -331,6 +331,9 @@ def run_station_trace_review(arguments, request_directory):
 
 def run_cycle_trace_review(arguments, request_directory):
     status_report = arguments.get("hmiStatusReport")
+    require_session_receipt = arguments.get("requireHmiSessionReceipt", False)
+    if require_session_receipt and not status_report:
+        raise InvalidRequest("requireHmiSessionReceipt needs hmiStatusReport")
     environment_report = arguments.get("hmiEnvironmentReport")
     if environment_report and not status_report:
         raise InvalidRequest("hmiEnvironmentReport needs hmiStatusReport")
@@ -381,6 +384,7 @@ def run_cycle_trace_review(arguments, request_directory):
     return cycle_trace_review(*launchpad_inputs(arguments, request_directory), arguments["sourceStation"],
                               request_directory / arguments["trace"],
                               hmi_status_path=request_directory / status_report if status_report else None,
+                              require_hmi_session_receipt=require_session_receipt,
                               hmi_environment_report_path=request_directory / environment_report if environment_report else None,
                               scan_csv_path=request_directory / scan_csv if scan_csv else None,
                               require_session_capture=require_capture, expected_motion=expected_release_motion(arguments),
@@ -819,6 +823,8 @@ CYCLE_TRACE_REVIEW = Operation(
                     "description": "Recorded PLC scans. Strict review defaults to scan-capture.csv beside hmiStatusReport."},
         "hmiStatusReport": {"type": "string", "minLength": 1,
                             "description": "Completed arsim_status_smoke JSON for the same cycle RUC and session."},
+        "requireHmiSessionReceipt": {"type": "boolean", "default": False,
+                                     "description": "Match the runtime data in hmiStatusReport to session.json beside it before binding scan inputs."},
         "hmiEnvironmentReport": {"type": "string", "minLength": 1,
                                  "description": "Require matching bytes from this retained workstation report. Requires hmiStatusReport."},
         "requireSessionScanCapture": {"type": "boolean", "default": False,

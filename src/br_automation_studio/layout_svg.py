@@ -6,13 +6,13 @@ from pathlib import Path
 import re
 from xml.etree import ElementTree as ET
 
+from .arsim_smoke import SESSION_RECEIPT
 from .browser_smoke import ASSEMBLY_WIDGET, LAYOUT_ASSET_DIRECTORY, layout_asset_path, layout_asset_paths
-from .cycle_hmi import captured_layout_assets, hmi_run, status_run
+from .cycle_hmi import captured_layout_assets, check_session_receipt, hmi_run, status_run
 from .launchpad_baseline import json_snapshot
 from .launchpad_geometry import point
 from .launchpad_layout import GRID_MM, linked_layout, master_offsets, native_segments
 from .links import UnsupportedTrafficMapping, directed_svg_mapping_ids
-from .native_build import identity
 from .project import ProjectXml, SavedFiles, XML_LIMIT
 from .ruc_review import review_ruc
 from .station_trace import TRACE_LIMIT, TraceIssue
@@ -87,12 +87,7 @@ def captured_layout_inputs(report_snapshot, ruc, assembly, manager, *, combined=
                 or len(widgets) != 1 or widgets[0].get("className") != ASSEMBLY_WIDGET
                 or layout_asset_paths(widgets, dom_id) != urls):
             raise TraceIssue("layout_svg_hmi_widget", "The completed browser must show the selected assembly and Traffic Manager")
-        path = session_dir / "session.json"
-        if not path.is_file() or not path.resolve().is_relative_to(session_dir):
-            raise TraceIssue("layout_svg_hmi_session", "Keep the retained session.json beside the HMI report")
-        saved_session, session_receipt = json_snapshot(path, TRACE_LIMIT)
-        if identity(saved_session) != identity(smoke):
-            raise TraceIssue("layout_svg_hmi_session", "The HMI report and retained session.json identify different session data")
+        session_receipt = check_session_receipt(session_dir / SESSION_RECEIPT, smoke, code="layout_svg_hmi_session")
         provenance = {"sessionId": session, "assemblyWidgetId": dom_id,
                       "hmiReport": snapshot, "sessionReceipt": session_receipt}
         captures = captured_layout_assets(smoke, urls, code="layout_svg_hmi_capture")

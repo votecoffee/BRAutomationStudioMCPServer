@@ -8,7 +8,7 @@ from .browser_smoke import ASSEMBLY_WIDGET, http_status, layout_asset_paths, num
 from .hmi_smoke import HELD_STATUS_ROLES, check_samples
 from .json_io import json_snapshot
 from .links import UnsupportedTrafficMapping, directed_svg_mapping_ids
-from .native_build import RETAINED_ENVIRONMENT_REPORT, check_source
+from .native_build import RETAINED_ENVIRONMENT_REPORT, check_source, identity
 from .opcua_smoke import CURRENT_READ, INTEGER_NODE_TYPES
 from .runtime_capture import CAPTURE_COPY
 from .simulation_preflight import ENVIRONMENT_REPORT_LIMIT
@@ -58,6 +58,15 @@ def hmi_run(document, ruc, *, combined=False):
 
 def status_run(document, ruc):
     return hmi_run(document, ruc)
+
+
+def check_session_receipt(path, smoke, *, code):
+    if not path.is_file() or not path.resolve().is_relative_to(path.parent):
+        raise TraceIssue(code, "Keep the retained session.json beside the HMI report")
+    saved, snapshot = json_snapshot(path, TRACE_LIMIT)
+    if identity(saved) != identity(smoke):
+        raise TraceIssue(code, "The HMI report and retained session.json identify different session data")
+    return snapshot
 
 
 def check_run(document, ruc, trace, result):

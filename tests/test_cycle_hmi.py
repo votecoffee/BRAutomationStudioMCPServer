@@ -7,7 +7,10 @@ from tempfile import TemporaryDirectory
 import unittest
 from unittest.mock import Mock, patch
 
-from br_automation_studio.cycle_hmi import bind_session_scan_capture, check_cycle_hmi, check_layout_svg_pairing, review_cycle_hmi
+from br_automation_studio.cycle_hmi import (
+    bind_session_scan_capture, check_cycle_hmi, check_layout_svg_pairing, check_session_receipt, review_cycle_hmi,
+)
+from br_automation_studio.cycle_trace import cycle_trace_review
 from br_automation_studio.operations import InvalidRequest, execute
 from br_automation_studio.station_trace import TraceIssue
 
@@ -72,6 +75,41 @@ class CycleHmiTest(unittest.TestCase):
         with self.assertRaises(TraceIssue) as issue:
             self.check(require_capture=True)
         self.assertEqual(issue.exception.code, "cycle_hmi_scan_capture_missing")
+
+    def test_session_receipt_rejects_missing_or_changed_data_before_scan_identity_is_derived(self):
+        with TemporaryDirectory(dir=os.environ.get("BR_STUDIO_TEST_SCRATCH")) as scratch:
+            root = Path(scratch).resolve()
+            status, trace, session = (root / name for name in ("status-response.json", "trace.json", "session.json"))
+            status.write_text(json.dumps(self.document), encoding="utf-8")
+            trace.write_text(json.dumps(self.trace | {"scanCapture": {}}), encoding="utf-8")
+            original = (json.dumps(self.smoke, sort_keys=True, indent=4) + "\n").encode("utf-8")
+            session.write_bytes(original)
+            self.assertEqual(check_session_receipt(session, self.smoke, code="cycle_hmi_session_receipt"),
+                             {"path": str(session), "sha256": sha256(original).hexdigest()})
+
+            changed = deepcopy(self.smoke)
+            changed["hmi"]["browser"]["reopened"]["counterSamples"] = ["11", "13"]
+            for retained in (None, changed):
+                with self.subTest(retained=retained is not None):
+                    if retained is None:
+                        session.unlink()
+                    else:
+                        session.write_text(json.dumps(retained), encoding="utf-8")
+                    route = {"stationReview": {"state": "read", "legs": [None, None]},
+                             "rucReview": self.ruc, "diagnostics": []}
+                    with (patch("br_automation_studio.cycle_trace.launchpad_route_review", return_value=route),
+                          patch("br_automation_studio.cycle_trace.selected_leg",
+                                side_effect=[["Load", "Unload"], ["Unload", "Load"]]),
+                          patch("br_automation_studio.cycle_trace.leg_identity"),
+                          patch("br_automation_studio.cycle_trace.bind_session_scan_capture") as derive):
+                        report = cycle_trace_review(None, None, None, "Traffic", None, None, None, None,
+                                                    "Load", trace, hmi_status_path=status, require_session_capture=True,
+                                                    require_hmi_session_receipt=True)
+                    derive.assert_not_called()
+                    self.assertEqual(report["cycleHmiReview"]["state"], "issues")
+                    self.assertEqual(report["cycleTraceReview"]["phase"], "verify_session_receipt")
+                    self.assertEqual(report["diagnostics"][0]["code"], "cycle_hmi_session_receipt")
+                    self.assertEqual(report["diagnostics"][0]["path"], session.as_posix())
 
     def test_extended_hold_reaches_last_direct_heartbeat_after_reopen(self):
         self.assertNotIn("holdCoverage", self.check())
@@ -361,7 +399,7 @@ class CycleHmiTest(unittest.TestCase):
                          "cycle_hmi_environment_file_unbound")
         self.assertEqual(review()["cycleHmiReview"]["state"], "matched")
 
-    def test_explicit_workstation_file_requires_and_passes_the_status_response(self):
+    def test_hmi_evidence_options_require_and_pass_the_status_response(self):
         root = Path("workspace")
         request = {
             "schemaVersion": 1, "workspace": "test", "operation": "cycle_trace_review",
@@ -386,6 +424,14 @@ class CycleHmiTest(unittest.TestCase):
         with patch("br_automation_studio.operations.cycle_trace_review", return_value={"diagnostics": []}) as review:
             self.assertEqual(execute(request, root)["status"], "complete")
         self.assertTrue(review.call_args.kwargs["require_traffic_mapping_lines"])
+        del args["hmiStatusReport"], args["requireHmiTrafficMappingLines"]
+        args["requireHmiSessionReceipt"] = True
+        with self.assertRaisesRegex(InvalidRequest, "requireHmiSessionReceipt needs hmiStatusReport"):
+            execute(request, root)
+        args["hmiStatusReport"] = "session/status.json"
+        with patch("br_automation_studio.operations.cycle_trace_review", return_value={"diagnostics": []}) as review:
+            self.assertEqual(execute(request, root)["status"], "complete")
+        self.assertTrue(review.call_args.kwargs["require_hmi_session_receipt"])
 
     def test_same_package_needs_the_same_session_and_correct_capture_order(self):
         for fields, key, value, code in (

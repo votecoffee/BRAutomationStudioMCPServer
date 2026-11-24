@@ -135,6 +135,10 @@ With br-studio 0.92.0 or later, put `simulation-environment.json` beside the com
 
 Read `cycleHmiReview.environmentReportFile` for the path and SHA-256 after byte verification. When no explicit file is supplied and the adjacent copy is absent, the review can still compare the recorded identities. That comparison is recorded in `environmentReport`.
 
+## Verify the retained ARsim session receipt
+
+With br-studio 0.118.0 or later, set `requireHmiSessionReceipt: true` with `hmiStatusReport`. Archive the original `session.json` beside the completed status response. The reviewer checks the response against the selected build and compares the full parsed session with `result.arsimSmoke` before deriving scan inputs. A missing file or changed session data stops the cycle review at `verify_session_receipt`. On a match, `cycleHmiReview.sessionReceipt` records the file's path and SHA-256. [Combined request](inspection-cycle-rehearsal.md#review-the-saved-svgs-and-plc-scans)
+
 ## Use the status receipt for scan identity
 
 With br-studio 0.72.0 or later, set `requireSessionScanCapture: true` and supply `scanCsv` and `hmiStatusReport`. You can omit `scanCapture.sha256`, `hmi.sessionId`, or both. Keep the captured scan windows and column mapping, the HMI binding identifiers, and the LaunchPad and RUC hashes in the descriptor.

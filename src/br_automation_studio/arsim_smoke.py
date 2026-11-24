@@ -21,6 +21,7 @@ from .windows_network import endpoints
 from .windows_version import product_version
 
 HOST = "127.0.0.1"
+SESSION_RECEIPT = "session.json"
 WIDGET_BUNDLE_PATH = "/BRVisu/release/brease.js"
 WIDGET_BUNDLE_MEMBER = f"{VIEW}{WIDGET_BUNDLE_PATH}"
 WIDGET_MODULE = "widgets/mapp6D/Assembly6D/Assembly6D"
@@ -283,7 +284,7 @@ def arsim_smoke(project, job_dir, pvi, session_dir, timeout=30, runtime_probe=No
         check_free(profile["guardedPorts"])
 
         session_dir.mkdir()
-        receipt = session_dir / "session.json"
+        receipt = session_dir / SESSION_RECEIPT
         smoke.update(state="materializing", directory=str(session_dir), startedAt=utc_now(),
                      sessionId=str(uuid4()), packageSha256=job["package"]["sha256"], planSha256=plan["sha256"],
                      pvi={"path": str(pvi), "version": pvi_version, "sha256": fingerprint(pvi)}, profile=profile)
