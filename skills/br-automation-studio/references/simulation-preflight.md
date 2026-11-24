@@ -9,6 +9,8 @@ Use `simulation_preflight` with a saved project, an explicitly selected AS4 inst
 
 Choose the family from the expected project and hardware version set. The 2.4 row covers the earlier connection rehearsal with the reviewed 2.4.1 package. Use the 2.7 row for a project designed for 2.7 Traffic Manager behavior. [B&R AS4 system requirements](https://help.br-automation.com/#/en/4/motion/mapp_6d/allgemeines/systemvoraussetzung.html) · [2.4.1 release information](https://www.br-automation.com/en/downloads/software/automation-studio/tp-upgrades/v49-tp-upgrade-mapp6d-24110-revinfo/) · [B&R simulator catalog](https://www.br-automation.com/en-gb/downloads/mechatronic-systems/acopos-6d/planar-motor-simulation-tool/)
 
+The simulator catalog lists both `117.27.14` and `117.25.53` as of 2026-11-24. Select `117.25.53` for the reviewed AS4 2.7 row. AS4 Help also pairs 2.8 with `117.25.53` and specifies segment firmware `24-92` for that row. Use the technology package family and full compatibility row to choose the companion releases. [B&R simulator catalog](https://www.br-automation.com/en-gb/downloads/mechatronic-systems/acopos-6d/planar-motor-simulation-tool/) · [AS4 compatibility table](https://help.br-automation.com/#/en/4/motion/mapp_6d/allgemeines/systemvoraussetzung.html)
+
 ## Check the workstation before creating the project
 
 Use the [AS4 package media workflow](as4-package-media.md) to identify and review a staged installer before adding it to the workstation.
