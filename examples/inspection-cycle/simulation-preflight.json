@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "workspace": "inspection-cycle",
+  "operation": "simulation_preflight",
+  "arguments": {
+    "project": "source-project/Example.apj",
+    "studioRoot": "C:/Program Files/BRAutomation4/AS412",
+    "runtimeRoot": "C:/Program Files/BRAutomation4/AS/System",
+    "configuration": "ARsim",
+    "cpu": "PC",
+    "targetMapp6D": "2.7",
+    "simulatorZip": "media/PlanarMotorSimulatorV117.25.53.zip",
+    "controllerFirmwareZip": "media/117-025-053.zip",
+    "segmentFirmwareZip": "media/FlywayUpdateTool_v1_2_7_FW249F_AD2401.zip",
+    "maintenanceToolZip": "media/PMTool117.26.01.zip",
+    "environmentReport": "receipts/workstation.json",
+    "launchPadExport": "launchpad/export.x6d",
+    "verifyMotionDeclarations": true,
+    "verifyMpTrafficEnum": true,
+    "inspectLaunchPadExport": true
+  }
+}

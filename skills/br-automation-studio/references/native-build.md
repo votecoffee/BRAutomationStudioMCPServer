@@ -2,6 +2,43 @@
 
 Use `build_plan` and `build_execute` for a trusted saved project with an English AS4 installation, a shared AS4 Runtime catalog, and a selected configuration with one `PC_any` CPU. The workflow compiles for ARsim and creates an offline RUC archive. This scope matches the native test configuration.
 
+## Prepare the first matched simulation build
+
+Use the three requests below from one run directory. Adjust the Automation Studio and Runtime roots, saved project filename, configuration, CPU, selectors, and route and widget IDs to the reviewed target. The workstation example uses proposed AS4 2.7 selections. Update those fields when the exact vendor package builds are known. Keep the saved LaunchPad project, decoded readback and native export in `launchpad/`, the complete saved project in `source-project/`, the verified ZIPs in `media/` and the JSON responses in `receipts/`.
+
+| Request | Save its response | Review before continuing |
+| --- | --- | --- |
+| [Workstation check](../../../examples/inspection-cycle/workstation-check.json) | `receipts/workstation.json` | The exact three-package selection, simulator registration and the four media roles. |
+| [Saved-project preflight](../../../examples/inspection-cycle/simulation-preflight.json) | `receipts/simulation-preflight.json` | The project, CPU and Runtime, matched workstation receipt, native export and selected IEC declarations and MpTraffic definition. |
+| [Native build plan](../../../examples/inspection-cycle/build-plan.json) | `receipts/build-plan.json` | The plan SHA-256 and its workstation, project, route, widget, X/Y read axes, assembly limits and motion pins. |
+
+Copy the examples into the run root as `workstation-request.json`, `simulation-preflight-request.json` and `build-plan-request.json`. Run each stage with `br-studio run --request <request.json>` and retain the JSON response before selecting the next stage. Use the same saved project, CPU, native export and workstation receipt for preflight and planning. A blocked workstation or preflight calls for resolving the reported dependency. Review the diagnostics when the preflight reports `review_required` or the planner returns a plan with warnings. The plan can carry the selected IEC declarations, the six motion binaries and generated motion globals into package verification. [Workstation and project prerequisites](simulation-preflight.md)
+
+### Derive the execute request
+
+After reviewing the plan and its diagnostics, run the following in PowerShell 7 from the same directory as `build-plan-request.json`. Use an unused job directory outside the project and installation roots. Keep the request, plan response and original sources together.
+
+```powershell
+$request = Get-Content -Raw -LiteralPath ./build-plan-request.json | ConvertFrom-Json -AsHashtable
+$receipt = Get-Content -Raw -LiteralPath ./receipts/build-plan.json | ConvertFrom-Json -AsHashtable
+$planHash = $receipt.result.buildPlan.sha256
+if ($request.operation -ne 'build_plan' -or $planHash -cnotmatch '^[0-9a-f]{64}$') {
+    throw 'Select a reviewed build_plan request and its plan receipt'
+}
+$request.operation = 'build_execute'
+$request.arguments.planSha256 = $planHash
+$request.arguments.jobDirectory = 'build-job'
+$request.arguments.timeoutSeconds = 600
+$request | ConvertTo-Json -Depth 20 |
+    Set-Content -LiteralPath ./build-execute-request.json -Encoding utf8NoBOM
+```
+
+Run `br-studio run --request ./build-execute-request.json` and save its JSON response. The tool recalculates the plan before dispatch. Read `result.nativeBuild.status`, the compiler summary and the verified RUC checks. Keep the resulting job directory for package review and the HMI rehearsal.
+
+For `verifyMotionSymbols`, preserve the exact generated files named in `job.json` under `motionSymbols[].path`. Keep their paths relative to the copied job, including files under `temporary/Includes`. Package review compares these declarations with the job receipt. [Replay a relocated run](inspection-cycle-rehearsal.md#replay-a-relocated-run)
+
+The first-build examples exercised the blocked workstation and preflight responses and stopped at planning. A separate installed AS4.12 mapp 6D 2.2 control compiled with all six motion binaries and seven generated globals verified. Its archived RUC review passed with the generated files present. Separate receipt controls caught a missing file and a byte change to a generated declaration.
+
 ## Plan the build
 
 Create the same request as for [build preflight](build-preflight.md) with `operation` set to `build_plan`. Run `br-studio run --request <plan-request.json>` and inspect `result.buildPlan` plus the diagnostics. If `buildPlan` has a SHA-256, the manifest identifies the complete staged input tree and the reported Studio and Runtime read sets. The plan preserves the on-disk spelling of source paths. The root folders `Binaries`, `Temp`, `BuildOnly`, `TempOnly`, `.git` and `.local` are excluded from the stage.

@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "workspace": "inspection-cycle",
+  "operation": "build_plan",
+  "arguments": {
+    "project": "source-project/Example.apj",
+    "studioRoot": "C:/Program Files/BRAutomation4/AS412",
+    "runtimeRoot": "C:/Program Files/BRAutomation4/AS/System",
+    "configuration": "ARsim",
+    "cpu": "PC",
+    "environmentReport": "receipts/workstation.json",
+    "launchPadExport": "launchpad/export.x6d",
+    "verifyMotionDeclarations": true,
+    "verifyMpTrafficEnum": true,
+    "managerId": "ExampleTraffic",
+    "launchPadProject": "launchpad/source.lpj",
+    "launchPadReadback": "launchpad/readback.json",
+    "launchPadWidgetId": "Overview_PlanarDisplay",
+    "verifyLaunchPadLayout": true,
+    "verifyLaunchPadPositions": true,
+    "launchPadReadAxes": [
+      "X",
+      "Y"
+    ],
+    "verifyLaunchPadMotionLimits": true,
+    "verifyMotionPayloads": true,
+    "verifyMotionSymbols": true
+  }
+}
