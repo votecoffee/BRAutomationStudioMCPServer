@@ -6,11 +6,12 @@ from pathlib import Path
 import re
 from xml.etree import ElementTree as ET
 
-from .browser_smoke import LAYOUT_ASSET_DIRECTORY, layout_asset_path
-from .cycle_hmi import captured_layout_assets, status_run
+from .browser_smoke import ASSEMBLY_WIDGET, LAYOUT_ASSET_DIRECTORY, layout_asset_path, layout_asset_paths
+from .cycle_hmi import captured_layout_assets, hmi_run, status_run
 from .launchpad_baseline import json_snapshot
 from .launchpad_geometry import point
 from .launchpad_layout import GRID_MM, linked_layout, master_offsets, native_segments
+from .native_build import identity
 from .project import ProjectXml, SavedFiles, XML_LIMIT
 from .ruc_review import review_ruc
 from .station_trace import TRACE_LIMIT, TraceIssue
@@ -68,18 +69,39 @@ def svg_input(path, identity, *, session_dir=None, capture=None):
     return root, {"path": path.as_posix(), "sha256": digest}
 
 
-def status_layout_inputs(status_snapshot, ruc, assembly, manager):
-    document, snapshot = status_snapshot
-    _, smoke = status_run(document, ruc)
+def captured_layout_inputs(report_snapshot, ruc, assembly, manager, *, combined=False):
+    document, snapshot = report_snapshot
+    _, smoke = hmi_run(document, ruc, combined=True) if combined else status_run(document, ruc)
     session = smoke.get("sessionId")
     if not isinstance(session, str) or not session.strip():
-        raise ValueError("The status report needs its ARsim session ID")
+        raise ValueError("The HMI report needs its ARsim session ID" if combined else
+                         "The status report needs its ARsim session ID")
     urls = {"assembly": layout_asset_path(assembly), "trafficManager": layout_asset_path(manager)}
-    captures = captured_layout_assets(smoke, urls)
+    session_dir = Path(snapshot["path"]).parent
+    if combined:
+        browser = smoke["hmi"]["browser"]
+        dom_id = browser.get("assemblyWidgetId")
+        widgets = [row for row in ruc["widgets"] if f"{row['contentId']}_{row['id']}" == dom_id]
+        if (browser.get("state") != "complete" or browser.get("cleanup") != "empty"
+                or len(widgets) != 1 or widgets[0].get("className") != ASSEMBLY_WIDGET
+                or layout_asset_paths(widgets, dom_id) != urls):
+            raise TraceIssue("layout_svg_hmi_widget", "The completed browser must show the selected assembly and Traffic Manager")
+        path = session_dir / "session.json"
+        if not path.is_file() or not path.resolve().is_relative_to(session_dir):
+            raise TraceIssue("layout_svg_hmi_session", "Keep the retained session.json beside the HMI report")
+        saved_session, session_receipt = json_snapshot(path, TRACE_LIMIT)
+        if identity(saved_session) != identity(smoke):
+            raise TraceIssue("layout_svg_hmi_session", "The HMI report and retained session.json identify different session data")
+        provenance = {"sessionId": session, "assemblyWidgetId": dom_id,
+                      "hmiReport": snapshot, "sessionReceipt": session_receipt}
+        captures = captured_layout_assets(smoke, urls, code="layout_svg_hmi_capture")
+    else:
+        provenance = {"sessionId": session, "statusReport": snapshot}
+        captures = captured_layout_assets(smoke, urls)
     for role, asset in captures.items():
         if asset.get("file") != f"{LAYOUT_ASSET_DIRECTORY}/{role}.svg":
             raise TraceIssue("layout_svg_capture_file", f"The {role} capture needs its standard retained SVG filename")
-    return Path(snapshot["path"]).parent, captures, {"sessionId": session, "statusReport": snapshot}
+    return session_dir, captures, provenance
 
 
 def translation(node):
@@ -265,7 +287,8 @@ def check_traffic_labels(overlay, positions):
 
 
 def layout_svg_review(project, job, manager_id, assembly_svg, traffic_svg, *, hmi_status_path=None,
-                      verify_mapping_line_endpoints=False, verify_traffic_labels=False, status_snapshot=None):
+                      hmi_report_path=None, verify_mapping_line_endpoints=False, verify_traffic_labels=False,
+                      status_snapshot=None):
     report = review_ruc(project, job, geometry_manager=manager_id, include_layout=True, include_saved_geometry=True)
     ruc = report["rucReview"]
     result = report["layoutSvgReview"] = {"state": "not_checked", "managerId": manager_id,
@@ -283,6 +306,7 @@ def layout_svg_review(project, job, manager_id, assembly_svg, traffic_svg, *, hm
         return report
 
     path = project
+    capture_path = hmi_report_path or hmi_status_path
     try:
         managers = [row for row in ruc["trafficManagers"] if row["manager"] == manager_id]
         if len(managers) != 1:
@@ -300,11 +324,14 @@ def layout_svg_review(project, job, manager_id, assembly_svg, traffic_svg, *, hm
             raise ValueError("Saved and compiled traffic object positions differ")
         mappings = directed_ids(manager["edges"])
         session_dir, captures = None, {}
-        if hmi_status_path is not None:
-            path = hmi_status_path
-            if status_snapshot is None:
-                status_snapshot = json_snapshot(path, TRACE_LIMIT)
-            session_dir, captures, provenance = status_layout_inputs(status_snapshot, ruc, assembly, manager_id)
+        if capture_path is not None:
+            path = capture_path
+            snapshot = status_snapshot if hmi_status_path is not None else None
+            if snapshot is None:
+                snapshot = json_snapshot(path, TRACE_LIMIT)
+            session_dir, captures, provenance = captured_layout_inputs(
+                snapshot, ruc, assembly, manager_id, combined=hmi_report_path is not None,
+            )
             assembly_svg = session_dir / captures["assembly"]["file"]
             traffic_svg = session_dir / captures["trafficManager"]["file"]
         path = assembly_svg
@@ -316,8 +343,8 @@ def layout_svg_review(project, job, manager_id, assembly_svg, traffic_svg, *, hm
         root, result["assets"]["trafficManager"] = svg_input(
             path, manager_id, session_dir=session_dir, capture=captures.get("trafficManager"),
         )
-        if hmi_status_path is not None:
-            result["statusCapture"] = provenance
+        if capture_path is not None:
+            result["hmiCapture" if hmi_report_path is not None else "statusCapture"] = provenance
         overlay = svg_group(root, manager_id, "traffic-manager")
         if "transform" in overlay.attrib:
             raise UnsupportedLayout("The Traffic Manager group must share the SVG coordinate frame")
@@ -360,7 +387,10 @@ def layout_svg_review(project, job, manager_id, assembly_svg, traffic_svg, *, hm
         result["state"] = "unverified"
         return report
     except (AttributeError, KeyError, TypeError) as error:
-        message = "The status report has missing or malformed layout capture fields" if path == hmi_status_path else str(error)
+        message = str(error)
+        if path == capture_path:
+            name = "HMI report" if hmi_report_path is not None else "status report"
+            message = f"The {name} has missing or malformed layout capture fields"
         issue("layout_svg_mismatch", path, message)
     except (OSError, RuntimeError, ValueError, OverflowError) as error:
         issue(error.code if isinstance(error, TraceIssue) else "layout_svg_mismatch", path, str(error))

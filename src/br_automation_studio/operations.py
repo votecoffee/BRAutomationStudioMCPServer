@@ -259,13 +259,16 @@ def run_layout_device_review(arguments, request_directory):
 
 def run_layout_svg_review(arguments, request_directory):
     status_report = arguments.get("hmiStatusReport")
+    hmi_report = arguments.get("hmiReport")
     assembly, traffic = (arguments.get(key) for key in ("assemblySvg", "trafficSvg"))
-    if (status_report and (assembly or traffic)) or (not status_report and not (assembly and traffic)):
-        raise InvalidRequest("Supply hmiStatusReport or both assemblySvg and trafficSvg")
+    modes = sum(item is not None for item in (status_report, hmi_report, assembly or traffic))
+    if modes != 1 or (assembly is None) != (traffic is None):
+        raise InvalidRequest("Supply one of hmiReport, hmiStatusReport or both assemblySvg and trafficSvg")
     return layout_svg_review(project_path(arguments, request_directory), request_directory / arguments["jobDirectory"],
                              arguments["managerId"], request_directory / assembly if assembly else None,
                              request_directory / traffic if traffic else None,
                              hmi_status_path=request_directory / status_report if status_report else None,
+                             hmi_report_path=request_directory / hmi_report if hmi_report else None,
                              verify_mapping_line_endpoints=arguments.get("verifyMappingLineEndpoints", False),
                              verify_traffic_labels=arguments.get("verifyTrafficLabels", False))
 
@@ -733,6 +736,8 @@ LAYOUT_SVG_REVIEW = Operation(
         "managerId": {"type": "string", "minLength": 1, "description": "Selected Traffic Manager element ID."},
         "assemblySvg": {"type": "string", "minLength": 1, "description": "Retained assembly SVG file. Supply with trafficSvg for explicit-file review."},
         "trafficSvg": {"type": "string", "minLength": 1, "description": "Retained Traffic Manager SVG file. Supply with assemblySvg for explicit-file review."},
+        "hmiReport": {"type": "string", "minLength": 1,
+                      "description": "Completed arsim_hmi_smoke JSON beside session.json and layout-assets/. Supply in place of explicit SVG paths."},
         "hmiStatusReport": {"type": "string", "minLength": 1,
                             "description": "Completed arsim_status_smoke JSON beside layout-assets/. Supply in place of assemblySvg and trafficSvg."},
         "verifyMappingLineEndpoints": {"type": "boolean", "default": False,

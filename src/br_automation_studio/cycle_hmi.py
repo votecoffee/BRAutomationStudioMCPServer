@@ -26,27 +26,37 @@ def read_only(node):
                for key in ("accessLevel", "userAccessLevel"))
 
 
-def status_run(document, ruc):
+def hmi_run(document, ruc, *, combined=False):
+    operation = "arsim_hmi_smoke" if combined else "arsim_status_smoke"
+    evidence = "arsim_loopback_hmi" if combined else "arsim_loopback_status"
+    diagnostic = "layout_svg_hmi" if combined else "cycle_hmi"
+    name = "HMI report" if combined else "status report"
+    review = "layout review" if combined else "cycle review"
     if (not isinstance(document, dict) or type(document.get("schemaVersion")) is not int or document["schemaVersion"] != 1
-            or document.get("operation") != "arsim_status_smoke" or document.get("status") != "complete"):
-        raise ValueError("Supply a complete schemaVersion 1 arsim_status_smoke JSON response")
+            or document.get("operation") != operation or document.get("status") != "complete"):
+        raise ValueError(f"Supply a complete schemaVersion 1 {operation} JSON response")
     receipt = document["result"]
-    if receipt["evidence"] != "arsim_loopback_status" or receipt["diagnostics"]:
-        raise ValueError("The status report needs a successful loopback status check")
+    if receipt["evidence"] != evidence or receipt["diagnostics"]:
+        check = "HMI" if combined else "status"
+        raise ValueError(f"The {name} needs a successful loopback {check} check")
     reviewed, smoke = receipt["rucReview"], receipt["arsimSmoke"]
     package = ruc["archive"]["sha256"]
     if (reviewed["archive"]["sha256"] != package or smoke["packageSha256"] != package
             or any(reviewed[key] != ruc[key] for key in ("jobId", "planSha256"))
             or smoke["planSha256"] != ruc["planSha256"] or reviewed["sourceMatched"] is not True):
-        raise TraceIssue("cycle_hmi_package_mismatch", "The status report and cycle review identify different builds or RUCs")
+        raise TraceIssue(f"{diagnostic}_package_mismatch", f"The {name} and {review} identify different builds or RUCs")
     environment = ruc.get("environmentReport")
     if any("environmentReport" in receipt and receipt["environmentReport"] != environment
            for receipt in (reviewed, smoke)):
-        raise TraceIssue("cycle_hmi_environment_mismatch",
-                         "The status report records a different workstation package review than the selected RUC")
+        raise TraceIssue(f"{diagnostic}_environment_mismatch",
+                         f"The {name} records a different workstation package review than the selected RUC")
     if smoke["state"] != "complete" or smoke["cleanup"] != "empty" or smoke["hmi"]["state"] != "complete":
         raise ValueError("The ARsim runtime and HMI check must complete with verified cleanup")
     return reviewed, smoke
+
+
+def status_run(document, ruc):
+    return hmi_run(document, ruc)
 
 
 def check_run(document, ruc, trace, result):
@@ -260,21 +270,21 @@ def check_assembly_widget(ruc, reviewed, browser, route, result):
     widget_result["state"] = "matched"
 
 
-def captured_layout_assets(smoke, paths):
+def captured_layout_assets(smoke, paths, *, code="cycle_hmi_layout_capture"):
     browser = smoke["hmi"]["browser"]
     capture = browser.get("layoutCapture", {})
     owner = capture.get("ownedListener", {})
     if (capture.get("state") != "complete" or not isinstance(owner, dict) or owner not in smoke.get("ownedEndpoints", [])
             or owner.get("protocol") != "tcp" or owner.get("address") != HOST
             or not integer(owner.get("port"), 1) or browser.get("url") != f"http://{HOST}:{owner['port']}/"):
-        raise TraceIssue("cycle_hmi_layout_capture", "The HMI report needs SVGs captured from its owned HTTP listener")
+        raise TraceIssue(code, "The HMI report needs SVGs captured from its owned HTTP listener")
     assets = {}
     for role, path in paths.items():
         retained = capture.get("assets", {}).get(role, {})
         digest = retained.get("sha256")
         if (path is None or retained.get("path") != path or http_status(retained.get("status")) != 200
                 or not integer(retained.get("bytes"), 1) or not isinstance(digest, str) or not SHA256.fullmatch(digest)):
-            raise TraceIssue("cycle_hmi_layout_capture", f"The HMI report needs a complete capture of the {role} SVG")
+            raise TraceIssue(code, f"The HMI report needs a complete capture of the {role} SVG")
         assets[role] = retained
     return assets
 
@@ -298,7 +308,7 @@ def pair_layout_geometry(ruc, smoke, reviewed, result):
     widget = result["assemblyWidget"]
     if svg["assemblyId"] != widget["assembly"] or svg["managerId"] != widget["manager"]:
         raise TraceIssue("cycle_hmi_layout_route", "The layout SVG review identifies a different assembly or Traffic Manager")
-    if "statusCapture" in svg and svg["statusCapture"].get("sessionId") != smoke.get("sessionId"):
+    if any(key in svg and svg[key].get("sessionId") != smoke.get("sessionId") for key in ("statusCapture", "hmiCapture")):
         raise TraceIssue("cycle_hmi_layout_session", "The layout SVG review and cycle identify different HMI sessions")
     for role, retained in captured_layout_assets(smoke, widget["layoutPaths"]).items():
         digest = retained["sha256"]

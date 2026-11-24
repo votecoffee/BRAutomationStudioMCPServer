@@ -1,4 +1,5 @@
 
+from copy import deepcopy
 from gzip import compress
 from hashlib import file_digest, sha256
 import json
@@ -534,8 +535,41 @@ position-x-mm="0" position-y-mm="0" transform="translate(0 -240)"><g>
         self.assertIn("HMI capture session fixture-generation", markdown(bound))
         with self.assertRaises(InvalidRequest):
             execute(bound_request | {"arguments": bound_request["arguments"] | {"assemblySvg": assembly.name}}, self.root)
+
+        panel = deepcopy(status)
+        panel["operation"] = "arsim_hmi_smoke"
+        panel["result"]["evidence"] = "arsim_loopback_hmi"
+        panel_smoke = panel["result"]["arsimSmoke"]
+        panel_smoke["sessionId"] = "panel-generation"
+        panel_browser = panel_smoke["hmi"]["browser"]
+        panel_browser.update(state="complete", cleanup="empty", assemblyWidgetId="DemoOverview_LoopOverview")
+        panel_path = session / "panel.json"
+        session_path = session / "session.json"
+        panel_path.write_text(json.dumps(panel), encoding="utf-8")
+        session_path.write_text(json.dumps(panel_smoke, indent=2), encoding="utf-8")
+        panel_request = request | {"arguments": bound_arguments | {"hmiReport": panel_path.relative_to(self.root).as_posix()}}
+        review = execute(panel_request, self.root)
+        self.assertEqual(review["status"], "complete", review)
+        capture = review["result"]["layoutSvgReview"]["hmiCapture"]
+        self.assertEqual(capture["sessionId"], "panel-generation")
+        self.assertEqual(capture["assemblyWidgetId"], "DemoOverview_LoopOverview")
+        self.assertEqual(capture["hmiReport"]["sha256"], sha256(panel_path.read_bytes()).hexdigest())
+        self.assertEqual(capture["sessionReceipt"]["sha256"], sha256(session_path.read_bytes()).hexdigest())
+        self.assertIn("HMI capture session panel-generation", markdown(review))
+        with self.assertRaises(InvalidRequest):
+            execute(panel_request | {"arguments": panel_request["arguments"] | {"hmiStatusReport": str(status_path)}}, self.root)
+
+        session_path.write_text(json.dumps(panel_smoke | {"sessionId": "other-generation"}), encoding="utf-8")
+        self.assertEqual(self.codes(execute(panel_request, self.root)), ["layout_svg_hmi_session"])
+        session_path.write_text(json.dumps(panel_smoke), encoding="utf-8")
+        panel_browser["assemblyWidgetId"] = "Missing_Assembly"
+        panel_path.write_text(json.dumps(panel), encoding="utf-8")
+        self.assertEqual(self.codes(execute(panel_request, self.root)), ["layout_svg_hmi_widget"])
+        panel_browser["assemblyWidgetId"] = "DemoOverview_LoopOverview"
+        panel_path.write_text(json.dumps(panel), encoding="utf-8")
         (assets / "trafficManager.svg").write_bytes(b"changed before parsing")
         self.assertEqual(self.codes(execute(bound_request, self.root)), ["layout_svg_capture_hash"])
+        self.assertEqual(self.codes(execute(panel_request, self.root)), ["layout_svg_capture_hash"])
         for original, replacement, code in (
             (">Transit</text>", ">Inspect</text>", "layout_svg_label_text"),
             ('translate(100 -20)"><text', 'translate(101 -20)"><text', "layout_svg_label_anchor"),

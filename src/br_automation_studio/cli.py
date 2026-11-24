@@ -657,6 +657,10 @@ def markdown_layout_svg(review, text):
         lines.append(f"- Assembly {text(review['assemblyId'])} · Layout {text(review['layoutId'])}")
     if capture := review.get("statusCapture"):
         lines.append(f"- HMI capture session {text(capture['sessionId'])} · Status SHA-256 {capture['statusReport']['sha256']}")
+    if capture := review.get("hmiCapture"):
+        lines.append(f"- HMI capture session {text(capture['sessionId'])} · Widget {text(capture['assemblyWidgetId'])}")
+        lines.append(f"- HMI report SHA-256 {capture['hmiReport']['sha256']}"
+                     f" · Session receipt SHA-256 {capture['sessionReceipt']['sha256']}")
     for row in review["assets"].values():
         lines.append(f"- {text(row['path'])} · SHA-256 {row['sha256']}")
     if "segments" in review:

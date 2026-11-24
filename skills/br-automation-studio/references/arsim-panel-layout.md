@@ -1,6 +1,6 @@
 # Rehearse the Assembly6D panel layout
 
-Use this workflow with br-studio 0.114.0 or later on a trusted, source-matched AS4 PC simulation build. It checks the PLC counter binding, selected Assembly6D widget, startup content, widget bundle and Traffic Manager label layout in one ARsim session. Both browser documents use the chosen panel viewport. [Combined HMI workflow](arsim-hmi-smoke.md)
+Use this workflow with br-studio 0.115.0 or later on a trusted, source-matched AS4 PC simulation build. It checks the PLC counter binding, selected Assembly6D widget, startup content, widget bundle and Traffic Manager label layout in one ARsim session. Both browser documents use the chosen panel viewport. [Combined HMI workflow](arsim-hmi-smoke.md)
 
 ## Run the panel check
 
@@ -50,7 +50,7 @@ When comparing two viewport sizes, use the same build, widget, binding and limit
 
 ## Review the captured layout
 
-Save this example as `panel-geometry.json`. Use the same saved project and retained build, the linked Traffic Manager ID, and both SVG paths from the completed panel receipt. Verify each file's SHA-256 against the recorded capture before reviewing the two files against the compiled manager.
+Save the completed HMI JSON beside `session.json` and `layout-assets/` in the session folder. Move all three together when archiving a run. Save this example as `panel-geometry.json`. Use the same saved project and retained build, the linked Traffic Manager ID, and the completed HMI report.
 
 ```json
 {
@@ -61,12 +61,11 @@ Save this example as `panel-geometry.json`. Use the same saved project and retai
     "project": "C:/Projects/Example/Example.apj",
     "jobDirectory": "C:/BuildJobs/example-arsim-001",
     "managerId": "PanelTraffic",
-    "assemblySvg": "C:/BuildJobs/example-panel-001/layout-assets/assembly.svg",
-    "trafficSvg": "C:/BuildJobs/example-panel-001/layout-assets/trafficManager.svg",
+    "hmiReport": "C:/BuildJobs/example-panel-001/panel-smoke-report.json",
     "verifyMappingLineEndpoints": true,
     "verifyTrafficLabels": true
   }
 }
 ```
 
-Run `br-studio run --request panel-geometry.json`. Review the matched layout, mapping endpoints and label anchors. Use the intended panel and the version-matched project for the visual and live Traffic Manager acceptance checks. [Generated layout workflow](layout-svg-review.md)
+Run `br-studio run --request panel-geometry.json`. The review verifies the build, widget, session and captured SVG hashes before comparing layout geometry. Check `layoutSvgReview.hmiCapture`, the mapping endpoints and the label anchors. Use the intended panel and the version-matched project for the visual and live Traffic Manager acceptance checks. [Generated layout workflow](layout-svg-review.md#read-the-svgs-beside-the-combined-hmi-response)

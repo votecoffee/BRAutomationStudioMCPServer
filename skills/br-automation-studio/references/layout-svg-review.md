@@ -39,6 +39,12 @@ For a cycle and held-status review, supply this operation's complete JSON output
 
 Use the [coordinate frame workflow](launchpad-frame-review.md#trace-the-coordinates-into-the-hmi) when the review also needs to trace the positions to a saved LaunchPad model.
 
+## Read the SVGs beside the combined HMI response
+
+With br-studio 0.115.0 or later, supply `hmiReport` for a completed `arsim_hmi_smoke` response with `captureLayoutAssets` enabled. Keep the HMI JSON beside that session's `session.json` and `layout-assets/`. Use the same saved project, job directory and Traffic Manager in the review request. [Panel layout request](arsim-panel-layout.md#review-the-captured-layout)
+
+The review checks the saved and compiled build, selected Assembly6D widget links, matching session data, captured HTTP listener and both SVG hashes and byte counts. Read `layoutSvgReview.hmiCapture` for the session ID, widget ID and the hashes of the HMI report and session receipt. Use the explicit-file request for independent SVGs.
+
 ## Read the SVGs beside the status response
 
 With br-studio 0.76.0 or later, set `hmiStatusReport` in the layout request and omit `assemblySvg` and `trafficSvg`. Use the completed `arsim_status_smoke` response for the selected build. Keep `layout-assets/assembly.svg` and `layout-assets/trafficManager.svg` under the response's directory. Move the response and layout folder together when archiving the run. [Inspection rehearsal request](inspection-cycle-rehearsal.md#review-the-saved-svgs-and-plc-scans)
