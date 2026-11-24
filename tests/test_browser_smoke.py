@@ -12,6 +12,7 @@ from br_automation_studio.browser_smoke import (
     ASSEMBLY_WIDGET, Page, assembly_dom_id, capture_layout_assets, debug_listener, expected_traffic_labels,
     layout_asset_paths, verify_navigation,
 )
+from br_automation_studio.operations import InvalidRequest, execute
 
 URL = "http://127.0.0.1:18081/"
 
@@ -286,12 +287,12 @@ class TestBrowserSmoke(unittest.TestCase):
     @patch("br_automation_studio.browser_smoke.time.sleep")
     @patch("br_automation_studio.browser_smoke.time.monotonic", side_effect=range(8))
     def test_reopened_traffic_labels_require_unique_visible_matching_text(self, now, pause):
-        label = {"count": 1, "visible": True, "text": "S1"}
+        label = {"count": 1, "visible": True, "text": "S1", "widthCssPx": 8, "heightCssPx": 4}
         paths = {"trafficManager": "/FileDevice:6DData/T.svg"}
         layout = {"boundedSvgCount": 1, "statuses": {"trafficManager": 200}}
 
         def seen(value, origin, row=label):
-            return dict(hmi(value, origin), layout=layout, trafficLabels={"S1": row})
+            return dict(hmi(value, origin), layout=layout, trafficLabels={"labels": {"S1": row}})
 
         page = Mock(deadline=7)
         page.read.side_effect = [
@@ -304,9 +305,51 @@ class TestBrowserSmoke(unittest.TestCase):
             verify_navigation(page, URL, receipt)
         self.assertEqual(receipt["initial"]["trafficLabels"]["state"], "observed")
         self.assertEqual(receipt["reopened"]["layout"]["state"], "observed")
+        reopened = receipt["reopened"]["trafficLabels"]
+        self.assertEqual(reopened["state"], "unverified")
+        self.assertEqual(reopened["labels"], {"S1": dict(label, visible=False)})
+        self.assertIsNone(reopened["minObservedHeightCssPx"])
+
+    @patch("br_automation_studio.browser_smoke.time.sleep")
+    @patch("br_automation_studio.browser_smoke.time.monotonic", side_effect=range(8))
+    def test_reopened_label_height_checked_at_full_precision(self, now, pause):
+        viewport = {"widthCssPx": 800, "heightCssPx": 600, "devicePixelRatio": 1}
+        good = {"count": 1, "visible": True, "text": "S1", "widthCssPx": 12, "heightCssPx": 5}
+        short = dict(good, heightCssPx=4.999)
+
+        def seen(value, origin, row):
+            return dict(hmi(value, origin), trafficLabels={"viewport": viewport, "labels": {"S1": row}})
+
+        page = Mock(deadline=7)
+        page.read.side_effect = [
+            seen("1", 10, good), seen("2", 10, good), seen("3", 10, good),
+            {"url": "about:blank", "timeOrigin": 11},
+            seen("100", 10, good), seen("4", 12, short), seen("5", 12, short),
+        ]
+        receipt = dict(self.receipt(), expectedTrafficLabels=["S1"], minimumTrafficLabelHeightCssPx=5)
+        with self.assertRaisesRegex(TimeoutError, "below 5 CSS px: S1"):
+            verify_navigation(page, URL, receipt)
+        self.assertEqual(receipt["initial"]["trafficLabels"]["minObservedHeightCssPx"], 5)
         self.assertEqual(receipt["reopened"]["trafficLabels"], {
-            "state": "unverified", "labels": {"S1": dict(label, visible=False)},
+            "state": "below_minimum", "labels": {"S1": short}, "viewport": viewport,
+            "minObservedHeightCssPx": 4.999, "belowMinimum": ["S1"],
         })
+
+    @patch("br_automation_studio.operations.arsim_smoke", return_value={"diagnostics": []})
+    def test_browser_request_accepts_positive_integer_label_height_without_explicit_label_check(self, smoke):
+        arguments = {"project": "Demo.apj", "jobDirectory": "job", "pviTransfer": "pvi.exe",
+                     "sessionDirectory": "session", "browserExecutable": "chrome.exe",
+                     "counterWidgetId": "Count", "minimumTrafficLabelHeightCssPx": 5}
+        request = {"schemaVersion": 1, "workspace": "test", "operation": "arsim_browser_smoke",
+                   "arguments": arguments}
+        self.assertEqual(execute(request, Path("."))["status"], "complete")
+        self.assertEqual(smoke.call_args.args[-1].minimum_label_height, 5)
+        self.assertTrue(smoke.call_args.kwargs["start_widget"].require_traffic_details)
+        for rejected in (0, -1, True, 2.5):
+            with self.subTest(value=rejected), self.assertRaisesRegex(InvalidRequest, "integer at least 1"):
+                arguments["minimumTrafficLabelHeightCssPx"] = rejected
+                execute(request, Path("."))
+        self.assertEqual(smoke.call_count, 1)
 
     @patch("br_automation_studio.browser_smoke.endpoints")
     def test_debugger_requires_owned_ipv4_loopback(self, endpoints):

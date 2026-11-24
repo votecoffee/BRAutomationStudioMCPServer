@@ -58,6 +58,8 @@ Use the two captured SVGs with `layout_svg_review` on the same job to check the 
 
 Set `requireTrafficLabels` to `true` in br-studio 0.107.0 or later to require the compiled station and waypoint names to appear as visible SVG text inside the Assembly6D widget in each browser document. This includes `requireTrafficDetails` and `requireLayoutAssets`. Set `captureLayoutAssets` separately when you also need the SVG files. [Browser label check](arsim-browser-smoke.md#verify-the-station-and-waypoint-labels-in-chrome)
 
+Set `minimumTrafficLabelHeightCssPx` to enable the label check and enforce a project-selected minimum in both browser documents. The same option works with `arsim_status_smoke` and `arsim_browser_smoke`. [Label size evidence](arsim-browser-smoke.md#check-label-size)
+
 ## Read the evidence
 
 1. Confirm the binding, compiled default visualization, 6D configuration and rendered Assembly6D links belong to the same completed build. A binding or default visualization mismatch stops before runtime materialization.

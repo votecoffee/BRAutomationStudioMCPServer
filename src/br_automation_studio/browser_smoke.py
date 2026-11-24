@@ -114,12 +114,26 @@ def expected_traffic_labels(reviewed, start):
     return sorted(names)
 
 
-def traffic_label_observation(value, expected):
-    observed = value if isinstance(value, dict) else {}
+def traffic_label_observation(value, expected, minimum_height=None):
+    value = value if isinstance(value, dict) else {}
+    observed = value.get("labels")
+    observed = observed if isinstance(observed, dict) else {}
     labels = {name: observed.get(name) for name in expected}
-    state = "observed" if all(row == {"count": 1, "text": name, "visible": True}
-                              for name, row in labels.items()) else "unverified"
-    return {"state": state, "labels": labels}
+    heights = {}
+    for name, row in labels.items():
+        if not isinstance(row, dict) or row.get("count") != 1 or row.get("text") != name or row.get("visible") is not True:
+            continue
+        height = row.get("heightCssPx")
+        if type(height) in (float, int) and height > 0 and isfinite(height):
+            heights[name] = height
+    below = [] if minimum_height is None else [name for name, height in heights.items() if height < minimum_height]
+    state = "observed"
+    if len(heights) != len(labels):
+        state = "unverified"
+    elif below:
+        state = "below_minimum"
+    return {"state": state, "labels": labels, "viewport": value.get("viewport"),
+            "minObservedHeightCssPx": min(heights.values(), default=None), "belowMinimum": below}
 
 
 def seconds_left(deadline):
@@ -261,20 +275,24 @@ def widget_expression(assembly, counter, layout_paths=None, status_widgets=(), *
             for (const node of assembly.querySelectorAll('svg g.traffic-manager text[id]')) {{
                 if (node.namespaceURI === 'http://www.w3.org/2000/svg') labels.get(node.id)?.push(node);
             }}
-            const visible = (node) => {{
-                const rect = node.getBoundingClientRect();
+            const visible = (node, rect) => {{
                 if (rect.width <= 0 || rect.height <= 0 || getComputedStyle(node).visibility !== 'visible') return false;
                 for (let parent = node; parent; parent = parent.parentElement) {{
                     if (getComputedStyle(parent).opacity === '0') return false;
                 }}
                 return true;
             }};
-            return Object.fromEntries(labelNames.map(name => {{
-                const matches = labels.get('label_' + name);
-                const node = matches.length === 1 ? matches[0] : null;
-                return [name, {{count: matches.length, text: node?.textContent.trim() ?? null,
-                                visible: node ? visible(node) : false}}];
-            }}));
+            return {{
+                viewport: {{widthCssPx: innerWidth, heightCssPx: innerHeight, devicePixelRatio}},
+                labels: Object.fromEntries(labelNames.map(name => {{
+                    const matches = labels.get('label_' + name);
+                    const node = matches.length === 1 ? matches[0] : null;
+                    const rect = node?.getBoundingClientRect();
+                    return [name, {{count: matches.length, text: node?.textContent.trim() ?? null,
+                                    visible: node ? visible(node, rect) : false,
+                                    widthCssPx: rect?.width ?? null, heightCssPx: rect?.height ?? null}}];
+                }}))
+            }};
         }})() : null;
         return {{
             ...resources,
@@ -316,7 +334,7 @@ def check_document_status(state, receipt, expected):
 
 def collect_samples(page, expression, url, receipt, count, prior_origins=(), after=Decimal(0),
                     *, layout_paths=None, require_layout=False, check_assembly=True, expected_status=None,
-                    resource_paths=None, traffic_labels=()):
+                    resource_paths=None, traffic_labels=(), minimum_label_height=None):
     latest = after
     resource_paths = resource_paths or {}
     while time.monotonic() < page.deadline:
@@ -332,7 +350,8 @@ def collect_samples(page, expression, url, receipt, count, prior_origins=(), aft
             if layout_paths:
                 receipt["layout"] = layout_observation(result.get("layout"), layout_paths)
             if traffic_labels:
-                receipt["trafficLabels"] = traffic_label_observation(result.get("trafficLabels"), traffic_labels)
+                receipt["trafficLabels"] = traffic_label_observation(
+                    result.get("trafficLabels"), traffic_labels, minimum_label_height)
             for key, path in resource_paths.items():
                 receipt[key] = resource_observation(result.get(key), path)
             value = result.get("value")
@@ -354,8 +373,13 @@ def collect_samples(page, expression, url, receipt, count, prior_origins=(), aft
                 raise TimeoutError(f"A successful same-origin mapp View {RESOURCE_LABELS[key]} request was not verified")
         if require_layout and receipt.get("layout", {}).get("state") != "observed":
             raise TimeoutError("Successful 6DData SVG requests and an inline SVG with layout bounds were not verified")
-        if traffic_labels and receipt["trafficLabels"]["state"] != "observed":
-            raise TimeoutError("The expected station and waypoint labels were not verified in the Assembly6D widget")
+        if traffic_labels:
+            observed = receipt["trafficLabels"]
+            if observed["state"] == "below_minimum":
+                names = ", ".join(observed["belowMinimum"])
+                raise TimeoutError(f"Traffic label heights below {minimum_label_height} CSS px: {names}")
+            if observed["state"] != "observed":
+                raise TimeoutError("The expected station and waypoint labels were not verified in the Assembly6D widget")
     if expected_status:
         raise TimeoutError("The expected displayed status values and changing numeric counter were not verified")
     raise TimeoutError("The displayed Assembly6D and changing numeric counter were not verified")
@@ -375,7 +399,8 @@ def verify_navigation(page, url, receipt):
     assembly = receipt["assemblyWidgetId"]
     labels = receipt.get("expectedTrafficLabels", ())
     options = {"layout_paths": paths, "require_layout": required, "check_assembly": assembly is not None,
-               "expected_status": expected, "resource_paths": resources, "traffic_labels": labels}
+               "expected_status": expected, "resource_paths": resources, "traffic_labels": labels,
+               "minimum_label_height": receipt.get("minimumTrafficLabelHeightCssPx")}
     expression = widget_expression(assembly, receipt["counterWidgetId"], paths, expected, resource_paths=resources,
                                    traffic_labels=labels)
     page.navigate(url)
@@ -452,6 +477,7 @@ class ChromeProbe:
     check_assembly: bool = True
     require_widget_bundle: bool = False
     require_traffic_labels: bool = False
+    minimum_label_height: int | None = None
     key: ClassVar[str] = "browser"
     evidence: ClassVar[str] = "arsim_loopback_browser"
 
@@ -470,7 +496,8 @@ class ChromeProbe:
         if self.check_assembly or start:
             widget = assembly_dom_id(reviewed["widgets"], selected, self.counter_widget)
         paths = layout_asset_paths(reviewed["widgets"], widget) if widget is not None else {}
-        require_layout = self.require_layout or self.capture_layout or self.require_traffic_labels
+        check_labels = self.require_traffic_labels or self.minimum_label_height is not None
+        require_layout = self.require_layout or self.capture_layout or check_labels
         if require_layout and not paths:
             raise ValueError("The reviewed widget has no supported 6DData SVG paths")
         receipt.update(state="ready", assemblyWidgetId=widget, layoutPaths=paths, requireLayoutAssets=require_layout,
@@ -482,10 +509,12 @@ class ChromeProbe:
             receipt["startPageMapPath"] = start["compiled"]["clientMapUrl"]
             if "trafficDetails" in start:
                 receipt["startPageContentPath"] = start["compiled"]["contentUrl"]
-        if self.require_traffic_labels:
+        if check_labels:
             if "trafficManager" not in paths:
                 raise ValueError("Traffic label checks require a Traffic Manager SVG path")
             receipt["expectedTrafficLabels"] = expected_traffic_labels(reviewed, start)
+        if self.minimum_label_height is not None:
+            receipt["minimumTrafficLabelHeightCssPx"] = self.minimum_label_height
         if self.require_widget_bundle:
             if widget is None:
                 raise ValueError("The bundle check requires a reviewed Assembly6D widget")

@@ -71,6 +71,12 @@ In br-studio 0.107.0 or later, set `requireTrafficLabels` to `true` to include t
 
 In each browser document, the selected Assembly6D widget's inline Traffic Manager SVG must contain one `label_<name>` text element per expected object. Its text must equal the compiled name, with nonzero layout bounds, visible CSS visibility and nonzero ancestor opacity. Review `trafficLabels` under `initial` and `reopened` for the text, element count and visibility. This evidence covers the AS4 SVG format and DOM layout. Check clipping, readability and changing shuttle or manager state on the intended runtime. [SVG text rendering](https://www.w3.org/TR/SVG2/text.html#Introduction)
 
+#### Check label size
+
+In br-studio 0.108.0 or later, the traffic label receipt also records each text element's bounding width and height, the smallest verified height, and the viewport size and device pixel ratio for that document. The dimensions are CSS pixels from the browser layout, including transforms. [CSSOM View](https://www.w3.org/TR/cssom-view/#dom-element-getboundingclientrect)
+
+Set `minimumTrafficLabelHeightCssPx` to a positive whole number to turn on the label checks and enforce the project-selected height in both documents. The comparison uses the measured value at full precision. When the label text and visibility pass but the size falls short, look for `below_minimum` and `belowMinimum` in the affected document. Compare receipts at the viewport dimensions intended for the HMI and confirm readability on the panel.
+
 ### Save the generated SVGs
 
 Set `captureLayoutAssets` to `true` in the request arguments. This also enables the required layout check in both browser documents. After the browser closes, the CLI makes a fresh GET for each expected URL on the same owned ARsim HTTP listener. Each response must be HTTP 200 with an `image/svg+xml` body and a namespaced SVG root. The browser status and capture refer to separate requests inside the same ARsim session.

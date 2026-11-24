@@ -79,14 +79,18 @@ class HmiSmokeTest(unittest.TestCase):
             bindings = read_status_bindings(None, target)
         binding = {"evidence": "ruc_binding_readback", "rucReview": {"archive": {}}, "snapshot": {},
                    "bindingReview": {"domId": "Main_Request"}}
-        with (patch("br_automation_studio.hmi_smoke.review_ruc", return_value=binding),
-              patch("br_automation_studio.hmi_smoke.arsim_smoke", return_value={}) as smoke):
-            arsim_hmi_smoke(None, None, None, None, 30, target, None, None, 30, 20,
-                            require_traffic_labels=True, status_bindings=bindings)
-        self.assertTrue(smoke.call_args.args[-1].browser.check_assembly)
-        self.assertTrue(smoke.call_args.args[-1].browser.require_traffic_labels)
-        self.assertTrue(smoke.call_args.kwargs["require_6d"])
-        self.assertTrue(smoke.call_args.kwargs["start_widget"].require_traffic_details)
+        for required, minimum in ((True, None), (False, 5)):
+            with (self.subTest(required=required, minimum=minimum),
+                  patch("br_automation_studio.hmi_smoke.review_ruc", return_value=binding),
+                  patch("br_automation_studio.hmi_smoke.arsim_smoke", return_value={}) as smoke):
+                arsim_hmi_smoke(None, None, None, None, 30, target, None, None, 30, 20,
+                                require_traffic_labels=required, minimum_label_height=minimum, status_bindings=bindings)
+                browser = smoke.call_args.args[-1].browser
+                self.assertTrue(browser.check_assembly)
+                self.assertEqual(browser.require_traffic_labels, required)
+                self.assertEqual(browser.minimum_label_height, minimum)
+                self.assertTrue(smoke.call_args.kwargs["require_6d"])
+                self.assertTrue(smoke.call_args.kwargs["start_widget"].require_traffic_details)
 
 
 if __name__ == "__main__":

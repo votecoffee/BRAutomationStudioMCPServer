@@ -450,7 +450,8 @@ def arsim_inputs(arguments, request_directory):
 
 
 def run_arsim_smoke(arguments, request_directory, runtime_probe=None):
-    require_traffic_details = arguments.get("requireTrafficDetails", False) or arguments.get("requireTrafficLabels", False)
+    require_traffic_details = (arguments.get("requireTrafficDetails", False) or arguments.get("requireTrafficLabels", False)
+                               or "minimumTrafficLabelHeightCssPx" in arguments)
     start_widget = None
     if arguments.get("requireStartPage") or require_traffic_details:
         start_widget = StartPageWidget(arguments.get("assemblyWidgetId"), require_traffic_details)
@@ -464,7 +465,8 @@ def run_arsim_browser_smoke(arguments, request_directory):
                         require_layout=arguments.get("requireLayoutAssets", False),
                         capture_layout=arguments.get("captureLayoutAssets", False),
                         require_widget_bundle=arguments.get("requireWidgetBundle", False),
-                        require_traffic_labels=arguments.get("requireTrafficLabels", False))
+                        require_traffic_labels=arguments.get("requireTrafficLabels", False),
+                        minimum_label_height=arguments.get("minimumTrafficLabelHeightCssPx"))
     return run_arsim_smoke(arguments, request_directory, probe)
 
 
@@ -485,6 +487,7 @@ def run_arsim_hmi_smoke(arguments, request_directory, status_bindings=(), scan_c
         require_start_page=arguments.get("requireStartPage", False),
         require_traffic_details=arguments.get("requireTrafficDetails", False),
         require_traffic_labels=arguments.get("requireTrafficLabels", False),
+        minimum_label_height=arguments.get("minimumTrafficLabelHeightCssPx"),
         status_bindings=status_bindings, scan_capture=scan_capture,
     )
 
@@ -917,6 +920,8 @@ ARSIM_BROWSER_SMOKE = Operation(
                                   "description": "Require enabled saved and compiled Traffic Manager details and the selected startup content in both browser documents."},
         "requireTrafficLabels": {"type": "boolean", "default": False,
                                  "description": "Require the Traffic Manager display option, layout assets, and visible compiled station and waypoint labels in both documents."},
+        "minimumTrafficLabelHeightCssPx": {"type": "integer", "minimum": 1,
+                                            "description": "Require each verified traffic label to meet this height in CSS pixels. Enables the traffic label check."},
         "requireWidgetBundle": {"type": "boolean", "default": False,
                                 "description": "Check the packaged Assembly6D bundle and require its script load in both HMI documents."},
         "requireLayoutAssets": {"type": "boolean", "default": False,
@@ -951,6 +956,7 @@ ARSIM_HMI_SMOKE = Operation(
         "requireStartPage": ARSIM_BROWSER_SMOKE.arguments["requireStartPage"],
         "requireTrafficDetails": ARSIM_BROWSER_SMOKE.arguments["requireTrafficDetails"],
         "requireTrafficLabels": ARSIM_BROWSER_SMOKE.arguments["requireTrafficLabels"],
+        "minimumTrafficLabelHeightCssPx": ARSIM_BROWSER_SMOKE.arguments["minimumTrafficLabelHeightCssPx"],
         "requireWidgetBundle": ARSIM_BROWSER_SMOKE.arguments["requireWidgetBundle"],
         "requireLayoutAssets": ARSIM_BROWSER_SMOKE.arguments["requireLayoutAssets"],
         "captureLayoutAssets": ARSIM_BROWSER_SMOKE.arguments["captureLayoutAssets"],
@@ -1008,8 +1014,10 @@ def execute(request, request_directory: Path):
     for key, value in arguments.items():
         schema = operation.arguments[key]
         if schema["type"] == "integer":
-            if type(value) is not int or not schema["minimum"] <= value <= schema["maximum"]:
-                raise InvalidRequest(f"{key} must be an integer between {schema['minimum']} and {schema['maximum']}")
+            minimum, maximum = schema["minimum"], schema.get("maximum")
+            if type(value) is not int or value < minimum or (maximum is not None and value > maximum):
+                bounds = f"at least {minimum}" if maximum is None else f"between {minimum} and {maximum}"
+                raise InvalidRequest(f"{key} must be an integer {bounds}")
         elif schema["type"] == "boolean":
             if type(value) is not bool:
                 raise InvalidRequest(f"{key} must be a Boolean")

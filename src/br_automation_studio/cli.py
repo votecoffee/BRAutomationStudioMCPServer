@@ -1093,6 +1093,8 @@ def markdown_browser(browser, text):
             lines.append(f"- Assembly {text(assembly)} · Counter {text(browser['counterWidgetId'])}")
         else:
             lines.append(f"- Counter {text(browser['counterWidgetId'])}")
+    if minimum_height := browser.get("minimumTrafficLabelHeightCssPx"):
+        lines.append(f"- Required traffic label height {text(minimum_height)} CSS px")
     for phase, label in (("initial", "Initial document"), ("reopened", "Reopened document")):
         if document := browser.get(phase):
             samples = ", ".join(document["counterSamples"])
@@ -1114,10 +1116,18 @@ def markdown_browser(browser, text):
                     lines.append(f"  - {text(role)} {text(asset['path'])} · HTTP {text(asset['httpStatus'])}")
             if labels := document.get("trafficLabels"):
                 lines.append(f"  - Traffic labels {text(labels['state'])}")
+                if viewport := labels.get("viewport"):
+                    lines.append(f"    - Viewport {text(viewport['widthCssPx'])} × {text(viewport['heightCssPx'])}"
+                                 f" CSS px · Device pixel ratio {text(viewport['devicePixelRatio'])}")
+                if height := labels.get("minObservedHeightCssPx"):
+                    lines.append(f"    - Smallest observed height {text(height)} CSS px")
                 for name, label in labels["labels"].items():
                     label = label or {}
                     lines.append(f"    - {text(name)} · Text {text(label.get('text'))}"
                                  f" · Elements {text(label.get('count'))} · Visible {text(label.get('visible'))}")
+                    if label.get("heightCssPx") is not None:
+                        lines[-1] += (f" · Bounds {text(label['widthCssPx'])} ×"
+                                      f" {text(label['heightCssPx'])} CSS px")
     if capture := browser.get("layoutCapture"):
         lines.append(f"- Layout capture {text(capture['state'])} · Paths relative to the session directory")
         for asset in capture["assets"].values():
