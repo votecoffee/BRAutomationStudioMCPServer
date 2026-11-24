@@ -193,6 +193,53 @@ Set `inspectionLeg.captureKind` to `"synthetic"` for scripted station observatio
 
 In the AS4.12 fixture with Automation Runtime J4.93 and mapp 6D 2.2.0, the PLC published 161 records, including 150 consecutive held scans. The focused review matched all 11 distinct browser and direct OPC UA heartbeat observations. Both browser documents showed all five mapping lines, and the cycle review matched the line endpoints and traffic label anchors in the two archived SVGs.
 
+## Replay a relocated run
+
+Copy the complete saved project read set, the retained build job and the HMI session evidence into one directory. Keep the saved project filename and the paths inside the build job, including the archive path in `job.json`. Keep the status response, its original `session.json`, scan CSV and two SVGs together. Preserve the saved evidence bytes when changing directories. Change the paths in the review requests to select the copied files.
+
+```text
+run/
+  source-project/
+    Example.apj
+    Logical/
+    Physical/
+  build-job/
+    plan.json
+    job.json
+    builder.log
+    binary/.../RUCPackage.zip
+    launchpad/
+      source.lpj
+      readback.json
+      export.x6d
+  evidence/
+    cycle-trace.json
+    status-response.json
+    session.json
+    scan-capture.csv
+    layout-assets/
+      assembly.svg
+      trafficManager.svg
+  cycle-review-request.json
+  hold-review-request.json
+```
+
+Keep any pinned name map in the job's LaunchPad inputs and select it in the cycle request. When the build carries a workstation report, keep `simulation-environment.json` in the copied build job and beside the copied HMI status response. Set `hmiEnvironmentReport` to `evidence/simulation-environment.json` to require the hash comparison for that HMI run. [Verify the retained workstation report](cycle-trace-review.md#rehash-the-retained-workstation-report)
+
+Copy the [cycle request](../../../examples/inspection-cycle/cycle-review.json) and [held-status request](../../../examples/inspection-cycle/hold-review.json) into the run root under the names above. Replace the example project filename, Traffic Manager and source station. The cycle template selects the strict same-session checks for a supported one-way Assembly6D route. Preserve any additional command, counter, clock or position checks from the original cycle request by carrying their options into the copied request.
+
+From the run directory, save the two review responses alongside the requests.
+
+```powershell
+br-studio run --request ./cycle-review-request.json |
+    Set-Content -LiteralPath ./cycle-review-response.json -Encoding utf8NoBOM
+
+br-studio run --request ./hold-review-request.json |
+    Set-Content -LiteralPath ./hold-review-response.json -Encoding utf8NoBOM
+```
+
+The AS4.12 synthetic rehearsal replayed both requests and the full cycle profile in an offline review from a separate copy of the evidence. The retained capture still matched the same HMI session and 150 held scans. Separate control copies omitted `session.json`, omitted the scan CSV, or changed one SVG. Each produced its corresponding receipt or asset diagnostic.
+
 ## Read the handoff
 
 | Receipt | Fields to record |

@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "workspace": "inspection-cycle",
+  "operation": "held_status_scan_review",
+  "arguments": {
+    "project": "source-project/Example.apj",
+    "jobDirectory": "build-job",
+    "hmiStatusReport": "evidence/status-response.json",
+    "cycleTrace": "evidence/cycle-trace.json"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "workspace": "inspection-cycle",
+  "operation": "cycle_trace_review",
+  "arguments": {
+    "project": "source-project/Example.apj",
+    "jobDirectory": "build-job",
+    "managerId": "ExampleTraffic",
+    "sourceStation": "Inspect",
+    "launchPadProject": "build-job/launchpad/source.lpj",
+    "launchPadReadback": "build-job/launchpad/readback.json",
+    "trace": "evidence/cycle-trace.json",
+    "hmiStatusReport": "evidence/status-response.json",
+    "requireHmiAssemblyWidget": true,
+    "requireHmiSessionReceipt": true,
+    "requireSessionScanCapture": true,
+    "requireHoldThroughReopen": true,
+    "requireHmiTrafficMappingLines": true,
+    "verifyCapturedLayout": true,
+    "verifyMappingLineEndpoints": true,
+    "verifyTrafficLabels": true
+  }
+}

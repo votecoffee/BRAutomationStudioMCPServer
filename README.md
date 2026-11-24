@@ -162,7 +162,7 @@ Use `held_status_scan_review` to match a held-only CSV or the hold selected by a
 
 Combine viewport, label and one-way mapping line checks, widget bundle, SVG capture and direct OPC UA readback in one request. Use `hmiReport` in the SVG review to verify the captures against the panel session and build. [Panel layout rehearsal](skills/br-automation-studio/references/arsim-panel-layout.md)
 
-Use the one-shuttle rehearsal runbook to verify the retained ARsim session receipt and review the scan capture, HMI reopen, rendered mapping lines and SVG geometry from that run. [One-shuttle rehearsal](skills/br-automation-studio/references/inspection-cycle-rehearsal.md)
+Use the one-shuttle rehearsal runbook to verify the retained ARsim session receipt and review the scan capture, HMI reopen, rendered mapping lines and SVG geometry from that run. [One-shuttle rehearsal](skills/br-automation-studio/references/inspection-cycle-rehearsal.md) · [Replay a relocated run](skills/br-automation-studio/references/inspection-cycle-rehearsal.md#replay-a-relocated-run)
 
 ## Chat workflow
 
