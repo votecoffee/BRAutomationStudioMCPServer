@@ -189,6 +189,36 @@ class TestBrowserSmoke(unittest.TestCase):
         self.assertEqual(receipt["initial"]["counterSamples"], ["1", "2", "3"])
 
     @patch("br_automation_studio.browser_smoke.time.sleep")
+    def test_mapping_line_check_uses_each_document_and_reports_a_missing_or_hidden_link(self, pause):
+        mapping = "mapping_S1_to_G1"
+        visible = {"groupCount": 1, "lineCount": 1, "visible": True, "widthCssPx": 40, "heightCssPx": 0}
+        hidden = dict(visible, visible=False)
+
+        def seen(counter, origin, line):
+            return dict(hmi(str(counter), origin), trafficMappings={"overlayCount": 1, "mappings": {mapping: line}})
+
+        for reopened in (visible, hidden, None):
+            with self.subTest(reopened=reopened):
+                page = Mock(deadline=7)
+                page.read.side_effect = [
+                    *(seen(counter, 10, visible) for counter in (1, 2, 3)),
+                    {"url": "about:blank", "timeOrigin": 11},
+                    seen(4, 12, None), seen(5, 12, reopened), seen(6, 12, reopened),
+                ]
+                receipt = dict(self.receipt(), expectedTrafficMappings={"managerId": "Traffic", "ids": [mapping]})
+                with patch("br_automation_studio.browser_smoke.time.monotonic", side_effect=range(8)):
+                    if reopened is visible:
+                        verify_navigation(page, URL, receipt)
+                    else:
+                        with self.assertRaisesRegex(TimeoutError, f"mapping lines were not verified: {mapping}"):
+                            verify_navigation(page, URL, receipt)
+                self.assertEqual(receipt["initial"]["trafficMappings"]["state"], "observed")
+                refreshed = receipt["reopened"]["trafficMappings"]
+                self.assertEqual(refreshed["mappings"][mapping], reopened)
+                self.assertEqual(refreshed["unverifiedMappings"], [] if reopened is visible else [mapping])
+                self.assertEqual(receipt["reopened"]["counterSamples"], ["4", "5"])
+
+    @patch("br_automation_studio.browser_smoke.time.sleep")
     @patch("br_automation_studio.browser_smoke.time.monotonic", return_value=0)
     def test_required_bundle_is_observed_in_each_document(self, now, pause):
         page = Mock(deadline=5)
@@ -537,8 +567,11 @@ class TestBrowserSmoke(unittest.TestCase):
         with self.assertRaisesRegex(InvalidRequest, "Supply viewportWidthCssPx and viewportHeightCssPx together"):
             execute(request, Path("."))
         arguments["viewportHeightCssPx"] = 800
+        arguments["requireTrafficMappingLines"] = True
         self.assertEqual(execute(request, Path("."))["status"], "complete")
         self.assertEqual(smoke.call_args.args[-1].viewport, (1280, 800))
+        self.assertTrue(smoke.call_args.args[-1].require_traffic_mapping_lines)
+        self.assertTrue(smoke.call_args.kwargs["start_widget"].require_traffic_details)
         smoke.assert_called_once()
 
     @patch("br_automation_studio.browser_smoke.endpoints")

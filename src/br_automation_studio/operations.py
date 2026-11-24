@@ -454,6 +454,7 @@ def arsim_inputs(arguments, request_directory):
 
 def run_arsim_smoke(arguments, request_directory, runtime_probe=None):
     require_traffic_details = (arguments.get("requireTrafficDetails", False) or arguments.get("requireTrafficLabels", False)
+                               or arguments.get("requireTrafficMappingLines", False)
                                or arguments.get("requireTrafficLabelsInBounds", False)
                                or arguments.get("requireNonOverlappingTrafficLabels", False)
                                or "minimumTrafficLabelHeightCssPx" in arguments
@@ -483,6 +484,7 @@ def run_arsim_browser_smoke(arguments, request_directory):
                         capture_layout=arguments.get("captureLayoutAssets", False),
                         require_widget_bundle=arguments.get("requireWidgetBundle", False),
                         require_traffic_labels=arguments.get("requireTrafficLabels", False),
+                        require_traffic_mapping_lines=arguments.get("requireTrafficMappingLines", False),
                         require_label_bounds=arguments.get("requireTrafficLabelsInBounds", False),
                         require_label_separation=arguments.get("requireNonOverlappingTrafficLabels", False),
                         minimum_label_height=arguments.get("minimumTrafficLabelHeightCssPx"),
@@ -509,6 +511,7 @@ def run_arsim_hmi_smoke(arguments, request_directory, status_bindings=(), scan_c
         require_start_page=arguments.get("requireStartPage", False),
         require_traffic_details=arguments.get("requireTrafficDetails", False),
         require_traffic_labels=arguments.get("requireTrafficLabels", False),
+        require_traffic_mapping_lines=arguments.get("requireTrafficMappingLines", False),
         require_label_bounds=arguments.get("requireTrafficLabelsInBounds", False),
         require_label_separation=arguments.get("requireNonOverlappingTrafficLabels", False),
         minimum_label_height=arguments.get("minimumTrafficLabelHeightCssPx"),
@@ -953,6 +956,8 @@ ARSIM_BROWSER_SMOKE = Operation(
                                   "description": "Require enabled saved and compiled Traffic Manager details and the selected startup content in both browser documents."},
         "requireTrafficLabels": {"type": "boolean", "default": False,
                                  "description": "Require the Traffic Manager display option, layout assets, and visible compiled station and waypoint labels in both documents."},
+        "requireTrafficMappingLines": {"type": "boolean", "default": False,
+                                       "description": "Require each compiled one-way Traffic Manager mapping line in both browser documents."},
         "requireTrafficLabelsInBounds": {"type": "boolean", "default": False,
                                         "description": "Require each verified traffic label to fit inside the widget and browser viewport. Enables the traffic label check."},
         "requireNonOverlappingTrafficLabels": {"type": "boolean", "default": False,
@@ -999,6 +1004,7 @@ ARSIM_HMI_SMOKE = Operation(
         "requireStartPage": ARSIM_BROWSER_SMOKE.arguments["requireStartPage"],
         "requireTrafficDetails": ARSIM_BROWSER_SMOKE.arguments["requireTrafficDetails"],
         "requireTrafficLabels": ARSIM_BROWSER_SMOKE.arguments["requireTrafficLabels"],
+        "requireTrafficMappingLines": ARSIM_BROWSER_SMOKE.arguments["requireTrafficMappingLines"],
         "requireTrafficLabelsInBounds": ARSIM_BROWSER_SMOKE.arguments["requireTrafficLabelsInBounds"],
         "requireNonOverlappingTrafficLabels": ARSIM_BROWSER_SMOKE.arguments["requireNonOverlappingTrafficLabels"],
         "minimumTrafficLabelGapCssPx": ARSIM_BROWSER_SMOKE.arguments["minimumTrafficLabelGapCssPx"],

@@ -11,6 +11,7 @@ from .cycle_hmi import captured_layout_assets, hmi_run, status_run
 from .launchpad_baseline import json_snapshot
 from .launchpad_geometry import point
 from .launchpad_layout import GRID_MM, linked_layout, master_offsets, native_segments
+from .links import UnsupportedTrafficMapping, directed_svg_mapping_ids
 from .native_build import identity
 from .project import ProjectXml, SavedFiles, XML_LIMIT
 from .ruc_review import review_ruc
@@ -164,16 +165,6 @@ def native_positions(rows):
     return result
 
 
-def directed_ids(edges):
-    pairs = [(edge["source"], edge["destination"]) for edge in edges]
-    result = {f"mapping_{start}_to_{end}": (start, end) for start, end in pairs}
-    if len(result) != len(pairs) or any(start == end or "_to_" in start or "_to_" in end for start, end in pairs):
-        raise UnsupportedLayout("Expected distinct non-self mappings with unambiguous endpoint IDs")
-    if set(pairs) & {(end, start) for start, end in pairs}:
-        raise UnsupportedLayout("Reciprocal mappings are outside the verified one-way SVG format")
-    return result
-
-
 def marker_geometry(group, tag):
     x, y = translation(group)
     shape = one(group, tag, lambda item: True, "traffic marker")
@@ -322,7 +313,7 @@ def layout_svg_review(project, job, manager_id, assembly_svg, traffic_svg, *, hm
         positions = native_positions(manager["positionEvidence"])
         if native_positions(ruc["savedPositionEvidence"]) != positions:
             raise ValueError("Saved and compiled traffic object positions differ")
-        mappings = directed_ids(manager["edges"])
+        mappings = directed_svg_mapping_ids(manager["edges"])
         session_dir, captures = None, {}
         if capture_path is not None:
             path = capture_path
@@ -382,7 +373,7 @@ def layout_svg_review(project, job, manager_id, assembly_svg, traffic_svg, *, hm
             label_result.update(state="issues" if failed else "matched", labels=labels,
                                 checkedLabels=len(labels), failedLabels=failed,
                                 maxAxisDeltaMm=max((label["maxAxisDeltaMm"] for label in labels), default=None))
-    except UnsupportedLayout as error:
+    except (UnsupportedLayout, UnsupportedTrafficMapping) as error:
         issue("layout_svg_unverified", path, str(error), "warning")
         result["state"] = "unverified"
         return report

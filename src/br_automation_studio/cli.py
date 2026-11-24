@@ -1130,6 +1130,13 @@ def markdown_browser(browser, text):
                 lines.append(f"  - Layout {text(layout['state'])} · Inline SVGs with layout bounds {text(layout['boundedSvgCount'])}")
                 for role, asset in layout["assets"].items():
                     lines.append(f"  - {text(role)} {text(asset['path'])} · HTTP {text(asset['httpStatus'])}")
+            if mappings := document.get("trafficMappings"):
+                unverified = mappings["unverifiedMappings"]
+                checked = len(mappings["mappings"]) - len(unverified)
+                lines.append(f"  - Traffic mapping lines {text(mappings['state'])} · {text(mappings['managerId'])}"
+                             f" · {checked}/{len(mappings['mappings'])} visible")
+                if unverified:
+                    lines.append(f"    - Unverified mappings {text(', '.join(unverified))}")
             if labels := document.get("trafficLabels"):
                 lines.append(f"  - Traffic labels {text(labels['state'])}")
                 if (viewport := labels.get("viewport")) and "viewport" not in document:

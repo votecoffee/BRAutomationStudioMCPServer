@@ -79,22 +79,25 @@ class HmiSmokeTest(unittest.TestCase):
             bindings = read_status_bindings(None, target)
         binding = {"evidence": "ruc_binding_readback", "rucReview": {"archive": {}}, "snapshot": {},
                    "bindingReview": {"domId": "Main_Request"}}
-        for required, minimum, bounds, separation, gap, clearance in (
-            (True, None, False, False, None, None), (False, 5, False, False, None, None),
-            (False, None, True, False, None, None), (False, None, False, True, None, None),
-            (False, None, False, False, 5, None), (False, None, False, False, None, 10),
+        for required, minimum, bounds, separation, gap, clearance, mapping_lines in (
+            (True, None, False, False, None, None, False), (False, 5, False, False, None, None, False),
+            (False, None, True, False, None, None, False), (False, None, False, True, None, None, False),
+            (False, None, False, False, 5, None, False), (False, None, False, False, None, 10, False),
+            (False, None, False, False, None, None, True),
         ):
             with (self.subTest(required=required, minimum=minimum, bounds=bounds, separation=separation, gap=gap,
-                               clearance=clearance),
+                               clearance=clearance, mapping_lines=mapping_lines),
                   patch("br_automation_studio.hmi_smoke.review_ruc", return_value=binding),
                   patch("br_automation_studio.hmi_smoke.arsim_smoke", return_value={}) as smoke):
                 arsim_hmi_smoke(None, None, None, None, 30, target, None, None, 30, 20,
                                 require_traffic_labels=required, minimum_label_height=minimum, require_label_bounds=bounds,
                                 require_label_separation=separation, minimum_label_gap=gap,
+                                require_traffic_mapping_lines=mapping_lines,
                                 minimum_label_edge_clearance=clearance, status_bindings=bindings)
                 browser = smoke.call_args.args[-1].browser
                 self.assertTrue(browser.check_assembly)
                 self.assertEqual(browser.require_traffic_labels, required)
+                self.assertEqual(browser.require_traffic_mapping_lines, mapping_lines)
                 self.assertEqual(browser.minimum_label_height, minimum)
                 self.assertEqual(browser.require_label_bounds, bounds)
                 self.assertEqual(browser.require_label_separation, separation)

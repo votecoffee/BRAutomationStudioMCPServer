@@ -147,7 +147,8 @@ class HmiProbe:
 def arsim_hmi_smoke(project, job_dir, pvi, session_dir, timeout, target, chrome,
                     assembly_widget, browser_timeout, opcua_timeout, *, require_layout=False, capture_layout=False,
                     require_widget_bundle=False, require_start_page=False, require_traffic_details=False,
-                    require_traffic_labels=False, require_label_bounds=False, require_label_separation=False,
+                    require_traffic_labels=False, require_traffic_mapping_lines=False,
+                    require_label_bounds=False, require_label_separation=False,
                     minimum_label_height=None, minimum_label_gap=None, minimum_label_edge_clearance=None, viewport=None,
                     status_bindings=(), scan_capture=None):
     binding_report = review_ruc(project, job_dir, replace(target, require_default=True))
@@ -168,7 +169,8 @@ def arsim_hmi_smoke(project, job_dir, pvi, session_dir, timeout, target, chrome,
             row["role"] = binding.role
         statuses.append(row)
     expected_status = tuple((item["bindingReview"]["domId"], item["expectedValue"]) for item in statuses)
-    require_traffic_details = (require_traffic_details or require_traffic_labels or require_label_bounds
+    require_traffic_details = (require_traffic_details or require_traffic_labels or require_traffic_mapping_lines
+                               or require_label_bounds
                                or require_label_separation or minimum_label_height is not None
                                or minimum_label_gap is not None or minimum_label_edge_clearance is not None)
     start_widget = None
@@ -180,6 +182,7 @@ def arsim_hmi_smoke(project, job_dir, pvi, session_dir, timeout, target, chrome,
                           require_layout=require_layout, capture_layout=capture_layout,
                           expected_status=expected_status, check_assembly=check_assembly,
                           require_widget_bundle=require_widget_bundle, require_traffic_labels=require_traffic_labels,
+                          require_traffic_mapping_lines=require_traffic_mapping_lines,
                           minimum_label_height=minimum_label_height, viewport=viewport,
                           require_label_bounds=require_label_bounds, require_label_separation=require_label_separation,
                           minimum_label_gap=minimum_label_gap, minimum_label_edge_clearance=minimum_label_edge_clearance)

@@ -15,6 +15,7 @@ from urllib.parse import urlsplit
 from xml.etree import ElementTree as ET
 
 from .arsim_smoke import HOST, WIDGET_BUNDLE_PATH, loopback_get
+from .links import directed_svg_mapping_ids
 from .native_build import fingerprint
 from .project import ProjectXml, XML_LIMIT
 from .windows_job import observed_process
@@ -98,20 +99,37 @@ def layout_observation(value, paths):
             "assets": {role: {"path": path, "httpStatus": statuses[role]} for role, path in paths.items()}}
 
 
-def expected_traffic_labels(reviewed, start):
+def expected_traffic_manager(reviewed, start, check):
     if not start or start.get("trafficDetails", {}).get("state") != "matched":
-        raise ValueError("Traffic label checks require a verified enabled Traffic Manager display option")
+        raise ValueError(f"{check} checks require a verified enabled Traffic Manager display option")
     compiled = start["compiled"]
     manager_id = (compiled["manager"] or "").removeprefix("mapp6D::")
     assembly = (compiled["assembly"] or "").removeprefix("mapp6D::")
     managers = [row for row in reviewed["trafficManagers"]
                 if row["manager"] == manager_id and row["assembly"] == assembly]
     if len(managers) != 1:
-        raise ValueError("Traffic label checks require one reviewed manager linked to the widget's assembly")
-    names = [row["name"] for row in managers[0]["objects"] if row["type"] in {"Station", "Waypoint"}]
+        raise ValueError(f"{check} checks require one reviewed manager linked to the widget's assembly")
+    return managers[0]
+
+
+def expected_traffic_labels(reviewed, start):
+    manager = expected_traffic_manager(reviewed, start, "Traffic label")
+    names = [row["name"] for row in manager["objects"] if row["type"] in {"Station", "Waypoint"}]
     if not names or len(set(names)) != len(names):
         raise ValueError("Traffic label checks require unique reviewed station or waypoint names")
     return sorted(names)
+
+
+def traffic_mapping_observation(value, expected):
+    value = value if isinstance(value, dict) else {}
+    observed = value.get("mappings")
+    observed = observed if isinstance(observed, dict) else {}
+    rows = {name: observed.get(name) for name in expected["ids"]}
+    overlay_count = value.get("overlayCount")
+    unverified = [name for name, row in rows.items() if not isinstance(row, dict) or row.get("visible") is not True]
+    matched = type(overlay_count) is int and overlay_count == 1 and not unverified
+    return {"state": "observed" if matched else "unverified", "managerId": expected["managerId"],
+            "overlayCount": overlay_count, "mappings": rows, "unverifiedMappings": unverified}
 
 
 def label_overlap_observation(labels, verified):
@@ -335,7 +353,7 @@ class Page:
 
 
 def widget_expression(assembly, counter, layout_paths=None, status_widgets=(), *, resource_paths=None,
-                      traffic_labels=()):
+                      traffic_labels=(), traffic_mappings=None):
     return f"""(() => {{
         const assembly = document.getElementById({json.dumps(assembly)});
         const assemblyRect = assembly?.getBoundingClientRect();
@@ -354,6 +372,52 @@ def widget_expression(assembly, counter, layout_paths=None, status_widgets=(), *
                 return [role, entries.at(-1)?.responseStatus ?? null];
             }}))
         }};
+        const svgNamespace = 'http://www.w3.org/2000/svg';
+        const styleVisible = (node) => {{
+            if (getComputedStyle(node).visibility !== 'visible') return false;
+            for (let parent = node; parent; parent = parent.parentElement) {{
+                const style = getComputedStyle(parent);
+                if (style.display === 'none' || Number(style.opacity) === 0) return false;
+            }}
+            return true;
+        }};
+        const expectedMappings = {json.dumps(traffic_mappings)};
+        const trafficMappings = expectedMappings && assembly ? (() => {{
+            const overlays = Array.from(assembly.querySelectorAll('svg g.traffic-manager')).filter(
+                node => node.namespaceURI === svgNamespace && node.id === expectedMappings.managerId
+            );
+            const groups = new Map(expectedMappings.ids.map(id => [id, []]));
+            if (overlays.length === 1) {{
+                for (const node of overlays[0].children) {{
+                    if (node.namespaceURI === svgNamespace && node.localName === 'g') groups.get(node.id)?.push(node);
+                }}
+            }}
+            return {{
+                overlayCount: overlays.length,
+                mappings: Object.fromEntries(Array.from(groups, ([id, matches]) => {{
+                    const group = matches.length === 1 ? matches[0] : null;
+                    const shapes = group ? Array.from(group.children).filter(
+                        node => node.namespaceURI === svgNamespace && node.localName === 'line'
+                    ) : [];
+                    const line = shapes.length === 1 ? shapes[0] : null;
+                    const rect = line?.getBoundingClientRect();
+                    const stroke = line ? getComputedStyle(line) : null;
+                    const directions = ['white-one-way', 'gray-one-way', 'white-two-way', 'gray-two-way'].filter(
+                        name => group?.classList.contains(name)
+                    );
+                    const oneWay = group?.classList.contains('link') && directions.length === 1 &&
+                        directions[0].endsWith('-one-way');
+                    const color = stroke?.stroke;
+                    const transparent = color === 'none' || color === 'transparent' ||
+                        (color?.startsWith('rgba(') && color.endsWith(', 0)')) || color?.endsWith(' / 0)');
+                    const visible = Boolean(oneWay && line && (rect.width > 0 || rect.height > 0) &&
+                        styleVisible(line) && color && !transparent &&
+                        parseFloat(stroke.strokeWidth) > 0 && Number(stroke.strokeOpacity) > 0);
+                    return [id, {{groupCount: matches.length, lineCount: shapes.length, visible,
+                                  widthCssPx: rect?.width ?? null, heightCssPx: rect?.height ?? null}}];
+                }}))
+            }};
+        }})() : null;
         const resources = Object.fromEntries(Object.entries({json.dumps(resource_paths or {})}).map(([key, path]) => {{
             const initiators = key === 'widgetBundle' ? ['script'] : ['xmlhttprequest', 'fetch'];
             const matching = performance.getEntriesByType('resource').findLast(entry => {{
@@ -380,15 +444,8 @@ def widget_expression(assembly, counter, layout_paths=None, status_widgets=(), *
             }};
             const labels = new Map(labelNames.map(name => ['label_' + name, []]));
             for (const node of assembly.querySelectorAll('svg g.traffic-manager text[id]')) {{
-                if (node.namespaceURI === 'http://www.w3.org/2000/svg') labels.get(node.id)?.push(node);
+                if (node.namespaceURI === svgNamespace) labels.get(node.id)?.push(node);
             }}
-            const visible = (node, rect) => {{
-                if (rect.width <= 0 || rect.height <= 0 || getComputedStyle(node).visibility !== 'visible') return false;
-                for (let parent = node; parent; parent = parent.parentElement) {{
-                    if (getComputedStyle(parent).opacity === '0') return false;
-                }}
-                return true;
-            }};
             return {{
                 viewport,
                 viewportContent: {{widthCssPx: viewportRect.right, heightCssPx: viewportRect.bottom}},
@@ -396,7 +453,7 @@ def widget_expression(assembly, counter, layout_paths=None, status_widgets=(), *
                     const matches = labels.get('label_' + name);
                     const node = matches.length === 1 ? matches[0] : null;
                     const rect = node?.getBoundingClientRect();
-                    const shown = node ? visible(node, rect) : false;
+                    const shown = node ? rect.width > 0 && rect.height > 0 && styleVisible(node) : false;
                     const widget = shown ? edgeClearance(assemblyRect, rect) : null;
                     const viewportEdge = shown ? edgeClearance(viewportRect, rect) : null;
                     return [name, {{count: matches.length, text: node?.textContent.trim() ?? null,
@@ -419,6 +476,7 @@ def widget_expression(assembly, counter, layout_paths=None, status_widgets=(), *
             statusValues: Object.fromEntries({json.dumps(list(status_widgets))}.map(id => [id, read(id)])),
             viewport,
             trafficLabels,
+            trafficMappings,
             layout
         }};
     }})()"""
@@ -452,7 +510,7 @@ def collect_samples(page, expression, url, receipt, count, prior_origins=(), aft
                     *, layout_paths=None, require_layout=False, check_assembly=True, expected_status=None,
                     resource_paths=None, traffic_labels=(), minimum_label_height=None, requested_viewport=None,
                     require_label_bounds=False, require_label_separation=False, minimum_label_gap=None,
-                    minimum_label_edge_clearance=None):
+                    minimum_label_edge_clearance=None, traffic_mappings=None):
     latest = after
     resource_paths = resource_paths or {}
     while time.monotonic() < page.deadline:
@@ -485,6 +543,8 @@ def collect_samples(page, expression, url, receipt, count, prior_origins=(), aft
                 receipt["trafficLabels"] = traffic_label_observation(
                     result.get("trafficLabels"), traffic_labels, minimum_label_height, require_label_bounds,
                     require_label_separation, minimum_label_gap, minimum_label_edge_clearance)
+            if traffic_mappings:
+                receipt["trafficMappings"] = traffic_mapping_observation(result.get("trafficMappings"), traffic_mappings)
             for key, path in resource_paths.items():
                 receipt[key] = resource_observation(result.get(key), path)
             value = result.get("value")
@@ -497,6 +557,7 @@ def collect_samples(page, expression, url, receipt, count, prior_origins=(), aft
             if (status_matches and len(receipt["counterSamples"]) == count
                     and all(receipt[key]["state"] == "observed" for key in resource_paths)
                     and (not traffic_labels or receipt["trafficLabels"]["state"] == "observed")
+                    and (not traffic_mappings or receipt["trafficMappings"]["state"] == "observed")
                     and (not require_layout or receipt.get("layout", {}).get("state") == "observed")):
                 return
         time.sleep(0.2)
@@ -509,6 +570,11 @@ def collect_samples(page, expression, url, receipt, count, prior_origins=(), aft
                 raise TimeoutError(f"A successful same-origin mapp View {RESOURCE_LABELS[key]} request was not verified")
         if require_layout and receipt.get("layout", {}).get("state") != "observed":
             raise TimeoutError("Successful 6DData SVG requests and an inline SVG with layout bounds were not verified")
+        if traffic_mappings and (mappings := receipt["trafficMappings"])["state"] != "observed":
+            if mappings["overlayCount"] != 1:
+                raise TimeoutError(f"Expected one displayed Traffic Manager overlay for {mappings['managerId']}")
+            names = ", ".join(mappings["unverifiedMappings"])
+            raise TimeoutError(f"Displayed one-way Traffic Manager mapping lines were not verified: {names}")
         if traffic_labels:
             observed = receipt["trafficLabels"]
             if observed["state"] == "below_minimum":
@@ -547,6 +613,7 @@ def verify_navigation(page, url, receipt):
     expected = receipt.get("expectedStatus", {})
     assembly = receipt["assemblyWidgetId"]
     labels = receipt.get("expectedTrafficLabels", ())
+    mappings = receipt.get("expectedTrafficMappings")
     viewport = receipt.get("requestedViewport")
     options = {"layout_paths": paths, "require_layout": required, "check_assembly": assembly is not None,
                "expected_status": expected, "resource_paths": resources, "traffic_labels": labels,
@@ -554,9 +621,10 @@ def verify_navigation(page, url, receipt):
                "requested_viewport": viewport, "require_label_bounds": receipt.get("requireTrafficLabelsInBounds", False),
                "require_label_separation": receipt.get("requireNonOverlappingTrafficLabels", False),
                "minimum_label_gap": receipt.get("minimumTrafficLabelGapCssPx"),
-               "minimum_label_edge_clearance": receipt.get("minimumTrafficLabelEdgeClearanceCssPx")}
+               "minimum_label_edge_clearance": receipt.get("minimumTrafficLabelEdgeClearanceCssPx"),
+               "traffic_mappings": mappings}
     expression = widget_expression(assembly, receipt["counterWidgetId"], paths, expected, resource_paths=resources,
-                                   traffic_labels=labels)
+                                   traffic_labels=labels, traffic_mappings=mappings)
     if viewport:
         page.set_viewport(viewport["widthCssPx"], viewport["heightCssPx"])
     page.navigate(url)
@@ -639,6 +707,7 @@ class ChromeProbe:
     require_label_separation: bool = False
     minimum_label_gap: int | None = None
     minimum_label_edge_clearance: int | None = None
+    require_traffic_mapping_lines: bool = False
     key: ClassVar[str] = "browser"
     evidence: ClassVar[str] = "arsim_loopback_browser"
 
@@ -660,7 +729,7 @@ class ChromeProbe:
         check_labels = (self.require_traffic_labels or self.minimum_label_height is not None
                         or self.require_label_bounds or self.require_label_separation or self.minimum_label_gap is not None
                         or self.minimum_label_edge_clearance is not None)
-        require_layout = self.require_layout or self.capture_layout or check_labels
+        require_layout = self.require_layout or self.capture_layout or check_labels or self.require_traffic_mapping_lines
         if require_layout and not paths:
             raise ValueError("The reviewed widget has no supported 6DData SVG paths")
         receipt.update(state="ready", assemblyWidgetId=widget, layoutPaths=paths, requireLayoutAssets=require_layout,
@@ -676,6 +745,12 @@ class ChromeProbe:
             if "trafficManager" not in paths:
                 raise ValueError("Traffic label checks require a Traffic Manager SVG path")
             receipt["expectedTrafficLabels"] = expected_traffic_labels(reviewed, start)
+        if self.require_traffic_mapping_lines:
+            manager = expected_traffic_manager(reviewed, start, "Traffic mapping line")
+            mapping_ids = sorted(directed_svg_mapping_ids(manager["edges"]))
+            if "trafficManager" not in paths or not mapping_ids:
+                raise ValueError("Traffic mapping line checks require a Traffic Manager SVG and compiled one-way mappings")
+            receipt["expectedTrafficMappings"] = {"managerId": manager["manager"], "ids": mapping_ids}
         if self.require_label_bounds:
             receipt["requireTrafficLabelsInBounds"] = True
         if self.require_label_separation:

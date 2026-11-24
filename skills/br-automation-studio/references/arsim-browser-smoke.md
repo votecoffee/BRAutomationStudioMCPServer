@@ -109,6 +109,12 @@ Starting with br-studio 0.113.0, `trafficLabels.overlap` also records `minGapCss
 
 Set `minimumTrafficLabelGapCssPx` to a positive whole number to enable the label check and require the project-selected clearance on both loads. A measured gap equal to the requested minimum passes. The receipt records the closest pair and the full-precision measurement.
 
+### Verify one-way mapping lines in Chrome
+
+With br-studio 0.116.0 or later, set `requireTrafficMappingLines` in the browser, combined HMI or status request. It requires the enabled Traffic Manager display option, the linked SVGs and the compiled one-way mapping IDs. In both documents, the selected Assembly6D widget must contain one matching Traffic Manager group with a visible, nonzero SVG line for each mapping. Check `initial.trafficMappings` and `reopened.trafficMappings` under the browser receipt for group counts, line bounds and unverified IDs.
+
+Use the archived SVG geometry review to check the mapping endpoints. Inspect clipping and route appearance on the intended panel. [Panel layout rehearsal](arsim-panel-layout.md)
+
 ### Save the generated SVGs
 
 Set `captureLayoutAssets` to `true` in the request arguments. This also enables the required layout check in both browser documents. After the browser closes, the CLI makes a fresh GET for each expected URL on the same owned ARsim HTTP listener. Each response must be HTTP 200 with an `image/svg+xml` body and a namespaced SVG root. The browser status and capture refer to separate requests inside the same ARsim session.

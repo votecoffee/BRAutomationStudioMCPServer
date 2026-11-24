@@ -15,6 +15,20 @@ RULE_ROLES = (
 )
 
 
+class UnsupportedTrafficMapping(ValueError):
+    """The compiled edges cannot be identified as one-way generated SVG mappings."""
+
+
+def directed_svg_mapping_ids(edges):
+    pairs = [(edge["source"], edge["destination"]) for edge in edges]
+    result = {f"mapping_{start}_to_{end}": (start, end) for start, end in pairs}
+    if len(result) != len(pairs) or any(start == end or "_to_" in start or "_to_" in end for start, end in pairs):
+        raise UnsupportedTrafficMapping("Expected distinct non-self mappings with unambiguous endpoint IDs")
+    if set(pairs) & {(end, start) for start, end in pairs}:
+        raise UnsupportedTrafficMapping("Reciprocal mappings are outside the verified one-way SVG format")
+    return result
+
+
 def rule_key(rule):
     roles = [tuple(sorted((item["name"], item["type"]) for item in rule[role])) for _, role in RULE_ROLES]
     return rule["name"], rule["type"], *roles
