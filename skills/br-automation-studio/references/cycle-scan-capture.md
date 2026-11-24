@@ -121,6 +121,16 @@ Use `verifyScanClock` in the cycle request and map the recorded clock column to 
 
 For `maxPositionSampleAgeMicroseconds`, record the PLC scan and the X/Y acquisition as separate timestamps on that same clock. Map the X/Y acquisition times through `inspection.positionTimeMicroseconds` and `return.positionTimeMicroseconds`. Include `hold.positionTimeMicroseconds` when checking the return and next-hold positions. [Position sample age review](cycle-trace-review.md#check-position-sample-age)
 
+### Sample the AS4 runtime clock
+
+For the AS4 ARsim capture task, register `AsIoTime` and sample `AsIOTimeStamp()` once at the same point in each scan as the station observations. The installed declaration returns the I/O system timestamp as a `DINT` in microseconds. Start a new elapsed-time series at zero on the first recorded scan. Use the same elapsed series across the outbound and return observations and the next hold. Write it as `scanTimeMicroseconds` in the same CSV row as the sampled values. [B&R AsIOTimeStamp help](https://help.br-automation.com/#/en/4/libraries%2Fasiotime%2Ffbks%2Fasiotimestamp.html)
+
+For a bounded capture, interpret each raw timestamp as an unsigned 32-bit counter. Calculate the difference from the previous sample, accounting for the wrap from 4,294,967,295 to zero, and accumulate the differences. Treat a zero or implausibly large difference as a capture error. When using `brsitoa` for the CSV, check that the accumulated value stays within 2,147,483,647 µs before converting to `DINT`. Start a fresh capture after a task restart. Keep the task period in the run record as configuration and take the elapsed interval from the recorded clock.
+
+Run the full cycle review with `verifyScanClock` and retain `cycleTraceReview.scanTiming.clock` and `scanTiming.intervals`. The elapsed span ends at the first next hold. The HMI reopen and later held scans are verified separately through the same retained CSV. Use the measured interval to exercise the comparator in a rehearsal and use an approved threshold for the target run. [Elapsed-time limit review](cycle-trace-review.md#measure-the-cycle-intervals-with-a-recorded-clock)
+
+In the AS4.12 / J4.93 synthetic rehearsal, the PLC published 161 timestamped scans in the same session as the HMI reopen. The measured interval from the scripted Release to the first next hold was 1,600,013 µs over eight scans. The review accepted a limit of 1,600,013 µs and rejected 1,600,012 µs while retaining the measured interval.
+
 ## Review the output
 
 Run `br-studio run --request <request.json>` and retain the response with the descriptor, scan file and build receipts. Missing boundary scans or an internal gap leave the cycle incomplete. Duplicate or decreasing scan indexes, a changed scan file, malformed required values or unaligned chart signals produce issues. The existing cycle reviewer still checks request identity, event continuity, return and the next hold. Compare with a same-session HMI report when validating the page reopen. If `arsim_status_smoke` retained the file in that runtime, point `scanCsv` to the retained copy and set `requireSessionScanCapture` to require the receipt. [Same-run scan retention](arsim-status-smoke.md#retain-a-scan-file-from-the-same-runtime)
