@@ -85,6 +85,12 @@ In br-studio 0.110.0 or later, read `assemblyBounds` under each browser document
 
 Set `minimumTrafficLabelHeightCssPx` to a positive whole number to turn on the label checks and enforce the project-selected height in both documents. The comparison uses the measured value at full precision. When the label text and visibility pass but the size falls short, look for `below_minimum` and `belowMinimum` in the affected document. Compare receipts at the viewport dimensions intended for the HMI and confirm readability on the panel.
 
+#### Check that labels fit in view
+
+Starting with br-studio 0.111.0, each measured label reports `insideWidget` and `insideViewport`. The probe compares the text rectangle with the Assembly6D widget rectangle and the viewport content area in CSS pixels. `viewportContent` records the browser area available after scrollbars. [CSSOM View geometry](https://www.w3.org/TR/cssom-view/#extensions-to-the-element-interface)
+
+Set `requireTrafficLabelsInBounds` to `true` to enable the label check and require both containment checks in each browser document. Labels extending past either rectangle appear under `outsideWidget` or `outsideViewport`. Combine this option with the chosen [viewport](#set-the-browser-viewport) and label height when needed. Inspect label overlap and readability on the intended panel.
+
 ### Save the generated SVGs
 
 Set `captureLayoutAssets` to `true` in the request arguments. This also enables the required layout check in both browser documents. After the browser closes, the CLI makes a fresh GET for each expected URL on the same owned ARsim HTTP listener. Each response must be HTTP 200 with an `image/svg+xml` body and a namespaced SVG root. The browser status and capture refer to separate requests inside the same ARsim session.

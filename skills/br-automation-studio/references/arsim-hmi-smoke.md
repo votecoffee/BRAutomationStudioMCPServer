@@ -62,6 +62,8 @@ Set `minimumTrafficLabelHeightCssPx` to enable the label check and enforce a pro
 
 Set `viewportWidthCssPx` and `viewportHeightCssPx` together to run the check at the chosen content area. Both documents record the measured dimensions before accepting counter samples. [Viewport workflow](arsim-browser-smoke.md#set-the-browser-viewport)
 
+Set `requireTrafficLabelsInBounds` to require every verified label to fit in both the widget and the viewport content area. This also works in `arsim_status_smoke` and `arsim_browser_smoke`. [Label bounds workflow](arsim-browser-smoke.md#check-that-labels-fit-in-view)
+
 ## Read the evidence
 
 1. Confirm the binding, compiled default visualization, 6D configuration and rendered Assembly6D links belong to the same completed build. A binding or default visualization mismatch stops before runtime materialization.

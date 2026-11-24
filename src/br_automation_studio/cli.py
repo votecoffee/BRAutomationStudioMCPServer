@@ -1127,6 +1127,9 @@ def markdown_browser(browser, text):
                 if (viewport := labels.get("viewport")) and "viewport" not in document:
                     lines.append(f"    - Viewport {text(viewport['widthCssPx'])} × {text(viewport['heightCssPx'])}"
                                  f" CSS px · Device pixel ratio {text(viewport['devicePixelRatio'])}")
+                if viewport_content := labels.get("viewportContent"):
+                    lines.append(f"    - Viewport content {text(viewport_content['widthCssPx'])} ×"
+                                 f" {text(viewport_content['heightCssPx'])} CSS px")
                 if height := labels.get("minObservedHeightCssPx"):
                     lines.append(f"    - Smallest observed height {text(height)} CSS px")
                 for name, label in labels["labels"].items():
@@ -1136,6 +1139,9 @@ def markdown_browser(browser, text):
                     if label.get("heightCssPx") is not None:
                         lines[-1] += (f" · Bounds {text(label['widthCssPx'])} ×"
                                       f" {text(label['heightCssPx'])} CSS px")
+                    if "insideWidget" in label:
+                        lines[-1] += (f" · Inside widget {text(label['insideWidget'])}"
+                                      f" · Inside viewport {text(label['insideViewport'])}")
     if capture := browser.get("layoutCapture"):
         lines.append(f"- Layout capture {text(capture['state'])} · Paths relative to the session directory")
         for asset in capture["assets"].values():

@@ -114,7 +114,7 @@ def expected_traffic_labels(reviewed, start):
     return sorted(names)
 
 
-def traffic_label_observation(value, expected, minimum_height=None):
+def traffic_label_observation(value, expected, minimum_height=None, require_in_bounds=False):
     value = value if isinstance(value, dict) else {}
     observed = value.get("labels")
     observed = observed if isinstance(observed, dict) else {}
@@ -127,13 +127,21 @@ def traffic_label_observation(value, expected, minimum_height=None):
         if type(height) in (float, int) and height > 0 and isfinite(height):
             heights[name] = height
     below = [] if minimum_height is None else [name for name, height in heights.items() if height < minimum_height]
+    outside_widget = [name for name in heights if labels[name].get("insideWidget") is False]
+    outside_viewport = [name for name in heights if labels[name].get("insideViewport") is False]
+    bounds_missing = require_in_bounds and any(
+        type(labels[name].get(key)) is not bool for name in heights for key in ("insideWidget", "insideViewport")
+    )
     state = "observed"
-    if len(heights) != len(labels):
+    if len(heights) != len(labels) or bounds_missing:
         state = "unverified"
     elif below:
         state = "below_minimum"
+    elif require_in_bounds and (outside_widget or outside_viewport):
+        state = "out_of_bounds"
     return {"state": state, "labels": labels, "viewport": value.get("viewport"),
-            "minObservedHeightCssPx": min(heights.values(), default=None), "belowMinimum": below}
+            "viewportContent": value.get("viewportContent"), "minObservedHeightCssPx": min(heights.values(), default=None),
+            "belowMinimum": below, "outsideWidget": outside_widget, "outsideViewport": outside_viewport}
 
 
 def viewport_observation(value, requested):
@@ -290,6 +298,11 @@ def widget_expression(assembly, counter, layout_paths=None, status_widgets=(), *
         const viewport = {{widthCssPx: innerWidth, heightCssPx: innerHeight, devicePixelRatio}};
         const labelNames = {json.dumps(list(traffic_labels))};
         const trafficLabels = labelNames.length && assembly ? (() => {{
+            const root = document.compatMode === 'BackCompat' ? document.body : document.documentElement;
+            const viewportRect = {{left: 0, top: 0, right: root.clientWidth, bottom: root.clientHeight}};
+            const contains = (outer, rect) =>
+                rect.left >= outer.left && rect.top >= outer.top &&
+                rect.right <= outer.right && rect.bottom <= outer.bottom;
             const labels = new Map(labelNames.map(name => ['label_' + name, []]));
             for (const node of assembly.querySelectorAll('svg g.traffic-manager text[id]')) {{
                 if (node.namespaceURI === 'http://www.w3.org/2000/svg') labels.get(node.id)?.push(node);
@@ -303,13 +316,16 @@ def widget_expression(assembly, counter, layout_paths=None, status_widgets=(), *
             }};
             return {{
                 viewport,
+                viewportContent: {{widthCssPx: viewportRect.right, heightCssPx: viewportRect.bottom}},
                 labels: Object.fromEntries(labelNames.map(name => {{
                     const matches = labels.get('label_' + name);
                     const node = matches.length === 1 ? matches[0] : null;
                     const rect = node?.getBoundingClientRect();
+                    const shown = node ? visible(node, rect) : false;
                     return [name, {{count: matches.length, text: node?.textContent.trim() ?? null,
-                                    visible: node ? visible(node, rect) : false,
-                                    widthCssPx: rect?.width ?? null, heightCssPx: rect?.height ?? null}}];
+                                    visible: shown, widthCssPx: rect?.width ?? null, heightCssPx: rect?.height ?? null,
+                                    insideWidget: shown ? contains(assemblyRect, rect) : null,
+                                    insideViewport: shown ? contains(viewportRect, rect) : null}}];
                 }}))
             }};
         }})() : null;
@@ -355,7 +371,8 @@ def check_document_status(state, receipt, expected):
 
 def collect_samples(page, expression, url, receipt, count, prior_origins=(), after=Decimal(0),
                     *, layout_paths=None, require_layout=False, check_assembly=True, expected_status=None,
-                    resource_paths=None, traffic_labels=(), minimum_label_height=None, requested_viewport=None):
+                    resource_paths=None, traffic_labels=(), minimum_label_height=None, requested_viewport=None,
+                    require_label_bounds=False):
     latest = after
     resource_paths = resource_paths or {}
     while time.monotonic() < page.deadline:
@@ -386,7 +403,7 @@ def collect_samples(page, expression, url, receipt, count, prior_origins=(), aft
                 receipt["layout"] = layout_observation(result.get("layout"), layout_paths)
             if traffic_labels:
                 receipt["trafficLabels"] = traffic_label_observation(
-                    result.get("trafficLabels"), traffic_labels, minimum_label_height)
+                    result.get("trafficLabels"), traffic_labels, minimum_label_height, require_label_bounds)
             for key, path in resource_paths.items():
                 receipt[key] = resource_observation(result.get(key), path)
             value = result.get("value")
@@ -416,6 +433,9 @@ def collect_samples(page, expression, url, receipt, count, prior_origins=(), aft
             if observed["state"] == "below_minimum":
                 names = ", ".join(observed["belowMinimum"])
                 raise TimeoutError(f"Traffic label heights below {minimum_label_height} CSS px: {names}")
+            if observed["state"] == "out_of_bounds":
+                names = ", ".join(sorted(set(observed["outsideWidget"]) | set(observed["outsideViewport"])))
+                raise TimeoutError(f"Traffic labels extend outside the Assembly6D widget or browser viewport: {names}")
             if observed["state"] != "observed":
                 raise TimeoutError("The expected station and waypoint labels were not verified in the Assembly6D widget")
     if expected_status:
@@ -440,7 +460,7 @@ def verify_navigation(page, url, receipt):
     options = {"layout_paths": paths, "require_layout": required, "check_assembly": assembly is not None,
                "expected_status": expected, "resource_paths": resources, "traffic_labels": labels,
                "minimum_label_height": receipt.get("minimumTrafficLabelHeightCssPx"),
-               "requested_viewport": viewport}
+               "requested_viewport": viewport, "require_label_bounds": receipt.get("requireTrafficLabelsInBounds", False)}
     expression = widget_expression(assembly, receipt["counterWidgetId"], paths, expected, resource_paths=resources,
                                    traffic_labels=labels)
     if viewport:
@@ -521,6 +541,7 @@ class ChromeProbe:
     require_traffic_labels: bool = False
     minimum_label_height: int | None = None
     viewport: tuple[int, int] | None = None
+    require_label_bounds: bool = False
     key: ClassVar[str] = "browser"
     evidence: ClassVar[str] = "arsim_loopback_browser"
 
@@ -539,7 +560,7 @@ class ChromeProbe:
         if self.check_assembly or start:
             widget = assembly_dom_id(reviewed["widgets"], selected, self.counter_widget)
         paths = layout_asset_paths(reviewed["widgets"], widget) if widget is not None else {}
-        check_labels = self.require_traffic_labels or self.minimum_label_height is not None
+        check_labels = self.require_traffic_labels or self.minimum_label_height is not None or self.require_label_bounds
         require_layout = self.require_layout or self.capture_layout or check_labels
         if require_layout and not paths:
             raise ValueError("The reviewed widget has no supported 6DData SVG paths")
@@ -556,6 +577,8 @@ class ChromeProbe:
             if "trafficManager" not in paths:
                 raise ValueError("Traffic label checks require a Traffic Manager SVG path")
             receipt["expectedTrafficLabels"] = expected_traffic_labels(reviewed, start)
+        if self.require_label_bounds:
+            receipt["requireTrafficLabelsInBounds"] = True
         if self.minimum_label_height is not None:
             receipt["minimumTrafficLabelHeightCssPx"] = self.minimum_label_height
         if self.viewport is not None:

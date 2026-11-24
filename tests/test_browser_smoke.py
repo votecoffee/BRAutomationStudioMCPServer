@@ -336,8 +336,38 @@ class TestBrowserSmoke(unittest.TestCase):
         self.assertEqual(receipt["initial"]["trafficLabels"]["minObservedHeightCssPx"], 5)
         self.assertEqual(receipt["reopened"]["trafficLabels"], {
             "state": "below_minimum", "labels": {"S1": short}, "viewport": viewport,
-            "minObservedHeightCssPx": 4.999, "belowMinimum": ["S1"],
+            "viewportContent": None, "minObservedHeightCssPx": 4.999, "belowMinimum": ["S1"],
+            "outsideWidget": [], "outsideViewport": [],
         })
+
+    @patch("br_automation_studio.browser_smoke.time.sleep")
+    @patch("br_automation_studio.browser_smoke.time.monotonic", side_effect=range(8))
+    def test_reopened_traffic_labels_must_fit_both_bounds_when_required(self, now, pause):
+        label = {"count": 1, "visible": True, "text": "S1", "widthCssPx": 12, "heightCssPx": 7,
+                 "insideWidget": True, "insideViewport": True}
+        client = {"widthCssPx": 785, "heightCssPx": 580}
+
+        def seen(value, origin, row):
+            return dict(hmi(value, origin), trafficLabels={"viewportContent": client, "labels": {"S1": row}})
+
+        page = Mock(deadline=7)
+        page.read.side_effect = [
+            seen("1", 10, label), seen("2", 10, label), seen("3", 10, label),
+            {"url": "about:blank", "timeOrigin": 11},
+            seen("100", 10, label), seen("4", 12, dict(label, insideWidget=False)),
+            seen("5", 12, dict(label, insideWidget=False, insideViewport=False)),
+        ]
+        receipt = dict(self.receipt(), expectedTrafficLabels=["S1"], requireTrafficLabelsInBounds=True,
+                       minimumTrafficLabelHeightCssPx=5)
+        with self.assertRaisesRegex(TimeoutError, "outside the Assembly6D widget or browser viewport: S1"):
+            verify_navigation(page, URL, receipt)
+        self.assertEqual(receipt["initial"]["trafficLabels"]["state"], "observed")
+        reopened = receipt["reopened"]["trafficLabels"]
+        self.assertEqual(reopened["state"], "out_of_bounds")
+        self.assertEqual(reopened["outsideWidget"], ["S1"])
+        self.assertEqual(reopened["outsideViewport"], ["S1"])
+        self.assertEqual(reopened["minObservedHeightCssPx"], 7)
+        self.assertEqual(reopened["viewportContent"], client)
 
     @patch("br_automation_studio.browser_smoke.time.sleep")
     @patch("br_automation_studio.browser_smoke.time.monotonic", side_effect=range(8))
