@@ -160,7 +160,7 @@ Use `arsim_status_smoke` to verify expected numeric status such as a held reques
 
 Combine viewport, label and one-way mapping line checks, widget bundle, SVG capture and direct OPC UA readback in one request. Use `hmiReport` in the SVG review to verify the captures against the panel session and build. [Panel layout rehearsal](skills/br-automation-studio/references/arsim-panel-layout.md)
 
-Use the [one-shuttle rehearsal runbook](skills/br-automation-studio/references/inspection-cycle-rehearsal.md) to run the build, scan capture, HMI reopen and SVG review as one evidence set.
+Use the one-shuttle rehearsal runbook to review the scan capture, HMI reopen, rendered mapping lines and SVG geometry from the same build and run. [One-shuttle rehearsal](skills/br-automation-studio/references/inspection-cycle-rehearsal.md)
 
 ## Chat workflow
 

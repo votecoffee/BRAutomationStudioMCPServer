@@ -347,6 +347,9 @@ def run_cycle_trace_review(arguments, request_directory):
     require_widget = arguments.get("requireHmiAssemblyWidget", False)
     if require_widget and not status_report:
         raise InvalidRequest("requireHmiAssemblyWidget needs hmiStatusReport")
+    require_mapping_lines = arguments.get("requireHmiTrafficMappingLines", False)
+    if require_mapping_lines and not status_report:
+        raise InvalidRequest("requireHmiTrafficMappingLines needs hmiStatusReport")
     layout_report = arguments.get("hmiLayoutSvgReport")
     if layout_report and not status_report:
         raise InvalidRequest("hmiLayoutSvgReport needs hmiStatusReport")
@@ -387,6 +390,7 @@ def run_cycle_trace_review(arguments, request_directory):
                               verify_position_time_handoff=verify_time_handoff,
                               require_hold_through_reopen=require_hold,
                               require_assembly_widget=require_widget,
+                              require_traffic_mapping_lines=require_mapping_lines,
                               hmi_layout_report_path=request_directory / layout_report if layout_report else None,
                               captured_layout_checks=layout_checks if verify_layout else None,
                               release_total_event=release_total_event,
@@ -823,6 +827,8 @@ CYCLE_TRACE_REVIEW = Operation(
                                      "description": "Require consecutive held PLC scans reaching the last direct heartbeat after HMI reopen. Requires hmiStatusReport."},
         "requireHmiAssemblyWidget": {"type": "boolean", "default": False,
                                      "description": "Require the cycle's Assembly6D widget and both layout SVGs in both HMI documents."},
+        "requireHmiTrafficMappingLines": {"type": "boolean", "default": False,
+                                          "description": "Require the compiled one-way mapping lines in both documents of hmiStatusReport. Enables the Assembly6D check."},
         "hmiLayoutSvgReport": {"type": "string", "minLength": 1,
                                "description": "Completed layout_svg_review JSON for both SVGs captured by the HMI status probe."},
         "verifyCapturedLayout": {"type": "boolean", "default": False,

@@ -171,6 +171,12 @@ With br-studio 0.68.0 or later, set `requireHmiAssemblyWidget: true` with `hmiSt
 
 Read `cycleHmiReview.assemblyWidget` for the selected widget, compiled content, startup map and both layout paths. The initial and reopened documents each need the widget, a successful startup-map request, both expected layout SVGs and a rendered SVG with bounds. A mismatch fails the HMI pairing while preserving the independent cycle result.
 
+## Verify the cycle's rendered mapping lines
+
+With br-studio 0.117.0 or later, set `requireTrafficMappingLines: true` in the status smoke request and `requireHmiTrafficMappingLines: true` in the cycle review with its `hmiStatusReport`. This enables the Assembly6D check. The reviewer derives the one-way IDs from the cycle's compiled Traffic Manager and checks the plan and line observations in both browser documents. Each expected line needs one matching group, one visible line and nonzero bounds. [Browser evidence](arsim-browser-smoke.md#verify-one-way-mapping-lines-in-chrome)
+
+Read `cycleHmiReview.trafficMappings` for the IDs and each document's result. A missing plan or a mismatched manager fails the mapping review. Missing, ambiguous or hidden lines identify the affected document. Use `verifyCapturedLayout` with `verifyMappingLineEndpoints` to also compare the archived SVG coordinates. [Combined request](inspection-cycle-rehearsal.md#review-the-saved-svgs-and-plc-scans)
+
 ## Match the captured layout geometry to the cycle
 
 With br-studio 0.69.0 or later, enable `captureLayoutAssets` and `requireStartPage` in the status smoke request. Review the two SVGs saved by that run with [`layout_svg_review`](layout-svg-review.md#run-the-comparison) and save the complete JSON response. Pass that response as `hmiLayoutSvgReport` alongside `hmiStatusReport` in the cycle review. This also runs the Assembly6D widget check.

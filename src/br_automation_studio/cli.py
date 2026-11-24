@@ -966,6 +966,14 @@ def markdown_cycle_hmi(hmi, text):
             layout = observed["layoutStatuses"]
             lines.append(f"  - {text(phase.title())} · Start page map HTTP {observed['startPageMapStatus']} "
                          f"· Assembly SVG HTTP {layout['assembly']} · Manager SVG HTTP {layout['trafficManager']}")
+    if mapping_lines := hmi.get("trafficMappings"):
+        lines.append(f"- HMI mapping lines {text(mapping_lines['state'])} · Manager {text(mapping_lines['managerId'])}")
+        for phase, document in mapping_lines["documents"].items():
+            missing = document["unverifiedMappings"]
+            count = len(document["mappings"])
+            lines.append(f"  - {text(phase.title())} · {text(document['state'])} · {count - len(missing)}/{count} visible")
+            if missing:
+                lines.append(f"    - Unverified mappings {text(', '.join(missing))}")
     if geometry := hmi.get("layoutGeometry"):
         lines.append(f"- Layout geometry {text(geometry['state'])} · Layout {text(geometry.get('layoutId'))}")
         for role, asset in geometry["assets"].items():

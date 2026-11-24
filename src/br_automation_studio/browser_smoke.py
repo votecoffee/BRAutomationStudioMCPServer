@@ -120,13 +120,22 @@ def expected_traffic_labels(reviewed, start):
     return sorted(names)
 
 
+def visible_mapping_line(row):
+    if not isinstance(row, dict) or row.get("visible") is not True:
+        return False
+    if any(type(row.get(key)) is not int or row[key] != 1 for key in ("groupCount", "lineCount")):
+        return False
+    bounds = [row.get(key) for key in ("widthCssPx", "heightCssPx")]
+    return all(type(value) in (int, float) and 0 <= value < inf for value in bounds) and any(bounds)
+
+
 def traffic_mapping_observation(value, expected):
     value = value if isinstance(value, dict) else {}
     observed = value.get("mappings")
     observed = observed if isinstance(observed, dict) else {}
     rows = {name: observed.get(name) for name in expected["ids"]}
     overlay_count = value.get("overlayCount")
-    unverified = [name for name, row in rows.items() if not isinstance(row, dict) or row.get("visible") is not True]
+    unverified = [name for name, row in rows.items() if not visible_mapping_line(row)]
     matched = type(overlay_count) is int and overlay_count == 1 and not unverified
     return {"state": "observed" if matched else "unverified", "managerId": expected["managerId"],
             "overlayCount": overlay_count, "mappings": rows, "unverifiedMappings": unverified}

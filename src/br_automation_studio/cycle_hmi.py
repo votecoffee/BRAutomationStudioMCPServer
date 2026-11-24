@@ -4,9 +4,10 @@ from pathlib import Path
 import re
 
 from .arsim_smoke import HOST
-from .browser_smoke import ASSEMBLY_WIDGET, http_status, layout_asset_paths, numeric_text
+from .browser_smoke import ASSEMBLY_WIDGET, http_status, layout_asset_paths, numeric_text, traffic_mapping_observation
 from .hmi_smoke import HELD_STATUS_ROLES, check_samples
 from .json_io import json_snapshot
+from .links import UnsupportedTrafficMapping, directed_svg_mapping_ids
 from .native_build import RETAINED_ENVIRONMENT_REPORT, check_source
 from .opcua_smoke import CURRENT_READ, INTEGER_NODE_TYPES
 from .runtime_capture import CAPTURE_COPY
@@ -289,6 +290,39 @@ def captured_layout_assets(smoke, paths, *, code="cycle_hmi_layout_capture"):
     return assets
 
 
+def check_cycle_mapping_lines(ruc, browser, route, result):
+    manager = route["managerId"]
+    checked = result["trafficMappings"] = {"state": "issues", "managerId": manager, "ids": [], "documents": {}}
+    managers = [row for row in ruc["trafficManagers"]
+                if row["manager"] == manager and row["assembly"] == route["assembly"]]
+    if len(managers) != 1:
+        raise TraceIssue("cycle_hmi_mapping_plan", "Select the compiled Traffic Manager for the cycle assembly")
+    try:
+        ids = sorted(directed_svg_mapping_ids(managers[0]["edges"]))
+    except UnsupportedTrafficMapping as error:
+        raise TraceIssue("cycle_hmi_mapping_plan", str(error)) from error
+    expected = {"managerId": manager, "ids": ids}
+    checked.update(expected)
+    if not ids or browser.get("expectedTrafficMappings") != expected:
+        raise TraceIssue("cycle_hmi_mapping_plan",
+                         "The cycle's compiled one-way mappings must match the plan recorded by requireTrafficMappingLines")
+
+    invalid = []
+    for phase in ("initial", "reopened"):
+        observed = browser[phase].get("trafficMappings")
+        normalized = checked["documents"][phase] = traffic_mapping_observation(observed, expected)
+        if (normalized["state"] != "observed" or observed.get("state") != "observed"
+                or observed.get("managerId") != manager or observed.get("unverifiedMappings") != []
+                or observed["mappings"].keys() != normalized["mappings"].keys()):
+            normalized["state"] = "unverified"
+            invalid.append(phase)
+    if invalid:
+        phases = " and ".join(invalid)
+        raise TraceIssue("cycle_hmi_mapping_document",
+                         f"Compiled one-way mapping lines were not verified in the {phases} HMI document evidence")
+    checked["state"] = "matched"
+
+
 def check_layout_svg_pairing(ruc, smoke, response, result):
     if (type(response.get("schemaVersion")) is not int or response["schemaVersion"] != 1
             or response.get("operation") != "layout_svg_review" or response.get("status") != "complete"):
@@ -329,7 +363,7 @@ def pair_layout_geometry(ruc, smoke, reviewed, result):
 
 
 def check_cycle_hmi(cycle, trace, ruc, document, result, *, require_session_capture=False,
-                    require_hold_through_reopen=False, assembly_route=None):
+                    require_hold_through_reopen=False, assembly_route=None, require_traffic_mapping_lines=False):
     hmi, witness, reviewed = check_run(document, ruc, trace, result)
     check_session_capture(hmi, cycle, result, require_session_capture)
     identifiers = witness["bindings"]
@@ -363,6 +397,8 @@ def check_cycle_hmi(cycle, trace, ruc, document, result, *, require_session_capt
         checked[role] = check_status_role(hmi, result["packageSha256"], role, identifiers[role], expected[role], widgets)
     if assembly_route is not None:
         check_assembly_widget(ruc, reviewed, hmi["browser"], assembly_route, result)
+        if require_traffic_mapping_lines:
+            check_cycle_mapping_lines(ruc, hmi["browser"], assembly_route, result)
 
 
 def check_environment_file(path, expected, *, required):
@@ -388,6 +424,7 @@ def check_environment_file(path, expected, *, required):
 
 
 def review_cycle_hmi(report, trace, path, *, require_session_capture=False, require_assembly_widget=False,
+                     require_traffic_mapping_lines=False,
                      require_hold_through_reopen=False, layout_report_path=None, captured_layout_review=None,
                      status_snapshot=None, environment_report_path=None):
     result = report["cycleHmiReview"]
@@ -397,11 +434,12 @@ def review_cycle_hmi(report, trace, path, *, require_session_capture=False, requ
             status_snapshot = json_snapshot(path, TRACE_LIMIT)
         document, result["statusReport"] = status_snapshot
         ruc = report["rucReview"]
-        check_widget = require_assembly_widget or layout_report_path is not None or captured_layout_review is not None
+        check_widget = (require_assembly_widget or require_traffic_mapping_lines
+                        or layout_report_path is not None or captured_layout_review is not None)
         assembly_route = report["routeReview"] if check_widget else None
         check_cycle_hmi(report["cycleTraceReview"], trace, ruc, document, result,
                         require_session_capture=require_session_capture, require_hold_through_reopen=require_hold_through_reopen,
-                        assembly_route=assembly_route)
+                        assembly_route=assembly_route, require_traffic_mapping_lines=require_traffic_mapping_lines)
         environment = result.get("environmentReport")
         if environment_report_path is not None or environment is not None:
             evidence_path = environment_report_path or Path(result["statusReport"]["path"]).with_name(

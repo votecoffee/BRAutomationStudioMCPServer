@@ -1,3 +1,4 @@
+from copy import deepcopy
 from hashlib import sha256
 import json
 import os
@@ -138,6 +139,50 @@ class CycleHmiTest(unittest.TestCase):
         self.assertEqual(report["cycleHmiReview"]["layoutGeometry"]["state"], "unverified")
         self.assertEqual(report["layoutSvgReview"], layout)
         self.assertEqual(report["diagnostics"], [diagnostic])
+
+    def test_cycle_mapping_lines_recheck_the_compiled_plan_and_both_document_rows(self):
+        route = self.attach_assembly_widget()
+        mapping = "mapping_S1_to_G1"
+        self.ruc["trafficManagers"] = [{"manager": "Traffic", "assembly": "Planar",
+                                        "edges": [{"source": "S1", "destination": "G1"}]}]
+        browser = self.hmi["browser"]
+        browser["expectedTrafficMappings"] = {"managerId": "Traffic", "ids": [mapping]}
+        for phase in ("initial", "reopened"):
+            browser[phase]["trafficMappings"] = {"state": "observed", "managerId": "Traffic", "overlayCount": 1,
+                                                  "unverifiedMappings": [], "mappings": {mapping: {
+                                                      "groupCount": 1, "lineCount": 1, "visible": True,
+                                                      "widthCssPx": 22, "heightCssPx": 0,
+                                                  }}}
+
+        def review(document):
+            report = {"cycleTraceReview": self.cycle, "cycleHmiReview": {}, "rucReview": self.ruc,
+                      "routeReview": route, "diagnostics": []}
+            path = Path("session/status-response.json")
+            review_cycle_hmi(report, self.trace, path, status_snapshot=(document, {"path": str(path)}),
+                             require_traffic_mapping_lines=True)
+            return report
+
+        matched = review(self.document)["cycleHmiReview"]
+        self.assertEqual(matched["assemblyWidget"]["state"], "matched")
+        result = matched["trafficMappings"]
+        self.assertEqual((result["state"], result["ids"]), ("matched", [mapping]))
+        self.assertEqual([row["state"] for row in result["documents"].values()], ["observed", "observed"])
+
+        no_plan = deepcopy(self.document)
+        del no_plan["result"]["arsimSmoke"]["hmi"]["browser"]["expectedTrafficMappings"]
+        self.assertEqual(review(no_plan)["diagnostics"][0]["code"], "cycle_hmi_mapping_plan")
+
+        for changes in ({"groupCount": True}, {"lineCount": 2}, {"visible": False}, {"widthCssPx": 0}):
+            with self.subTest(changes=changes):
+                document = deepcopy(self.document)
+                reopened = document["result"]["arsimSmoke"]["hmi"]["browser"]["reopened"]["trafficMappings"]
+                reopened["mappings"][mapping].update(changes)
+                invalid = review(document)
+                self.assertEqual(invalid["diagnostics"][0]["code"], "cycle_hmi_mapping_document")
+                self.assertIn("reopened", invalid["diagnostics"][0]["message"])
+                documents = invalid["cycleHmiReview"]["trafficMappings"]["documents"]
+                self.assertEqual(documents["initial"]["state"], "observed")
+                self.assertEqual(documents["reopened"]["unverifiedMappings"], [mapping])
 
     def test_layout_svg_review_matches_the_owned_capture_and_both_hashes(self):
         paths = {"assembly": "/FileDevice:6DData/Planar.svg", "trafficManager": "/FileDevice:6DData/Traffic.svg"}
@@ -332,6 +377,15 @@ class CycleHmiTest(unittest.TestCase):
             self.assertEqual(execute(request, root)["status"], "complete")
         self.assertEqual(review.call_args.kwargs["hmi_status_path"], root / "session/status.json")
         self.assertEqual(review.call_args.kwargs["hmi_environment_report_path"], root / "archived-review.json")
+        args = request["arguments"]
+        del args["hmiEnvironmentReport"], args["hmiStatusReport"]
+        args["requireHmiTrafficMappingLines"] = True
+        with self.assertRaisesRegex(InvalidRequest, "requireHmiTrafficMappingLines needs hmiStatusReport"):
+            execute(request, root)
+        args["hmiStatusReport"] = "session/status.json"
+        with patch("br_automation_studio.operations.cycle_trace_review", return_value={"diagnostics": []}) as review:
+            self.assertEqual(execute(request, root)["status"], "complete")
+        self.assertTrue(review.call_args.kwargs["require_traffic_mapping_lines"])
 
     def test_same_package_needs_the_same_session_and_correct_capture_order(self):
         for fields, key, value, code in (
