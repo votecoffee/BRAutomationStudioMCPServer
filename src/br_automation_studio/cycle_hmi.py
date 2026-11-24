@@ -201,6 +201,15 @@ def recorded_status_roles(hmi):
     return roles
 
 
+def check_held_status_identifiers(hmi, identifiers, heartbeat):
+    if (set(identifiers) != set(HELD_STATUS_ROLES)
+            or not all(isinstance(value, str) and value.strip() for value in identifiers.values())
+            or len(set(identifiers.values()) | {heartbeat}) != len(HELD_STATUS_ROLES) + 1):
+        raise ValueError("Select four distinct status identifiers, separate from the heartbeat")
+    if any(identifiers[role] != identifier for role, identifier in recorded_status_roles(hmi).items()):
+        raise TraceIssue("cycle_hmi_status_roles", "The selected binding identifiers disagree with the HMI receipt's held-status roles")
+
+
 def bind_session_scan_capture(trace, document, ruc):
     try:
         _, smoke = status_run(document, ruc)
@@ -376,12 +385,7 @@ def check_cycle_hmi(cycle, trace, ruc, document, result, *, require_session_capt
     hmi, witness, reviewed = check_run(document, ruc, trace, result)
     check_session_capture(hmi, cycle, result, require_session_capture)
     identifiers = witness["bindings"]
-    if (set(identifiers) != set(HELD_STATUS_ROLES)
-            or not all(isinstance(value, str) and value.strip() for value in identifiers.values())
-            or len(set(identifiers.values()) | {witness["heartbeatIdentifier"]}) != len(HELD_STATUS_ROLES) + 1):
-        raise ValueError("Select four distinct status identifiers, separate from the heartbeat")
-    if any(identifiers[role] != identifier for role, identifier in recorded_status_roles(hmi).items()):
-        raise TraceIssue("cycle_hmi_status_roles", "The cycle binding identifiers disagree with the HMI receipt's held-status roles")
+    check_held_status_identifiers(hmi, identifiers, witness["heartbeatIdentifier"])
     hold = trace["nextHold"]
     if type(hold.get("phase")) is not int or not integer(hold.get("releaseTotal")):
         raise ValueError("The next hold needs integer phase and nonnegative releaseTotal values")

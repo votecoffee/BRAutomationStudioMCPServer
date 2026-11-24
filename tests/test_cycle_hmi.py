@@ -111,6 +111,48 @@ class CycleHmiTest(unittest.TestCase):
                     self.assertEqual(report["diagnostics"][0]["code"], "cycle_hmi_session_receipt")
                     self.assertEqual(report["diagnostics"][0]["path"], session.as_posix())
 
+    def test_held_status_scan_review_checks_exact_browser_and_direct_heartbeats(self):
+        roles = self.trace["hmi"]["bindings"]
+        for binding in self.hmi["statusBindingReviews"]:
+            binding["role"] = next(role for role, identifier in roles.items()
+                                   if identifier == binding["bindingReview"]["stringIdentifier"])
+        with TemporaryDirectory(dir=os.environ.get("BR_STUDIO_TEST_SCRATCH")) as scratch:
+            root = Path(scratch)
+            status, session, scan = (root / name for name in ("status.json", "session.json", "scan-capture.csv"))
+            request = {"schemaVersion": 1, "workspace": "test", "operation": "held_status_scan_review",
+                       "arguments": {"project": "Loop.apj", "jobDirectory": "job", "hmiStatusReport": status.name}}
+
+            def review(raw):
+                scan.write_bytes(raw)
+                self.hmi["scanCapture"] = {"state": "retained", "path": scan.name, "bytes": len(raw),
+                                           "ownedListener": self.owner, "sha256": sha256(raw).hexdigest()}
+                status.write_text(json.dumps(self.document), encoding="utf-8")
+                session.write_text(json.dumps(self.smoke), encoding="utf-8")
+                fixture = {"diagnostics": [], "rucReview": self.ruc}
+                with patch("br_automation_studio.held_status_scan.review_ruc", return_value=fixture):
+                    return execute(request, root)
+
+            header = b"scan,heartbeat,requestId,shuttleId,phase,releaseTotal\n"
+            scans = b"".join(f"{index},{heartbeat},13,3,10,4\n".encode("ascii")
+                             for index, heartbeat in enumerate(range(3, 16), 20))
+            good = review(header + scans)
+            self.assertEqual(good["status"], "complete")
+            result = good["result"]["heldStatusScanReview"]
+            self.assertEqual((result["state"], result["window"]["rows"]), ("matched", 13))
+            self.assertEqual(result["status"]["requestId"]["value"], 13)
+
+            missing = review(header + scans.replace(b"25,8,", b"25,7,"))
+            self.assertEqual(missing["status"], "issues")
+            self.assertEqual(missing["result"]["diagnostics"][0]["code"], "held_scan_heartbeat_missing")
+            self.assertEqual(missing["result"]["heldStatusScanReview"]["window"]["missingHeartbeats"], [8])
+
+            descriptor = root / "hold.json"
+            descriptor.write_text(json.dumps({"schemaVersion": 1, "columns": {"heartbeat": "Tick"}}), encoding="utf-8")
+            request["arguments"]["scanDescriptor"] = descriptor.name
+            renamed = review(header.replace(b"heartbeat", b"Tick") + scans)
+            self.assertEqual(renamed["status"], "complete")
+            self.assertEqual(renamed["result"]["heldStatusScanReview"]["window"], result["window"])
+
     def test_extended_hold_reaches_last_direct_heartbeat_after_reopen(self):
         self.assertNotIn("holdCoverage", self.check())
         with self.assertRaises(TraceIssue) as missing:

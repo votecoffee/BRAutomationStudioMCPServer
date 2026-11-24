@@ -10,6 +10,7 @@ from .assembly_io import assembly_io_review
 from .binding_review import BindingTarget, review_saved_binding
 from .browser_smoke import ChromeProbe
 from .cycle_trace import RELEASE_TOTAL_EVENTS, cycle_trace_review
+from .held_status_scan import held_status_scan_review
 from .hmi_smoke import arsim_hmi_smoke, read_status_bindings
 from .inspection import inspect_project
 from .layout_device import layout_device_review
@@ -539,6 +540,14 @@ def run_arsim_status_smoke(arguments, request_directory):
     return run_arsim_hmi_smoke(arguments, request_directory, bindings, capture)
 
 
+def run_held_status_scan_review(arguments, request_directory):
+    descriptor = arguments.get("scanDescriptor")
+    return held_status_scan_review(project_path(arguments, request_directory),
+                                   request_directory / arguments["jobDirectory"],
+                                   request_directory / arguments["hmiStatusReport"],
+                                   request_directory / descriptor if descriptor else None)
+
+
 PROJECT_INSPECT = Operation(
     name="project_inspect",
     summary="Inspect saved project versions and ACOPOS 6D references.",
@@ -1043,13 +1052,26 @@ ARSIM_STATUS_SMOKE = Operation(
     required=(*ARSIM_HMI_SMOKE.required, "statusBindingFile"),
     handler=run_arsim_status_smoke,
 )
+HELD_STATUS_SCAN_REVIEW = Operation(
+    name="held_status_scan_review",
+    summary="Match a retained PLC held-status CSV with both documents and direct reads from its ARsim session.",
+    arguments={
+        **RUC_INPUTS,
+        "hmiStatusReport": {"type": "string", "minLength": 1,
+                            "description": "Completed arsim_status_smoke JSON beside session.json and scan-capture.csv."},
+        "scanDescriptor": {"type": "string", "minLength": 1,
+                           "description": "Optional schemaVersion 1 JSON with column and OPC UA binding maps."},
+    },
+    required=(*RUC_REVIEW.required, "hmiStatusReport"),
+    handler=run_held_status_scan_review,
+)
 OPERATIONS = {item.name: item for item in (
     PROJECT_INSPECT, WIDGET_PACKAGE_REVIEW, BUILD_PREFLIGHT, MOTION_INTERFACE_REVIEW, SIMULATION_ENVIRONMENT, SIMULATION_PREFLIGHT, BUILD_PLAN, BUILD_EXECUTE, RUC_REVIEW,
     ASSEMBLY_IO_REVIEW, SAVED_BINDING_REVIEW, SAVED_ASSEMBLY_WIDGET_REVIEW, LAYOUT_DEVICE_REVIEW, LAYOUT_SVG_REVIEW,
     LAUNCHPAD_ROUTE_REVIEW, LAUNCHPAD_EXPORT_REVIEW, LAUNCHPAD_STATION_REVIEW, STATION_TRACE_REVIEW, CYCLE_TRACE_REVIEW,
     LAUNCHPAD_RECOVERY_REVIEW, LAUNCHPAD_MOTION_REVIEW,
     LAUNCHPAD_GEOMETRY_REVIEW, LAUNCHPAD_LAYOUT_REVIEW, LAUNCHPAD_FRAME_REVIEW, RUC_BINDING_REVIEW,
-    ARSIM_SMOKE, ARSIM_BROWSER_SMOKE, ARSIM_OPCUA_SMOKE, ARSIM_HMI_SMOKE, ARSIM_STATUS_SMOKE,
+    ARSIM_SMOKE, ARSIM_BROWSER_SMOKE, ARSIM_OPCUA_SMOKE, ARSIM_HMI_SMOKE, ARSIM_STATUS_SMOKE, HELD_STATUS_SCAN_REVIEW,
 )}
 
 

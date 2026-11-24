@@ -82,3 +82,41 @@ END_CASE;
 In the status request, set `scanCaptureFile` to `held-status.csv`. Select a timeout that allows the final acquisition and the asynchronous write, close and rename to finish. Keep the status response, original `session.json` and retained `scan-capture.csv` together. Check the file SHA-256 and verify that the final held heartbeat reaches the last direct read after the HMI reopens. Use the full-cycle descriptor and actual station observations for cycle acceptance. [First-cycle review](inspection-cycle-rehearsal.md)
 
 This publisher was compiled on AS4.12 with Automation Runtime J4.93 and exercised with a synthetic held station. The PLC published 150 consecutive heartbeat records. The retained 2,441-byte CSV matched the file in `runtime/USER` and reached heartbeat 194. The final direct read after reopen was 114.
+
+## Review the held window
+
+With br-studio 0.119.0 or later, set the four role labels in the status request's binding file. Use `requestId`, `shuttleId`, `phase` and `releaseTotal`. Keep the completed response beside the original `session.json` and `scan-capture.csv`. Save the following as `hold-review.json`. [Role-labeled status bindings](arsim-status-smoke.md#select-the-expected-status)
+
+```json
+{
+  "schemaVersion": 1,
+  "workspace": "held-window",
+  "operation": "held_status_scan_review",
+  "arguments": {
+    "project": "project/Example.apj",
+    "jobDirectory": "build",
+    "hmiStatusReport": "session/status-response.json"
+  }
+}
+```
+
+Use a UTF-8 comma-delimited CSV with distinct headers `scan`, `heartbeat`, `requestId`, `shuttleId`, `phase` and `releaseTotal`. Capture a consecutive scan window during which all four values are held. Record a nondecreasing heartbeat and include each value observed in both browser documents and both direct OPC UA windows.
+
+An optional `scanDescriptor` points to a JSON file for renamed columns or older status reports. `columns` maps a field to its CSV header. `bindings` maps all four held-status roles to their reviewed OPC UA string identifiers when supplying an explicit map. For a role-labeled receipt, omit `bindings` and use the captured roles.
+
+```json
+{
+  "schemaVersion": 1,
+  "columns": {
+    "heartbeat": "PlcHeartbeat"
+  },
+  "bindings": {
+    "requestId": "::Status:RequestId",
+    "shuttleId": "::Status:ShuttleId",
+    "phase": "::Status:Phase",
+    "releaseTotal": "::Status:ReleaseTotal"
+  }
+}
+```
+
+Run `br-studio run --request hold-review.json`. The review verifies the retained build, matches the runtime JSON and CSV hash, and compares the scan values with the four status bindings. Read `heldStatusScanReview.window` for the scan range and any missing heartbeat witnesses. For release, arrival and return acceptance, run the full cycle review with the corresponding scan columns. [Inspection-cycle rehearsal](inspection-cycle-rehearsal.md)

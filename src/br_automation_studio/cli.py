@@ -476,6 +476,8 @@ def markdown_ruc(response, text):
         title = "# AS4 mapp View end-to-end smoke"
     elif response["operation"] == "arsim_status_smoke":
         title = "# AS4 mapp View status reconnect"
+    elif response["operation"] == "held_status_scan_review":
+        title = "# AS4 PLC held-status scan review"
     elif response["operation"] == "launchpad_layout_review":
         title = "# Compiled ACOPOS 6D segment layout review"
     elif response["operation"] == "launchpad_frame_review":
@@ -628,6 +630,8 @@ def markdown_ruc(response, text):
         lines.extend(markdown_cycle_trace(cycle, text))
     if hmi := report.get("cycleHmiReview"):
         lines.extend(markdown_cycle_hmi(hmi, text))
+    if held_scan := report.get("heldStatusScanReview"):
+        lines.extend(markdown_held_scan(held_scan, text))
     lines.extend(markdown_rules(review["trafficManagers"], text))
     if review["widgets"]:
         lines.extend(["", "## Rendered widgets", ""])
@@ -940,6 +944,25 @@ def markdown_cycle_trace(cycle, text):
         if limit := timing.get("releaseToNextHoldTimeLimit"):
             lines.extend(["", f"- Release-to-next-hold time limit {text(limit['state'])}"
                           f" · Maximum {limit['maximumMicroseconds']} µs"])
+    return lines
+
+
+def markdown_held_scan(review, text):
+    lines = ["", "## Retained held-status scan", "", f"- State {text(review['state'])}"]
+    if session := review.get("sessionId"):
+        lines.append(f"- ARsim session {text(session)}")
+    if receipt := review.get("sessionReceipt"):
+        lines.append(f"- Session receipt {text(receipt['path'])} · SHA-256 {receipt['sha256']}")
+    if capture := review.get("scanCapture"):
+        lines.append(f"- CSV {text(capture['path'])} · {capture['bytes']} bytes · SHA-256 {capture['sha256']}")
+    if window := review.get("window"):
+        lines.append(f"- {window['rows']} scans · {window['firstScan']}–{window['lastScan']} "
+                     f"· Heartbeat {window['firstHeartbeat']}–{window['lastHeartbeat']}"
+                     f" · Final direct sample after reopen {window['directAfterLast']}")
+        if missing := window["missingHeartbeats"]:
+            lines.append(f"- Missing heartbeat samples {', '.join(map(str, missing))}")
+    for role, value in review.get("status", {}).items():
+        lines.append(f"- {text(role)} {value['value']} · Widget {text(value['widget'])} · Node {text(value['identifier'])}")
     return lines
 
 
