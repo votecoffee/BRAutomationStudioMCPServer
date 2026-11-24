@@ -262,6 +262,7 @@ def widget_expression(assembly, counter, layout_paths=None, status_widgets=(), *
                       traffic_labels=()):
     return f"""(() => {{
         const assembly = document.getElementById({json.dumps(assembly)});
+        const assemblyRect = assembly?.getBoundingClientRect();
         const read = (id) => {{
             const widget = document.getElementById(id);
             return widget?.getClientRects().length
@@ -318,6 +319,7 @@ def widget_expression(assembly, counter, layout_paths=None, status_widgets=(), *
             timeOrigin: performance.timeOrigin,
             widgetType: assembly?.getClientRects().length
                 ? assembly.getAttribute('data-brease-widget') : null,
+            assemblyBounds: assemblyRect ? {{widthCssPx: assemblyRect.width, heightCssPx: assemblyRect.height}} : null,
             value: read({json.dumps(counter)}),
             statusValues: Object.fromEntries({json.dumps(list(status_widgets))}.map(id => [id, read(id)])),
             viewport,
@@ -372,6 +374,14 @@ def collect_samples(page, expression, url, receipt, count, prior_origins=(), aft
             receipt["timeOrigin"] = origin
             if check_assembly:
                 receipt["widgetType"] = ASSEMBLY_WIDGET
+                bounds = result.get("assemblyBounds")
+                if isinstance(bounds, dict) and all(
+                    type(size) in (float, int) and isfinite(size) and size >= 0
+                    for size in (bounds.get("widthCssPx"), bounds.get("heightCssPx"))
+                ):
+                    receipt["assemblyBounds"] = bounds
+                else:
+                    receipt.pop("assemblyBounds", None)
             if layout_paths:
                 receipt["layout"] = layout_observation(result.get("layout"), layout_paths)
             if traffic_labels:

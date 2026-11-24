@@ -29,19 +29,23 @@ class TestBrowserSmoke(unittest.TestCase):
     @patch("br_automation_studio.browser_smoke.time.monotonic", return_value=0)
     def test_reopening_excludes_old_document_and_equivalent_numeric_values(self, now, pause):
         page = Mock(deadline=2)
+        initial_bounds = {"widthCssPx": 240, "heightCssPx": 150}
+        reopened_bounds = {"widthCssPx": 400, "heightCssPx": 150}
         page.read.side_effect = [
-            hmi("1.0", 10), hmi("1.00", 10), hmi("2", 10), hmi("3.0", 10),
+            hmi("1.0", 10), hmi("1.00", 10), hmi("2", 10), dict(hmi("3.0", 10), assemblyBounds=initial_bounds),
             hmi("3.0", 10), {"url": "about:blank", "timeOrigin": 15},
-            hmi("99", 10), hmi("0.0", 20), hmi("3.00", 20), hmi("4.0", 20), hmi("5.0", 20),
+            dict(hmi("99", 10), assemblyBounds=initial_bounds), hmi("0.0", 20), hmi("3.00", 20), hmi("4.0", 20),
+            dict(hmi("5.0", 20), assemblyBounds=reopened_bounds),
         ]
         receipt = self.receipt()
         verify_navigation(page, URL, receipt)
         self.assertEqual([item.args[0] for item in page.navigate.call_args_list], [URL, "about:blank", URL])
         self.assertEqual(receipt["initial"], {"counterSamples": ["1.0", "2", "3.0"], "timeOrigin": 10,
-                                              "widgetType": ASSEMBLY_WIDGET})
+                                              "widgetType": ASSEMBLY_WIDGET, "assemblyBounds": initial_bounds})
         self.assertEqual(receipt["blankTimeOrigin"], 15)
         self.assertEqual(receipt["reopened"]["timeOrigin"], 20)
         self.assertEqual(receipt["reopened"]["counterSamples"], ["4.0", "5.0"])
+        self.assertEqual(receipt["reopened"]["assemblyBounds"], reopened_bounds)
 
     @patch("br_automation_studio.browser_smoke.time.sleep")
     @patch("br_automation_studio.browser_smoke.time.monotonic", return_value=0)

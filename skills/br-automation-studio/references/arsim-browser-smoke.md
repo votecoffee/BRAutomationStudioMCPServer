@@ -81,6 +81,8 @@ In each browser document, the selected Assembly6D widget's inline Traffic Manage
 
 In br-studio 0.108.0 or later, the traffic label receipt also records each text element's bounding width and height, the smallest verified height, and the viewport size and device pixel ratio for that document. The dimensions are CSS pixels from the browser layout, including transforms. [CSSOM View](https://www.w3.org/TR/cssom-view/#dom-element-getboundingclientrect)
 
+In br-studio 0.110.0 or later, read `assemblyBounds` under each browser document to get the widget's rendered width and height in CSS pixels. To measure the effect of changing widget dimensions, compare builds at the same viewport and check the widget bounds alongside the label heights. [Set the browser viewport](#set-the-browser-viewport)
+
 Set `minimumTrafficLabelHeightCssPx` to a positive whole number to turn on the label checks and enforce the project-selected height in both documents. The comparison uses the measured value at full precision. When the label text and visibility pass but the size falls short, look for `below_minimum` and `belowMinimum` in the affected document. Compare receipts at the viewport dimensions intended for the HMI and confirm readability on the panel.
 
 ### Save the generated SVGs

@@ -1104,6 +1104,9 @@ def markdown_browser(browser, text):
             if viewport := document.get("viewport"):
                 lines.append(f"  - Viewport {text(viewport['state'])} · {text(viewport['widthCssPx'])}"
                              f" × {text(viewport['heightCssPx'])} CSS px · Device pixel ratio {text(viewport['devicePixelRatio'])}")
+            if bounds := document.get("assemblyBounds"):
+                lines.append(f"  - Assembly6D bounds {text(bounds['widthCssPx'])} ×"
+                             f" {text(bounds['heightCssPx'])} CSS px")
             for widget, value in document.get("statusValues", {}).items():
                 lines.append(f"  - {text(widget)} · Value {text(value)}")
             if bundle := document.get("widgetBundle"):
