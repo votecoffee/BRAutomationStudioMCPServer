@@ -6,6 +6,37 @@ Use the [status reconnect workflow](arsim-status-smoke.md) to verify held reques
 
 Combine the viewport, label checks, widget bundle, SVG capture and direct PLC counter comparison in one request. [Panel layout rehearsal](arsim-panel-layout.md)
 
+## Rehearse the first reviewed build
+
+With br-studio 0.126.0 or later, copy the [HMI check](../../../examples/inspection-cycle/hmi-check.json) and [SVG review](../../../examples/inspection-cycle/hmi-layout-review.json) requests into the first-build run directory. Use the same project and job directory as the completed build. Set the HMI witness IDs to the compiled values and the Assembly6D DOM ID to the pinned widget. Select the actual PVI and Chrome executables. Keep the `hmi-session` directory new and keep the SVG request's `hmiReport` path relative to the same run directory. [First-build requests](native-build.md#prepare-the-first-matched-simulation-build) · [Select the HMI witness](#select-the-hmi-witness)
+
+Save the reviewed `ruc_review` JSON as `receipts/ruc-review.json`. Copy the two validated SHA-256 values into the HMI request before starting the rehearsal. Use PowerShell 7 from the run directory.
+
+```powershell
+$request = Get-Content -Raw -LiteralPath ./hmi-check.json | ConvertFrom-Json -AsHashtable
+$review = Get-Content -Raw -LiteralPath ./receipts/ruc-review.json | ConvertFrom-Json -AsHashtable
+$ruc = $review.result.rucReview
+if ($review.operation -ne 'ruc_review' -or $review.status -notin 'complete', 'partial' -or
+    $ruc.sourceMatched -ne $true -or $ruc.planSha256 -cnotmatch '^[0-9a-f]{64}$' -or
+    $ruc.archive.sha256 -cnotmatch '^[0-9a-f]{64}$') {
+    throw 'Select the saved RUC review for the intended build'
+}
+$request.arguments.expectedPlanSha256 = $ruc.planSha256
+$request.arguments.expectedPackageSha256 = $ruc.archive.sha256
+$request | ConvertTo-Json -Depth 20 |
+    Set-Content -LiteralPath ./hmi-check-reviewed.json -Encoding utf8NoBOM
+
+br-studio run --request ./hmi-check-reviewed.json |
+    Set-Content -LiteralPath ./receipts/hmi-response.json -Encoding utf8NoBOM
+if ($LASTEXITCODE -eq 0) {
+    Copy-Item -LiteralPath ./receipts/hmi-response.json -Destination ./hmi-session/hmi-response.json
+    br-studio run --request ./hmi-layout-review.json |
+        Set-Content -LiteralPath ./receipts/hmi-layout-review.json -Encoding utf8NoBOM
+}
+```
+
+Inspect `arsimSmoke.buildExpectation`, the OPC UA comparisons, the browser reopen and the retained layout capture. Both hash checks happen before PVI materializes the runtime. Review the SVG result for the selected Traffic Manager, label anchors and mapping line endpoints. Use the [held-status rehearsal](inspection-cycle-rehearsal.md#capture-the-hmi-and-cycle-together) when the PLC is ready to publish the full inspection-cycle capture.
+
 ## Select the HMI witness
 
 Use an increasing PLC integer with a local, one-way OPC UA value binding. The numeric widget should display that integer without scaling or wrapping during the check. Use zero or blank while the browser widget is unbound. The selected visualization must be the default in the saved and packaged mapp View server configuration. Its opening page must show the numeric widget and the reviewed `Assembly6D` widget.

@@ -39,6 +39,8 @@ For `verifyMotionSymbols`, preserve the exact generated files named in `job.json
 
 The first-build examples exercised the blocked workstation and preflight responses and stopped at planning. A separate installed AS4.12 mapp 6D 2.2 control compiled with all six motion binaries and seven generated globals verified. Its archived RUC review passed with the generated files present. Separate receipt controls caught a missing file and a byte change to a generated declaration.
 
+After reviewing the RUC, carry its plan and archive hashes into the [first HMI and SVG rehearsal](arsim-hmi-smoke.md#rehearse-the-first-reviewed-build).
+
 ## Plan the build
 
 Create the same request as for [build preflight](build-preflight.md) with `operation` set to `build_plan`. Run `br-studio run --request <plan-request.json>` and inspect `result.buildPlan` plus the diagnostics. If `buildPlan` has a SHA-256, the manifest identifies the complete staged input tree and the reported Studio and Runtime read sets. The plan preserves the on-disk spelling of source paths. The root folders `Binaries`, `Temp`, `BuildOnly`, `TempOnly`, `.git` and `.local` are excluded from the stage.

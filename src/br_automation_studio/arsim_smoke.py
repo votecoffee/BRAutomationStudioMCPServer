@@ -246,7 +246,8 @@ def ascii_pil_path(path):
 
 
 def arsim_smoke(project, job_dir, pvi, session_dir, timeout=30, runtime_probe=None, *,
-                extra_content=(), require_6d=True, before_start=None, require_widget_bundle=False, start_widget=None):
+                extra_content=(), require_6d=True, before_start=None, require_widget_bundle=False, start_widget=None,
+                expected_build=None):
     report = review_ruc(project, job_dir, require_6d=require_6d, start_widget=start_widget)
     smoke = {"state": "not_started", "packageSha256": None, "assets": [], "cleanup": None}
     report["arsimSmoke"] = smoke
@@ -257,11 +258,20 @@ def arsim_smoke(project, job_dir, pvi, session_dir, timeout=30, runtime_probe=No
         report["diagnostics"].append({"severity": "error", "scope": "arsim_smoke",
                                       "code": code, "path": ".", "message": message})
 
+    reviewed = report["rucReview"]
+    if expected_build:
+        observed_build = {"planSha256": reviewed["planSha256"], "packageSha256": reviewed["archive"]["sha256"]}
+        compared = {key: {"expected": digest, "observed": observed_build[key]} for key, digest in expected_build.items()}
+        mismatches = [key for key, values in compared.items() if values["expected"] != values["observed"]]
+        smoke["buildExpectation"] = {"state": "mismatched" if mismatches else "matched", "digests": compared}
+        if mismatches:
+            fail("arsim_build_mismatch", f"The selected build differs from the reviewed SHA-256 for {', '.join(mismatches)}")
+            return report
+
     observed = None
     receipt = None
     try:
         plan, job, manifest, archive_path = bound_receipts(SavedFiles(job_dir))
-        reviewed = report["rucReview"]
         if plan["sha256"] != reviewed["planSha256"] or job["package"]["sha256"] != reviewed["archive"]["sha256"]:
             raise ValueError("The completed job evidence changed after RUC review")
         profile = loopback_profile(project, manifest)

@@ -25,7 +25,7 @@ from .motion_interfaces import FIELD_PATH, SYMBOL, review_motion_interfaces
 from .native_build import execute_build, plan_build
 from .opcua_smoke import OpcUaProbe
 from .preflight import CATALOG_VERSION, build_preflight, numeric_version
-from .ruc_review import review_ruc
+from .ruc_review import DIGEST, review_ruc
 from .runtime_capture import RuntimeScanCapture
 from .simulation_preflight import (COMPANION_MEDIA_27, PAIRS, SIMULATION_PACKAGES, simulation_environment,
                                    simulation_preflight)
@@ -467,6 +467,17 @@ def arsim_inputs(arguments, request_directory):
     )
 
 
+def arsim_build_expectation(arguments):
+    expected = {}
+    for argument, field in (("expectedPlanSha256", "planSha256"), ("expectedPackageSha256", "packageSha256")):
+        if argument in arguments:
+            value = arguments[argument]
+            if not DIGEST.fullmatch(value):
+                raise InvalidRequest(f"{argument} must be a SHA-256 with 64 lowercase hex characters")
+            expected[field] = value
+    return expected
+
+
 def run_arsim_smoke(arguments, request_directory, runtime_probe=None):
     require_traffic_details = (arguments.get("requireTrafficDetails", False) or arguments.get("requireTrafficLabels", False)
                                or arguments.get("requireTrafficMappingLines", False)
@@ -479,7 +490,8 @@ def run_arsim_smoke(arguments, request_directory, runtime_probe=None):
     if arguments.get("requireStartPage") or require_traffic_details:
         start_widget = StartPageWidget(arguments.get("assemblyWidgetId"), require_traffic_details)
     return arsim_smoke(*arsim_inputs(arguments, request_directory), runtime_probe,
-                       require_widget_bundle=arguments.get("requireWidgetBundle", False), start_widget=start_widget)
+                       require_widget_bundle=arguments.get("requireWidgetBundle", False), start_widget=start_widget,
+                       expected_build=arsim_build_expectation(arguments))
 
 
 def browser_viewport(arguments):
@@ -533,7 +545,7 @@ def run_arsim_hmi_smoke(arguments, request_directory, status_bindings=(), scan_c
         minimum_label_gap=arguments.get("minimumTrafficLabelGapCssPx"),
         minimum_label_edge_clearance=arguments.get("minimumTrafficLabelEdgeClearanceCssPx"),
         viewport=browser_viewport(arguments),
-        status_bindings=status_bindings, scan_capture=scan_capture,
+        status_bindings=status_bindings, scan_capture=scan_capture, expected_build=arsim_build_expectation(arguments),
     )
 
 
@@ -971,6 +983,10 @@ ARSIM_SMOKE = Operation(
         **RUC_INPUTS,
         "pviTransfer": {"type": "string", "minLength": 1, "description": "Path to installed PVI 4 PVITransfer.exe."},
         "sessionDirectory": {"type": "string", "minLength": 1, "description": "New private directory for the ARsim smoke session."},
+        "expectedPlanSha256": {"type": "string", "minLength": 64,
+                               "description": "Require the reviewed build plan SHA-256 before starting ARsim."},
+        "expectedPackageSha256": {"type": "string", "minLength": 64,
+                                  "description": "Require the reviewed RUC archive SHA-256 before starting ARsim."},
         "timeoutSeconds": {"type": "integer", "minimum": 1, "maximum": 120, "default": 30},
     },
     required=(*RUC_REVIEW.required, "pviTransfer", "sessionDirectory"),

@@ -37,6 +37,8 @@ With br-studio 0.123.0 or later, a RUC built with `simulationPreflightReport` ca
 
 ## Interpret the session
 
+From br-studio 0.126.0, any ARsim smoke request can set `expectedPlanSha256` and `expectedPackageSha256` from a reviewed RUC response. These compare with `rucReview.planSha256` and `rucReview.archive.sha256` before creating a session or invoking PVI. Either field can be supplied independently. Read `arsimSmoke.buildExpectation` for the compared values and match state. [Copy the hashes from the reviewed build](arsim-hmi-smoke.md#rehearse-the-first-reviewed-build)
+
 - `CreateARsimStructure` generates a fresh copy with `Start=0`. The session records the PVI version, package hash, input profile, loader hash, and vendor log.
 - Before launch, the operation checks the configured ports and the observed engineering-port defaults (`11160` and `11169`). It checks the Windows job's owned TCP listeners and UDP endpoints for loopback throughout the probe. Existing listeners on other ports remain outside the session.
 - The HTTP test uses `127.0.0.1` directly. It checks status and SHA-256 against the packaged `index.html`, reviewed generated content, and `Assembly6D.js` where applicable. A successful HTTP status with different response bytes is an issue.

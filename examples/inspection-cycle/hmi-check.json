@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "workspace": "inspection-cycle",
+  "operation": "arsim_hmi_smoke",
+  "arguments": {
+    "project": "source-project/Example.apj",
+    "jobDirectory": "build-job",
+    "pviTransfer": "C:/Program Files/BRAutomation4/PVI/V4.12/PVI/Tools/PVITransfer/PVITransfer.exe",
+    "browserExecutable": "C:/Program Files/Google/Chrome/Application/chrome.exe",
+    "sessionDirectory": "hmi-session",
+    "visualizationId": "OperatorPanel",
+    "contentId": "Overview",
+    "widgetId": "HeartbeatValue",
+    "stringIdentifier": "::Status:Heartbeat",
+    "assemblyWidgetId": "Overview_PlanarDisplay",
+    "requireTrafficDetails": true,
+    "captureLayoutAssets": true,
+    "timeoutSeconds": 55,
+    "browserTimeoutSeconds": 65,
+    "opcUaTimeoutSeconds": 25
+  }
+}

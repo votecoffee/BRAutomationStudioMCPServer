@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "workspace": "inspection-cycle",
+  "operation": "layout_svg_review",
+  "arguments": {
+    "project": "source-project/Example.apj",
+    "jobDirectory": "build-job",
+    "managerId": "ExampleTraffic",
+    "hmiReport": "hmi-session/hmi-response.json",
+    "verifyMappingLineEndpoints": true,
+    "verifyTrafficLabels": true
+  }
+}

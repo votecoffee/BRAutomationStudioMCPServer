@@ -375,7 +375,9 @@ class RucReviewTests(unittest.TestCase):
         pvi.write_bytes(b"modeled PVI marker")
         request = {"schemaVersion": 1, "workspace": "readback", "operation": "arsim_smoke",
                    "arguments": {"project": "Loop/Loop.apj", "jobDirectory": self.job.name,
-                                 "pviTransfer": "vendor/PVITransfer.exe", "sessionDirectory": "smoke"}}
+                                 "pviTransfer": "vendor/PVITransfer.exe", "sessionDirectory": "smoke",
+                                 "expectedPlanSha256": job["planSha256"],
+                                 "expectedPackageSha256": job["package"]["sha256"]}}
 
         def materialize(args, workdir, dispatch, stream, timeout):
             for receipt, original in files:
@@ -383,6 +385,9 @@ class RucReviewTests(unittest.TestCase):
             session = json.loads((workdir / "session.json").read_bytes())
             self.assertEqual(session["environmentReport"], environment)
             self.assertEqual(session["simulationPreflightReport"], preflight)
+            expectation = session["buildExpectation"]
+            self.assertEqual(expectation["state"], "matched")
+            self.assertEqual(expectation["digests"]["packageSha256"]["observed"], job["package"]["sha256"])
             runtime = workdir / "runtime"
             runtime.mkdir()
             (runtime / "ar000loader.exe").write_bytes(b"modeled runtime marker")
@@ -423,6 +428,31 @@ class RucReviewTests(unittest.TestCase):
                 self.assertIn(f"{label} changed", failed["result"]["diagnostics"][0]["message"])
                 self.assertFalse((self.root / session_name / receipt["path"]).exists())
                 retained.write_bytes(original)
+
+    def test_arsim_rejects_a_different_reviewed_plan_or_package_before_materializing(self):
+        job = self.package()
+        args = {"project": "Loop/Loop.apj", "jobDirectory": self.job.name,
+                "pviTransfer": "vendor/PVITransfer.exe", "sessionDirectory": "smoke",
+                "expectedPlanSha256": job["planSha256"], "expectedPackageSha256": job["package"]["sha256"]}
+        request = {"schemaVersion": 1, "workspace": "readback", "operation": "arsim_smoke"}
+        fields = {"expectedPlanSha256": ("planSha256", job["planSha256"]),
+                  "expectedPackageSha256": ("packageSha256", job["package"]["sha256"])}
+        with (patch("br_automation_studio.arsim_smoke.loopback_profile") as profile,
+              patch("br_automation_studio.arsim_smoke.run_build") as launcher):
+            for argument, (key, digest) in fields.items():
+                with self.subTest(argument=argument):
+                    wrong = "0" * 64
+                    reply = execute({**request, "arguments": args | {argument: wrong}}, self.root)
+                    self.assertEqual(self.codes(reply), ["arsim_build_mismatch"])
+                    smoke = reply["result"]["arsimSmoke"]
+                    self.assertEqual(smoke["state"], "not_started")
+                    self.assertEqual(smoke["buildExpectation"]["state"], "mismatched")
+                    self.assertEqual(smoke["buildExpectation"]["digests"][key], {"expected": wrong, "observed": digest})
+            profile.assert_not_called()
+            launcher.assert_not_called()
+        self.assertFalse((self.root / args["sessionDirectory"]).exists())
+        with self.assertRaisesRegex(InvalidRequest, "expectedPackageSha256 must be a SHA-256"):
+            execute({**request, "arguments": args | {"expectedPackageSha256": "z" * 64}}, self.root)
 
     def test_changed_source_cannot_be_used_as_build_baseline(self):
         self.package()

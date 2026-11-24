@@ -150,7 +150,7 @@ def arsim_hmi_smoke(project, job_dir, pvi, session_dir, timeout, target, chrome,
                     require_traffic_labels=False, require_traffic_mapping_lines=False,
                     require_label_bounds=False, require_label_separation=False,
                     minimum_label_height=None, minimum_label_gap=None, minimum_label_edge_clearance=None, viewport=None,
-                    status_bindings=(), scan_capture=None):
+                    status_bindings=(), scan_capture=None, expected_build=None):
     binding_report = review_ruc(project, job_dir, replace(target, require_default=True))
     if binding_report["evidence"] != "ruc_binding_readback":
         binding_report["arsimSmoke"] = {"state": "not_started", "packageSha256": None, "assets": [], "cleanup": None}
@@ -190,7 +190,7 @@ def arsim_hmi_smoke(project, job_dir, pvi, session_dir, timeout, target, chrome,
     before_start = scan_capture.require_absent if scan_capture is not None else None
     report = arsim_smoke(project, job_dir, pvi, session_dir, timeout, probe, extra_content=(target.content,),
                          require_6d=check_assembly, before_start=before_start,
-                         require_widget_bundle=require_widget_bundle, start_widget=start_widget)
+                         require_widget_bundle=require_widget_bundle, start_widget=start_widget, expected_build=expected_build)
     report["bindingReview"] = binding_report["bindingReview"]
     report["bindingSnapshot"] = binding_report["snapshot"]
     return report

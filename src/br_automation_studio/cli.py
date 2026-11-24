@@ -559,6 +559,10 @@ def markdown_ruc(response, text):
         lines.extend(["", "## Loopback HTTP", "",
                       f"- Session {text(smoke['state'])} · Runtime {text(smoke.get('runtimeVersion'))}",
                       f"- Cleanup {text(smoke['cleanup'])}"])
+        if expectation := smoke.get("buildExpectation"):
+            lines.append(f"- Reviewed build digests {text(expectation['state'])}")
+            for name, values in expectation["digests"].items():
+                lines.append(f"  - {text(name)} · Expected {values['expected']} · Observed {values['observed']}")
         if preflight := smoke.get("simulationPreflightReport"):
             lines.append(f"- Session simulation preflight {text(preflight['path'])} · SHA-256 {preflight['sha256']}")
         for asset in smoke["assets"]:
