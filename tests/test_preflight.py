@@ -722,6 +722,106 @@ class BuildPreflightTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "retained workstation package report does not match"):
             bound_receipts(SavedFiles(job_dir))
 
+    @patch("br_automation_studio.simulation_preflight.installed_product",
+           return_value={"stateCode": 5, "version": "1.25.53"})
+    def test_build_requires_the_same_saved_project_simulation_preflight(self, msi):
+        self.prepare_simulation()
+        export, raw, route = self.launchpad_route()
+        workstation = self.root / "workstation.json"
+        request = {
+            "schemaVersion": 1, "workspace": "preflight", "operation": "simulation_environment",
+            "arguments": {"studioRoot": "Install/AS412", "targetMapp6D": "2.7", "mapp6DSelector": "2.7.0",
+                          "mappMotionSelector": "5.29.1", "mappViewSelector": "5.24.5"},
+        }
+        self.put(workstation, json.dumps(execute(request, self.root)))
+        environment = {"environmentReport": workstation.name}
+        saved = self.simulation(**environment, launchPadExport=export.name)
+        self.assertIn(saved["status"], {"complete", "partial"}, saved["result"]["diagnostics"])
+        receipt = self.root / "reviewed-preflight.json"
+        self.put(receipt, json.dumps(saved))
+        original = receipt.read_bytes()
+        options = route | environment | {"simulationPreflightReport": receipt.name}
+        planned = self.native_request("build_plan", **options)
+        plan = planned["result"]["buildPlan"]
+        self.assertIsNotNone(plan, planned["result"]["diagnostics"])
+        reviewed = plan["manifest"]["simulationPreflightReview"]
+        self.assertEqual(reviewed["receipt"]["sha256"], sha256(original).hexdigest())
+        self.assertEqual(reviewed["exportSha256"], sha256(raw).hexdigest())
+        self.assertIn("### Saved-project simulation preflight", markdown(planned))
+        execute_options = options | {"planSha256": plan["sha256"], "jobDirectory": "bound-job"}
+
+        with patch("br_automation_studio.native_build.run_build") as worker:
+            export.write_bytes(raw + b"<!-- Native export changed -->")
+            changed_export = self.native_request("build_execute", **execute_options)["result"]
+            self.assertIsNone(changed_export["buildPlan"])
+            self.assertIn("The native LaunchPad export differs", changed_export["diagnostics"][-1]["message"])
+            export.write_bytes(raw)
+
+            apj = self.project / "Loop.apj"
+            project = apj.read_bytes()
+            apj.write_bytes(project + b"\n")
+            changed_source = self.native_request("build_execute", **execute_options)["result"]
+            self.assertIsNone(changed_source["buildPlan"])
+            self.assertIn("A source file reviewed", changed_source["diagnostics"][-1]["message"])
+            apj.write_bytes(project)
+
+            workstation_original = workstation.read_bytes()
+            workstation.write_bytes(workstation_original + b"\n")
+            changed_workstation = self.native_request("build_execute", **execute_options)["result"]
+            self.assertIsNone(changed_workstation["buildPlan"])
+            self.assertIn("workstation package report differs", changed_workstation["diagnostics"][-1]["message"])
+            workstation.write_bytes(workstation_original)
+
+            with patch("br_automation_studio.simulation_preflight.installed_product",
+                       return_value={"stateCode": -1, "version": None}):
+                blocked = self.simulation(**environment, launchPadExport=export.name)
+            self.put(receipt, json.dumps(blocked))
+            rejected = self.native_request("build_execute", **execute_options)["result"]
+            self.assertIsNone(rejected["buildPlan"])
+            self.assertEqual(rejected["diagnostics"][-1]["code"], "simulation_preflight_report_unverified")
+            self.assertIn("'blocked'", rejected["diagnostics"][-1]["message"])
+            receipt.write_bytes(original + b"\n")
+            changed_receipt = self.native_request("build_execute", **execute_options)["result"]
+            self.assertEqual(changed_receipt["diagnostics"][-1]["code"], "build_plan_changed")
+            receipt.write_bytes(original)
+            worker.assert_not_called()
+            self.assertFalse((self.root / execute_options["jobDirectory"]).exists())
+
+        def stage_and_change(manifest, destination):
+            stage_inputs(manifest, destination)
+            receipt.write_bytes(original + b"\n")
+
+        with (patch("br_automation_studio.native_build.stage_inputs", side_effect=stage_and_change),
+              patch("br_automation_studio.native_build.run_build") as worker):
+            late = self.native_request("build_execute", **(execute_options | {"jobDirectory": "late"}))["result"]
+            worker.assert_not_called()
+        self.assertEqual(late["nativeBuild"]["status"], "not_dispatched")
+        self.assertIn("saved-project simulation preflight changed", late["diagnostics"][-1]["message"])
+        receipt.write_bytes(original)
+
+        job_dir = self.root / execute_options["jobDirectory"]
+        retained = job_dir / "simulation-preflight.json"
+
+        def modeled_builder(args, project, dispatch, log, timeout):
+            self.assertEqual(retained.read_bytes(), original)
+            dispatch(42)
+            ruc = Path(args[args.index("-o") + 1]) / "ARsim/PC/RUCPackage/RUCPackage.zip"
+            ruc.parent.mkdir(parents=True)
+            with ZipFile(ruc, "w") as archive:
+                archive.writestr("FilesToTransfer/Data0/Test.br", "modeled package payload")
+            log.write(b"Build: 0 error(s), 0 warning(s)\r\n")
+            return 0, False, "empty"
+
+        with patch("br_automation_studio.native_build.run_build", side_effect=modeled_builder) as worker:
+            completed = self.native_request("build_execute", **execute_options)["result"]
+            worker.assert_called_once()
+        self.assertEqual(completed["nativeBuild"]["status"], "succeeded")
+        _, job, _, _ = bound_receipts(SavedFiles(job_dir))
+        self.assertEqual(job["simulationPreflightReport"]["sha256"], reviewed["receipt"]["sha256"])
+        retained.write_bytes(original + b"\n")
+        with self.assertRaisesRegex(ValueError, "retained saved-project simulation preflight does not match"):
+            bound_receipts(SavedFiles(job_dir))
+
     def test_native_result_retains_warning_and_ruc(self):
         self.local_core("5.29.1")
         self.put(self.project / "BuildOnly/old.txt", "previous output")
@@ -804,7 +904,7 @@ class BuildPreflightTests(unittest.TestCase):
         self.assertEqual(bad["nativeBuild"]["status"], "artifact_failed")
         self.assertEqual(bad["diagnostics"][-1]["code"], "motion_symbols_unverified")
 
-    def test_launchpad_build_retains_verified_inputs_and_rejects_late_export_change(self):
+    def launchpad_route(self):
         lpj = self.root / "Source.lpj"
         lpj.write_bytes(b"synthetic LaunchPad save")
         readback = {
@@ -840,8 +940,12 @@ class BuildPreflightTests(unittest.TestCase):
         export.write_bytes(raw)
         arguments = {"launchPadProject": lpj.name, "launchPadReadback": "Readback.json",
                      "launchPadExport": export.name, "managerId": "DemoTraffic", "nameMap": "Rename.json"}
+        return export, raw, arguments
+
+    def test_launchpad_build_retains_verified_inputs_and_rejects_late_export_change(self):
+        export, raw, arguments = self.launchpad_route()
         with self.assertRaisesRegex(InvalidRequest, "Missing LaunchPad build inputs"):
-            self.native_request("build_plan", launchPadProject=lpj.name)
+            self.native_request("build_plan", launchPadProject=arguments["launchPadProject"])
         self.local_core("5.29.1")
         wrong = self.native_request("build_plan", **(arguments | {"managerId": "Other"}))["result"]
         self.assertIsNone(wrong["buildPlan"])

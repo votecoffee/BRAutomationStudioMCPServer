@@ -204,6 +204,11 @@ def markdown(response):
                     lines.append(f"  - {text(group['id'])} · Records {group['count']}")
     if environment := report.get("environmentReview"):
         lines.extend(markdown_environment_review(environment, text))
+    if preflight := report.get("simulationPreflightReview"):
+        lines.extend(["", "### Saved-project simulation preflight", "",
+                      f"- {text(preflight['state'])} · mapp 6D {text(preflight['targetMapp6D'])}"
+                      f" · Prerequisites {text(preflight['preflightState'])}"
+                      f" · Receipt SHA-256 {text(preflight['receipt']['sha256'])}"])
     if definition := report.get("mpTrafficDefinition"):
         lines.extend(["", "## MpTraffic build verification", "", *markdown_mptraffic_definition(definition, text)])
     if declarations := report.get("motionDeclarations"):
@@ -517,6 +522,8 @@ def markdown_ruc(response, text):
             lines.append(f"- 6D module elements read {len(review['modules'])} · Rendered widgets read {len(review['widgets'])}")
     if environment := review.get("environmentReport"):
         lines.append(f"- Reviewed workstation report SHA-256 {text(environment['sha256'])}")
+    if preflight := review.get("simulationPreflightReport"):
+        lines.append(f"- Reviewed saved-project preflight SHA-256 {text(preflight['sha256'])}")
     if summary := review["buildSummary"]:
         lines.append(f"- Builder errors {text(summary['errors'])} · Builder warnings {text(summary['warnings'])}")
     if launchpad := review.get("launchPadRoute"):

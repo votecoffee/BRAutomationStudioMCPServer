@@ -20,7 +20,7 @@ from .launchpad_build import (
 from .links import MotionLinks, rule_key
 from .motion_payloads import verify_packaged_motion
 from .motion_symbols import plan_motion_symbols, read_motion_symbols
-from .native_build import RETAINED_ENVIRONMENT_REPORT, identity, source_tree
+from .native_build import RETAINED_ENVIRONMENT_REPORT, RETAINED_SIMULATION_PREFLIGHT_REPORT, identity, source_tree
 from .project import ProjectXml, SavedFiles, XML_LIMIT, children, tag
 
 DATA = "FilesToTransfer/Data0"
@@ -52,14 +52,20 @@ def bound_receipts(files):
     if type(version) is not int or version != 1 or manifest.get("mode") != "as4_arsim_ruc":
         raise ValueError("The plan does not identify a supported AS4 ARsim RUC build")
 
-    if "environmentReview" in manifest:
-        review = expect_object(manifest["environmentReview"], "Invalid workstation review in the build plan")
-        receipt = expect_object(review.get("receipt"), "The build plan lacks the reviewed workstation receipt")
+    for key, job_key, path, label in (
+        ("environmentReview", "environmentReport", RETAINED_ENVIRONMENT_REPORT, "workstation package report"),
+        ("simulationPreflightReview", "simulationPreflightReport", RETAINED_SIMULATION_PREFLIGHT_REPORT,
+         "saved-project simulation preflight"),
+    ):
+        if key not in manifest:
+            continue
+        review = expect_object(manifest[key], f"Invalid {label} review in the build plan")
+        receipt = expect_object(review.get("receipt"), f"The build plan lacks the reviewed {label} receipt")
         digest = receipt.get("sha256")
-        retained = {"path": RETAINED_ENVIRONMENT_REPORT.as_posix(), "sha256": digest}
+        retained = {"path": path.as_posix(), "sha256": digest}
         if (review.get("state") != "matched" or not isinstance(digest, str) or not DIGEST.fullmatch(digest)
-                or job.get("environmentReport") != retained or files.digest(RETAINED_ENVIRONMENT_REPORT) != digest):
-            raise ValueError("The retained workstation package report does not match the build plan")
+                or job.get(job_key) != retained or files.digest(path) != digest):
+            raise ValueError(f"The retained {label} does not match the build plan")
 
     summary = expect_object(job.get("summary"), "The job has no build summary")
     warnings = summary.get("warnings")
@@ -407,6 +413,8 @@ def review_ruc(path, job_directory, binding=None, *, geometry_manager=None, incl
                                      "bytes": size, "entries": entries}
                 if "environmentReview" in manifest:
                     review["environmentReport"] = job["environmentReport"]
+                if "simulationPreflightReview" in manifest:
+                    review["simulationPreflightReport"] = job["simulationPreflightReport"]
                 if "motionPayloads" in manifest:
                     payloads = verify_packaged_motion(package, manifest["motionPayloads"])
                     if payloads != job["package"].get("motionPayloads"):

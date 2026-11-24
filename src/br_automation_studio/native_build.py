@@ -12,6 +12,7 @@ import stat
 from uuid import uuid4
 from zipfile import BadZipFile, ZipFile
 
+from .json_io import json_snapshot
 from .launchpad_build import (
     launchpad_positions, launchpad_rules, plan_launchpad_assembly_io, plan_launchpad_layout, plan_launchpad_motion_limits,
     plan_launchpad_recovery, plan_launchpad_route, retain_launchpad_route, selected_manager,
@@ -21,10 +22,12 @@ from .motion_symbols import plan_motion_symbols, read_motion_symbols
 from .mptraffic_definition import check_installed_definition, verify_packaged_mptraffic
 from .preflight import build_preflight
 from .project import SavedFiles
-from .simulation_preflight import ENVIRONMENT_REPORT_LIMIT, check_environment_report
+from .simulation_preflight import ENVIRONMENT_REPORT_LIMIT, PAIRS, check_environment_report
 from .windows_job import run_build
 
 RETAINED_ENVIRONMENT_REPORT = Path("simulation-environment.json")
+RETAINED_SIMULATION_PREFLIGHT_REPORT = Path("simulation-preflight.json")
+SIMULATION_PREFLIGHT_REPORT_LIMIT = 16 * 1024 * 1024
 GENERATED_ROOTS = {".git", ".local", "binaries", "temp", "buildonly", "temponly"}
 SUMMARY = re.compile(rb"(?im)^\s*Build:\s*(\d+)\s+error\(s\),\s*(\d+)\s+warning\(s\)[ \t]*\r?$")
 
@@ -86,9 +89,56 @@ def source_tree(root):
     return {"directories": sorted(directories), "files": sorted(files, key=lambda row: row["path"])}
 
 
+def reviewed_hashes(snapshot):
+    rows = snapshot["files"]
+    if (snapshot["algorithm"] != "sha256" or not isinstance(rows, list) or not rows
+            or identity(rows) != snapshot["sha256"]):
+        raise ValueError("Invalid SHA-256 read set in the saved-project preflight")
+    hashes = {os.path.normcase(row["path"]): row["sha256"] for row in rows}
+    if len(hashes) != len(rows) or not all(isinstance(digest, str) for digest in hashes.values()):
+        raise ValueError("Invalid file identities in the saved-project preflight")
+    return hashes
+
+
+def read_simulation_review(path, current):
+    document, receipt = json_snapshot(path, SIMULATION_PREFLIGHT_REPORT_LIMIT)
+    if (type(document["schemaVersion"]) is not int or document["schemaVersion"] != 1
+            or document["operation"] != "simulation_preflight"):
+        raise ValueError("Expected a schema-version-1 simulation_preflight response")
+    saved = document["result"]
+    simulation = saved["simulationPreflight"]
+    state = simulation["state"]
+    if (state not in ("inputs_present", "review_required") or document["status"] not in ("complete", "partial")
+            or not isinstance(saved["diagnostics"], list)
+            or any(item["severity"] not in ("warning", "info") for item in saved["diagnostics"])):
+        raise ValueError(f"The saved-project simulation preflight is {state!r} or reports unresolved issues")
+    if any(saved[key] != current[key] for key in ("project", "selectedConfiguration", "selectedCpu")):
+        raise ValueError("The saved-project preflight selected a different project, configuration or CPU")
+    if simulation["targetMapp6D"] not in PAIRS:
+        raise ValueError("The saved-project preflight has an unsupported mapp 6D family")
+    for name in ("studio", "runtime"):
+        old, observed = saved["preflight"], current["preflight"]
+        path_key, snapshot_key = f"{name}Root", f"{name}Snapshot"
+        old_hashes = reviewed_hashes(old[snapshot_key])
+        if (os.path.normcase(old[path_key]) != os.path.normcase(observed[path_key])
+                or not old_hashes.items() <= reviewed_hashes(observed[snapshot_key]).items()):
+            raise ValueError(f"The selected {name} installation differs from the saved-project preflight")
+    sources = reviewed_hashes(saved["snapshot"])
+    if os.path.normcase(saved["project"]) not in sources:
+        raise ValueError("The saved-project preflight has no hash for its selected project file")
+    if simulation["environmentReview"]["state"] != "matched":
+        raise ValueError("The saved-project preflight has no matched workstation package review")
+    return {
+        "state": "matched", "receipt": receipt, "preflightState": state, "targetMapp6D": simulation["targetMapp6D"],
+        "exportSha256": simulation["launchPadExport"]["sha256"],
+        "workstationSha256": simulation["environmentReview"]["receipt"]["sha256"],
+    }, sources
+
+
 def plan_build(path, studio_root, runtime_root=None, configuration=None, cpu=None, *,
                verify_mptraffic_enum=False, verify_motion_payloads=False, verify_motion_declarations=False,
-               verify_motion_symbols=False, launchpad_inputs=None, environment_report=None):
+               verify_motion_symbols=False, launchpad_inputs=None, environment_report=None,
+               simulation_preflight_report=None):
     verify_layout = launchpad_inputs is not None and launchpad_inputs.verify_layout
     verify_positions = launchpad_inputs is not None and launchpad_inputs.verify_positions
     verify_recovery = launchpad_inputs is not None and launchpad_inputs.verify_recovery
@@ -118,12 +168,28 @@ def plan_build(path, studio_root, runtime_root=None, configuration=None, cpu=Non
     if blocked(report):
         return report
 
+    simulation_review = None
+    if simulation_preflight_report is not None:
+        try:
+            simulation_review, reviewed_simulation_sources = read_simulation_review(simulation_preflight_report, report)
+            if environment_report is None or launchpad_inputs is None:
+                raise ValueError("Supply the reviewed workstation report and LaunchPad route with the simulation preflight")
+        except (AttributeError, KeyError, OSError, RecursionError, RuntimeError, TypeError, ValueError) as error:
+            issue(report, "error", "simulation_preflight_report_unverified", str(error))
+            return report
+
     environment = None
     if environment_report is not None:
         reader = SavedFiles(studio_root)
-        environment = report["environmentReview"] = check_environment_report(reader, environment_report, preflight)
+        family = simulation_review["targetMapp6D"] if simulation_review is not None else None
+        environment = report["environmentReview"] = check_environment_report(reader, environment_report, preflight,
+                                                                              family=family)
         report["diagnostics"].extend(dict(item, scope="native_build") for item in reader.diagnostics)
         if environment["state"] != "matched":
+            return report
+        if simulation_review is not None and environment["receipt"]["sha256"] != simulation_review["workstationSha256"]:
+            issue(report, "error", "simulation_preflight_report_mismatch",
+                  "The workstation package report differs from the saved-project simulation preflight")
             return report
 
     definition = None
@@ -162,6 +228,10 @@ def plan_build(path, studio_root, runtime_root=None, configuration=None, cpu=Non
     if os.path.normcase(path.name) not in files:
         issue(report, "error", "project_snapshot_failed", "The selected project file is absent from the stage manifest")
         return report
+    if simulation_review is not None and not reviewed_simulation_sources.items() <= files.items():
+        issue(report, "error", "simulation_preflight_report_mismatch",
+              "A source file reviewed by the saved-project simulation preflight changed or is missing")
+        return report
 
     plan = {
         "version": 1, "mode": "as4_arsim_ruc", "sourceRoot": str(root), "project": path.name,
@@ -192,6 +262,10 @@ def plan_build(path, studio_root, runtime_root=None, configuration=None, cpu=Non
             issue(report, "error", "launchpad_build_route_unverified", str(error))
             return report
         route = plan["launchPadRoute"]
+        if simulation_review is not None and route["files"]["export"]["sha256"] != simulation_review["exportSha256"]:
+            issue(report, "error", "simulation_preflight_report_mismatch",
+                  "The native LaunchPad export differs from the saved-project simulation preflight")
+            return report
         if verify_layout:
             try:
                 route["layout"] = plan_launchpad_layout(launchpad_inputs, route, report["trafficManagers"],
@@ -241,6 +315,8 @@ def plan_build(path, studio_root, runtime_root=None, configuration=None, cpu=Non
             except ValueError as error:
                 issue(report, "error", "launchpad_build_io_unverified", str(error))
                 return report
+    if simulation_review is not None:
+        report["simulationPreflightReview"] = plan["simulationPreflightReview"] = simulation_review
     report["buildPlan"] = {"sha256": identity(plan), "manifest": plan}
     return report
 
@@ -293,25 +369,30 @@ def package_evidence(path, job_dir, *, mptraffic=None, motion=None):
         return evidence
 
 
-def retain_environment_report(job_dir, receipt):
+def retain_report(job_dir, receipt, filename, limit, label):
     with Path(receipt["path"]).open("rb") as stream:
-        data = stream.read(ENVIRONMENT_REPORT_LIMIT + 1)
+        data = stream.read(limit + 1)
     digest = sha256(data).hexdigest()
-    if len(data) > ENVIRONMENT_REPORT_LIMIT or digest != receipt["sha256"]:
-        raise ValueError("The workstation package report changed before dispatch")
-    (job_dir / RETAINED_ENVIRONMENT_REPORT).write_bytes(data)
-    return {"path": RETAINED_ENVIRONMENT_REPORT.as_posix(), "sha256": digest}
+    if len(data) > limit or digest != receipt["sha256"]:
+        raise ValueError(f"The {label} changed before dispatch")
+    (job_dir / filename).write_bytes(data)
+    return {"path": filename.as_posix(), "sha256": digest}
+
+
+def retain_environment_report(job_dir, receipt):
+    return retain_report(job_dir, receipt, RETAINED_ENVIRONMENT_REPORT, ENVIRONMENT_REPORT_LIMIT,
+                         "workstation package report")
 
 
 def execute_build(path, studio_root, runtime_root, configuration, cpu, plan_sha256, job_directory,
                   timeout_seconds=180, *, verify_mptraffic_enum=False, verify_motion_payloads=False,
                   verify_motion_declarations=False, verify_motion_symbols=False, launchpad_inputs=None,
-                  environment_report=None):
+                  environment_report=None, simulation_preflight_report=None):
     report = plan_build(path, studio_root, runtime_root, configuration, cpu,
                         verify_mptraffic_enum=verify_mptraffic_enum, verify_motion_payloads=verify_motion_payloads,
                         verify_motion_declarations=verify_motion_declarations,
                         verify_motion_symbols=verify_motion_symbols, launchpad_inputs=launchpad_inputs,
-                        environment_report=environment_report)
+                        environment_report=environment_report, simulation_preflight_report=simulation_preflight_report)
     plan = report["buildPlan"]
     if plan is None:
         return report
@@ -358,6 +439,10 @@ def execute_build(path, studio_root, runtime_root, configuration, cpu, plan_sha2
         stage_inputs(manifest, staged)
         if environment := manifest.get("environmentReview"):
             job["environmentReport"] = retain_environment_report(job_dir, environment["receipt"])
+        if simulation_review := manifest.get("simulationPreflightReview"):
+            job["simulationPreflightReport"] = retain_report(
+                job_dir, simulation_review["receipt"], RETAINED_SIMULATION_PREFLIGHT_REPORT,
+                SIMULATION_PREFLIGHT_REPORT_LIMIT, "saved-project simulation preflight")
         if route := manifest.get("launchPadRoute"):
             files = retain_launchpad_route(job_dir, route)
             job["launchPadRoute"] = {"manager": route["manager"], "files": files}

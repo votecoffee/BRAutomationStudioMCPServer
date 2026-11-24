@@ -9,6 +9,7 @@
     "configuration": "ARsim",
     "cpu": "PC",
     "environmentReport": "receipts/workstation.json",
+    "simulationPreflightReport": "receipts/simulation-preflight.json",
     "launchPadExport": "launchpad/export.x6d",
     "verifyMotionDeclarations": true,
     "verifyMpTrafficEnum": true,

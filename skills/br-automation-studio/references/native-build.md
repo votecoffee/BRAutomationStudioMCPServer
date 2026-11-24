@@ -10,7 +10,7 @@ Use the three requests below from one run directory. Adjust the Automation Studi
 | --- | --- | --- |
 | [Workstation check](../../../examples/inspection-cycle/workstation-check.json) | `receipts/workstation.json` | The exact three-package selection, simulator registration and the four media roles. |
 | [Saved-project preflight](../../../examples/inspection-cycle/simulation-preflight.json) | `receipts/simulation-preflight.json` | The project, CPU and Runtime, matched workstation receipt, native export and selected IEC declarations and MpTraffic definition. |
-| [Native build plan](../../../examples/inspection-cycle/build-plan.json) | `receipts/build-plan.json` | The plan SHA-256 and its workstation, project, route, widget, X/Y read axes, assembly limits and motion pins. |
+| [Native build plan](../../../examples/inspection-cycle/build-plan.json) | `receipts/build-plan.json` | The plan SHA-256 and its saved-project preflight, workstation, route, widget, X/Y read axes, assembly limits and motion pins. |
 
 Copy the examples into the run root as `workstation-request.json`, `simulation-preflight-request.json` and `build-plan-request.json`. Run each stage with `br-studio run --request <request.json>` and retain the JSON response before selecting the next stage. Use the same saved project, CPU, native export and workstation receipt for preflight and planning. A blocked workstation or preflight calls for resolving the reported dependency. Review the diagnostics when the preflight reports `review_required` or the planner returns a plan with warnings. The plan can carry the selected IEC declarations, the six motion binaries and generated motion globals into package verification. [Workstation and project prerequisites](simulation-preflight.md)
 
@@ -50,6 +50,12 @@ Review the selected project, configuration, builder and diagnostics. Planning is
 With br-studio 0.90.0 or later, pass the same `environmentReport` in `build_plan` and `build_execute` that you used for the [saved-project simulation preflight](simulation-preflight.md#carry-the-workstation-package-review-into-the-saved-project). The plan rechecks the three saved selectors, installed builds and manifest hashes and includes the matched review and its receipt SHA-256 in `buildPlan.manifest.environmentReview`.
 
 Build execution repeats the comparison and requires the same plan SHA-256. It retains the exact JSON as `simulation-environment.json` in the job directory, records its hash in `job.json`, and rechecks the installed read set before dispatch. Keep that file with the plan, job receipt and RUC. RUC review rehashes the retained file when the plan includes this evidence.
+
+### Keep the saved-project simulation preflight with the build
+
+With br-studio 0.122.0 or later, pass the JSON response from `simulation_preflight` as `simulationPreflightReport` in both build requests, together with the same `environmentReport` and LaunchPad route inputs. The plan checks the selected project, configuration, CPU, reviewed Studio and Runtime files, the project files read during preflight, and the SHA-256 of the reviewed workstation report and native `.x6d`. The plan SHA-256 also covers the full source tree staged for compilation.
+
+Review any warnings on an `inputs_present` or `review_required` preflight and look for `buildPlan.manifest.simulationPreflightReview` in the plan. Build execution retains the exact receipt as `simulation-preflight.json` before dispatch. Keep it with `plan.json`, `job.json` and the RUC. RUC review verifies its SHA-256 and returns it as `rucReview.simulationPreflightReport`. Review simulator registration and behavior separately when running the package.
 
 ### Bind the reviewed LaunchPad export to the build
 
