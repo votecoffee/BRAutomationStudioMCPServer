@@ -653,6 +653,59 @@ class BuildPreflightTests(unittest.TestCase):
         self.assertIn("build_plan_changed", [item["code"] for item in response["result"]["diagnostics"]])
         self.assertFalse((self.root / "job1").exists())
 
+    def test_native_layout_device_pins_saved_target_and_requires_compiled_mapping(self):
+        self.local_core("5.29.1")
+        hardware = self.project / "Physical/ARsim/Hardware.hw"
+        original = b'<Hardware><Module Name="PC"></Module></Hardware>'
+        device = (b'<Group ID="FileDevice1"/><Parameter ID="FileDeviceName1" Value="6DData"/>'
+                  b'<Parameter ID="FileDevicePath1" Value="USER_PATH"/>')
+        valid = original.replace(b"</Module>", device + b"</Module>", 1)
+        options = {"verifyLayoutDevice": True}
+        for configured in (original, valid.replace(b"USER_PATH", b"OTHER_PATH")):
+            hardware.write_bytes(configured)
+            blocked = self.native_request("build_plan", **options)["result"]
+            self.assertIsNone(blocked["buildPlan"])
+            self.assertEqual(blocked["diagnostics"][-1]["code"], "layout_device_unverified")
+        hardware.write_bytes(valid)
+        planned = self.native_request("build_plan", **options)
+        plan = planned["result"]["buildPlan"]
+        self.assertEqual(plan["manifest"]["layoutDevice"],
+                         {"state": "present", "path": "Physical/ARsim/Hardware.hw", "slot": "1", "target": "USER_PATH"})
+        self.assertIn("Pinned 6DData slot 1", markdown(planned))
+
+        with patch("br_automation_studio.native_build.run_build") as worker:
+            omitted = self.native_request("build_execute", planSha256=plan["sha256"], jobDirectory="omitted")
+            worker.assert_not_called()
+        self.assertEqual(omitted["result"]["diagnostics"][-1]["code"], "build_plan_changed")
+
+        def native_worker(args, project, dispatch, log, timeout):
+            dispatch(42)
+            ruc = Path(args[args.index("-o") + 1]) / "ARsim/PC/RUCPackage/RUCPackage.zip"
+            ruc.parent.mkdir(parents=True)
+            with ZipFile(ruc, "w") as archive:
+                archive.writestr("FilesToTransfer/Data0/Test.br", b"modeled package")
+                if device_param is not None:
+                    tree = (f'<?xml version="1.0"?><tree><n ID="DEVICES"><n ID="6DData">'
+                            f'<d ID="DeviceParam">{device_param}</d><d ID="DDriverName">ExampleDriver</d>'
+                            f'</n></n></tree>')
+                    archive.writestr("FilesToTransfer/Data0/$$sysconf.br", tree.encode())
+            log.write(b"Build: 0 error(s), 0 warning(s)\r\n")
+            return 0, False, "empty"
+
+        with patch("br_automation_studio.native_build.run_build", side_effect=native_worker):
+            for device_param, job_name in ((None, "missing"), ("/DEVICE=OTHER_PATH", "changed"),
+                                           ("/DEVICE=USER_PATH", "matched")):
+                with self.subTest(device=device_param):
+                    receipt = self.native_request("build_execute", **options, planSha256=plan["sha256"],
+                                                  jobDirectory=job_name)["result"]
+                    job = receipt["nativeBuild"]
+                    if job_name == "matched":
+                        self.assertEqual(job["status"], "succeeded")
+                        self.assertEqual(job["package"]["layoutDevice"]["compiled"]["deviceParameter"], device_param)
+                    else:
+                        self.assertEqual(job["status"], "artifact_failed")
+                        self.assertEqual(receipt["diagnostics"][-1]["code"], "ruc_verification_failed")
+
     @patch("br_automation_studio.simulation_preflight.installed_product",
            return_value={"stateCode": -1, "version": None})
     def test_native_build_pins_and_retains_workstation_report(self, msi):

@@ -10,7 +10,7 @@ Use the three requests below from one run directory. Adjust the Automation Studi
 | --- | --- | --- |
 | [Workstation check](../../../examples/inspection-cycle/workstation-check.json) | `receipts/workstation.json` | The exact three-package selection, simulator registration and the four media roles. |
 | [Saved-project preflight](../../../examples/inspection-cycle/simulation-preflight.json) | `receipts/simulation-preflight.json` | The project, CPU and Runtime, matched workstation receipt, native export and selected IEC declarations and MpTraffic definition. |
-| [Native build plan](../../../examples/inspection-cycle/build-plan.json) | `receipts/build-plan.json` | The plan SHA-256 and its saved-project preflight, workstation, route, widget, X/Y read axes, assembly limits and motion pins. |
+| [Native build plan](../../../examples/inspection-cycle/build-plan.json) | `receipts/build-plan.json` | The plan SHA-256 and its saved-project preflight, workstation, route, widget, 6DData device, X/Y read axes, assembly limits and motion pins. |
 
 Copy the examples into the run root as `workstation-request.json`, `simulation-preflight-request.json` and `build-plan-request.json`. Run each stage with `br-studio run --request <request.json>` and retain the JSON response before selecting the next stage. Use the same saved project, CPU, native export and workstation receipt for preflight and planning. A blocked workstation or preflight calls for resolving the reported dependency. Review the diagnostics when the preflight reports `review_required` or the planner returns a plan with warnings. The plan can carry the selected IEC declarations, the six motion binaries and generated motion globals into package verification. [Workstation and project prerequisites](simulation-preflight.md)
 
@@ -44,6 +44,10 @@ The first-build examples exercised the blocked workstation and preflight respons
 Create the same request as for [build preflight](build-preflight.md) with `operation` set to `build_plan`. Run `br-studio run --request <plan-request.json>` and inspect `result.buildPlan` plus the diagnostics. If `buildPlan` has a SHA-256, the manifest identifies the complete staged input tree and the reported Studio and Runtime read sets. The plan preserves the on-disk spelling of source paths. The root folders `Binaries`, `Temp`, `BuildOnly`, `TempOnly`, `.git` and `.local` are excluded from the stage.
 
 Review the selected project, configuration, builder and diagnostics. Planning is read-only. It stops on preflight errors and can return a plan with warnings. Use a self-contained project copy whose dependencies and build behavior you trust. The worker invokes the vendor build, including any build behavior configured in the project.
+
+### Pin the Assembly6D layout device
+
+With br-studio 0.124.0 or later, use `verifyLayoutDevice` in both build requests for an ARsim project with `6DData` explicitly declared on `USER_PATH` in the selected CPU's `Hardware.hw`. Planning records the device slot and target in `buildPlan.manifest.layoutDevice`. Execution verifies the `/DEVICE=USER_PATH` parameter in the RUC system configuration. A successful job records the device and system configuration hash in `nativeBuild.package.layoutDevice`. RUC review repeats the check against the saved project and job. [Layout device review](layout-device-review.md)
 
 ### Keep the workstation package review with the build
 

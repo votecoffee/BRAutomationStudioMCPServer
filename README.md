@@ -84,7 +84,7 @@ Use `motion_interface_review` to look up the public pins, nested IEC types and e
 
 Use `assembly_io_review` to trace the selected assembly's communication variable references to saved IEC declarations and check its compiled read-axis flags. [Assembly I/O workflow](skills/br-automation-studio/references/assembly-io-review.md)
 
-Use `layout_device_review` to verify the selected CPU's saved and compiled `6DData` declaration before checking the runtime SVGs. [Layout file-device workflow](skills/br-automation-studio/references/layout-device-review.md)
+Use `layout_device_review` to verify the selected CPU's saved and compiled `6DData` declaration before checking the runtime SVGs. Set `verifyLayoutDevice` in both build requests to require the `USER_PATH` mapping in the project and RUC. [Layout file-device workflow](skills/br-automation-studio/references/layout-device-review.md)
 
 Use `layout_svg_review` to compare the generated segment grid, marker positions and directed mapping IDs with the saved project and its RUC. A completed HMI status receipt can locate and verify both SVGs from the same session. [Generated layout workflow](skills/br-automation-studio/references/layout-svg-review.md)
 

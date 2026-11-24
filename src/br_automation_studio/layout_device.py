@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from .file_device import DEVICE_NAME
+from .file_device import COMPILED_USER_PARTITION, DEVICE_NAME, USER_PARTITION
 from .inspection import inspect_project
 from .ruc_review import review_ruc
 
@@ -45,10 +45,10 @@ def layout_device_review(project, configuration, cpu, job_directory=None):
         elif compiled["state"] == "unverified":
             issue("layout_device_unverified", compiled["path"], compiled["reason"], "warning")
         elif saved["state"] == compiled["state"] == "present":
-            if saved["target"] != "USER_PATH":
+            if saved["target"] != USER_PARTITION:
                 result["pathComparison"] = "unverified"
                 issue("layout_device_path_unverified", saved["path"], "Path equivalence is supported for USER_PATH", "warning")
-            elif compiled["deviceParameter"] != "/DEVICE=USER_PATH":
+            elif compiled["deviceParameter"] != COMPILED_USER_PARTITION:
                 result["pathComparison"] = "mismatch"
                 issue("layout_device_path_mismatch", compiled["path"], "Compiled 6DData parameter differs from the saved USER_PATH declaration")
             else:

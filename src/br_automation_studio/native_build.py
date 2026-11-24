@@ -12,6 +12,7 @@ import stat
 from uuid import uuid4
 from zipfile import BadZipFile, ZipFile
 
+from .file_device import DEVICE_NAME, USER_PARTITION, verify_packaged_layout_device
 from .json_io import json_snapshot
 from .launchpad_build import (
     launchpad_positions, launchpad_rules, plan_launchpad_assembly_io, plan_launchpad_layout, plan_launchpad_motion_limits,
@@ -138,7 +139,7 @@ def read_simulation_review(path, current):
 def plan_build(path, studio_root, runtime_root=None, configuration=None, cpu=None, *,
                verify_mptraffic_enum=False, verify_motion_payloads=False, verify_motion_declarations=False,
                verify_motion_symbols=False, launchpad_inputs=None, environment_report=None,
-               simulation_preflight_report=None):
+               simulation_preflight_report=None, verify_layout_device=False):
     verify_layout = launchpad_inputs is not None and launchpad_inputs.verify_layout
     verify_positions = launchpad_inputs is not None and launchpad_inputs.verify_positions
     verify_recovery = launchpad_inputs is not None and launchpad_inputs.verify_recovery
@@ -148,7 +149,8 @@ def plan_build(path, studio_root, runtime_root=None, configuration=None, cpu=Non
                              verify_motion_declarations=verify_motion_declarations, include_layout=verify_layout,
                              geometry_manager=launchpad_inputs.manager if verify_positions else None,
                              recovery_managers=(launchpad_inputs.manager,) if verify_recovery else (),
-                             include_motion=verify_motion_limits, include_io=verify_assembly_io)
+                             include_motion=verify_motion_limits, include_io=verify_assembly_io,
+                             include_layout_device=verify_layout_device)
     report["buildPlan"] = None
     if blocked(report):
         return report
@@ -167,6 +169,14 @@ def plan_build(path, studio_root, runtime_root=None, configuration=None, cpu=Non
         issue(report, "error", "unsupported_runtime_override", "Native builds use the shared AS4 Runtime catalog")
     if blocked(report):
         return report
+
+    if verify_layout_device:
+        device = report["savedLayoutDevice"]
+        if device["state"] != "present" or device["target"] != USER_PARTITION:
+            observed = device.get("reason", device.get("target", device["state"]))
+            issue(report, "error", "layout_device_unverified",
+                  f"{device['path']} needs one {DEVICE_NAME} file device targeting {USER_PARTITION}, found {observed!r}")
+            return report
 
     simulation_review = None
     if simulation_preflight_report is not None:
@@ -249,6 +259,8 @@ def plan_build(path, studio_root, runtime_root=None, configuration=None, cpu=Non
         plan["motionPayloads"] = motion
     if verify_motion_declarations:
         plan["motionDeclarations"] = report["motionDeclarations"]
+    if verify_layout_device:
+        plan["layoutDevice"] = device
     if verify_motion_symbols:
         try:
             plan["motionSymbols"] = plan_motion_symbols(report)
@@ -354,7 +366,7 @@ def log_summary(path):
     return summary
 
 
-def package_evidence(path, job_dir, *, mptraffic=None, motion=None):
+def package_evidence(path, job_dir, *, mptraffic=None, motion=None, verify_layout_device=False):
     with ZipFile(path) as bundle:
         if not bundle.namelist() or bundle.testzip() is not None:
             raise ValueError("RUC archive failed ZIP integrity verification")
@@ -366,6 +378,8 @@ def package_evidence(path, job_dir, *, mptraffic=None, motion=None):
             evidence["mpTrafficPayload"] = verify_packaged_mptraffic(bundle, mptraffic["saved"]["payloadSha256"])
         if motion is not None:
             evidence["motionPayloads"] = verify_packaged_motion(bundle, motion)
+        if verify_layout_device:
+            evidence["layoutDevice"] = verify_packaged_layout_device(bundle)
         return evidence
 
 
@@ -392,12 +406,13 @@ def retain_simulation_preflight_report(directory, receipt):
 def execute_build(path, studio_root, runtime_root, configuration, cpu, plan_sha256, job_directory,
                   timeout_seconds=180, *, verify_mptraffic_enum=False, verify_motion_payloads=False,
                   verify_motion_declarations=False, verify_motion_symbols=False, launchpad_inputs=None,
-                  environment_report=None, simulation_preflight_report=None):
+                  environment_report=None, simulation_preflight_report=None, verify_layout_device=False):
     report = plan_build(path, studio_root, runtime_root, configuration, cpu,
                         verify_mptraffic_enum=verify_mptraffic_enum, verify_motion_payloads=verify_motion_payloads,
                         verify_motion_declarations=verify_motion_declarations,
                         verify_motion_symbols=verify_motion_symbols, launchpad_inputs=launchpad_inputs,
-                        environment_report=environment_report, simulation_preflight_report=simulation_preflight_report)
+                        environment_report=environment_report, simulation_preflight_report=simulation_preflight_report,
+                        verify_layout_device=verify_layout_device)
     plan = report["buildPlan"]
     if plan is None:
         return report
@@ -482,7 +497,8 @@ def execute_build(path, studio_root, runtime_root, configuration, cpu, plan_sha2
             ruc = output / manifest["configuration"] / manifest["cpu"] / "RUCPackage/RUCPackage.zip"
             artifact_error = "ruc_verification_failed"
             try:
-                job["package"] = package_evidence(ruc, job_dir, mptraffic=definition, motion=motion)
+                job["package"] = package_evidence(ruc, job_dir, mptraffic=definition, motion=motion,
+                                                  verify_layout_device="layoutDevice" in manifest)
                 if "motionSymbols" in manifest:
                     artifact_error = "motion_symbols_unverified"
                     job["motionSymbols"] = read_motion_symbols(job_dir, manifest["configuration"],

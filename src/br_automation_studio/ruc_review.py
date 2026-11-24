@@ -10,7 +10,7 @@ import re
 from xml.etree import ElementTree as ET
 from zipfile import BadZipFile, ZipFile
 
-from .file_device import SYSTEM_CONFIG, read_compiled_layout_device
+from .file_device import SYSTEM_CONFIG, read_compiled_layout_device, verify_packaged_layout_device
 from .inspection import inspect_project
 from .json_io import invalid_constant, read_json, unique_object
 from .launchpad_build import (
@@ -359,6 +359,8 @@ def review_ruc(path, job_directory, binding=None, *, geometry_manager=None, incl
         result["bindingReview"] = binding.receipt()
     try:
         plan, job, manifest, archive_path = bound_receipts(reader)
+        pinned_layout_device = "layoutDevice" in manifest
+        include_layout_device = include_layout_device or pinned_layout_device
         review.update(jobId=job["jobId"], planSha256=plan["sha256"], buildSummary=job["summary"])
         result.update(selectedConfiguration=manifest["configuration"], selectedCpu=manifest["cpu"])
         if path.name != manifest.get("project") or source_tree(path.parent.resolve()) != manifest.get("inputs"):
@@ -384,6 +386,8 @@ def review_ruc(path, job_directory, binding=None, *, geometry_manager=None, incl
                 return result
             if include_layout_device:
                 review["savedLayoutDevice"] = saved.get("savedLayoutDevice")
+            if pinned_layout_device and review["savedLayoutDevice"] != manifest["layoutDevice"]:
+                raise ValueError("The saved 6DData declaration differs from the build plan")
             if include_motion or include_io or include_saved_geometry:
                 review["savedAssemblyLinks"] = saved["assemblyLinks"]
             if include_saved_geometry:
@@ -415,6 +419,12 @@ def review_ruc(path, job_directory, binding=None, *, geometry_manager=None, incl
                     review["environmentReport"] = job["environmentReport"]
                 if "simulationPreflightReview" in manifest:
                     review["simulationPreflightReport"] = job["simulationPreflightReport"]
+                if pinned_layout_device:
+                    layout_device = verify_packaged_layout_device(package)
+                    if layout_device != job["package"].get("layoutDevice"):
+                        raise ValueError("The compiled 6DData evidence differs from the job receipt")
+                    review["layoutDevice"] = layout_device
+                    review["compiledLayoutDevice"] = layout_device["compiled"]
                 if "motionPayloads" in manifest:
                     payloads = verify_packaged_motion(package, manifest["motionPayloads"])
                     if payloads != job["package"].get("motionPayloads"):
@@ -457,7 +467,7 @@ def review_ruc(path, job_directory, binding=None, *, geometry_manager=None, incl
                                     else StartPageWidget(dom_id))
                     review["startPageWidget"] = start_widget.receipt()
                     review["startPageWidget"]["launchPadManager"] = launchpad["manager"]
-                if include_layout_device:
+                if include_layout_device and not pinned_layout_device:
                     member = archive.member(SYSTEM_CONFIG)
                     if member is not None:
                         review["compiledLayoutDevice"] = read_compiled_layout_device(archive.read(member))

@@ -17,6 +17,7 @@
     "launchPadProject": "launchpad/source.lpj",
     "launchPadReadback": "launchpad/readback.json",
     "launchPadWidgetId": "Overview_PlanarDisplay",
+    "verifyLayoutDevice": true,
     "verifyLaunchPadLayout": true,
     "verifyLaunchPadPositions": true,
     "launchPadReadAxes": [

@@ -2,6 +2,8 @@
 
 Use `layout_device_review` to check the `6DData` declaration in the selected AS4 CPU's `Hardware.hw`. Include `jobDirectory` to read the device of the same source-matched ARsim build in `FilesToTransfer/Data0/$$sysconf.br`.
 
+With br-studio 0.124.0 or later, set `verifyLayoutDevice` in both build requests to require this `USER_PATH` mapping before compiling and verify the compiled parameter before accepting the RUC. [Pin the Assembly6D layout device](native-build.md#pin-the-assembly6d-layout-device)
+
 ```json
 {
   "schemaVersion": 1,

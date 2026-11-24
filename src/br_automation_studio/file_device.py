@@ -1,12 +1,15 @@
 """Read the AS4 CPU declaration and compiled system device tree for 6DData."""
 
+from hashlib import sha256
 from pathlib import Path
 import re
 from xml.etree import ElementTree as ET
 
-from .project import ProjectXml, children, tag
+from .project import ProjectXml, XML_LIMIT, children, tag
 
 DEVICE_NAME = "6DData"
+USER_PARTITION = "USER_PATH"
+COMPILED_USER_PARTITION = f"/DEVICE={USER_PARTITION}"
 SYSTEM_CONFIG = "FilesToTransfer/Data0/$$sysconf.br"
 SLOT_NAME = re.compile(r"FileDeviceName([1-9][0-9]*)")
 
@@ -61,3 +64,17 @@ def read_compiled_layout_device(data):
     if len(paths) != 1 or len(drivers) != 1 or not drivers[0] or not paths[0]:
         return dict(record, reason="The compiled 6DData node has incomplete or duplicate fields")
     return dict(record, state="present", deviceParameter=paths[0], driver=drivers[0])
+
+
+def verify_packaged_layout_device(bundle):
+    members = [member for member in bundle.infolist() if member.filename.casefold() == SYSTEM_CONFIG.casefold()]
+    if len(members) != 1 or members[0].file_size > XML_LIMIT:
+        raise ValueError(f"Expected one readable {SYSTEM_CONFIG} for the pinned {DEVICE_NAME} file device")
+    data = bundle.read(members[0])
+    compiled = read_compiled_layout_device(data)
+    if compiled["state"] != "present":
+        reason = compiled.get("reason", "The compiled 6DData node is absent")
+        raise ValueError(reason)
+    if compiled["deviceParameter"] != COMPILED_USER_PARTITION:
+        raise ValueError(f"The compiled {DEVICE_NAME} needs {COMPILED_USER_PARTITION}, found {compiled['deviceParameter']!r}")
+    return {"state": "matched", "compiled": compiled, "systemConfigSha256": sha256(data).hexdigest()}

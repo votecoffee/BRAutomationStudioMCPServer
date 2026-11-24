@@ -343,7 +343,8 @@ def build_preflight(path, studio_root, runtime_root=None, configuration=None, cp
                     verify_motion_declarations=False, include_layout=False, geometry_manager=None, recovery_managers=(),
                     include_motion=False, include_io=False, expected_controller_type=None, controller_io_assembly=None,
                     controller_io_task_class=None, controller_powerlink_connector=None,
-                    controller_powerlink_assembly=None, physical_assembly=None, mapp_view_ethernet_connector=None):
+                    controller_powerlink_assembly=None, physical_assembly=None, mapp_view_ethernet_connector=None,
+                    include_layout_device=False):
     if controller_io_assembly is not None and expected_controller_type is None:
         raise ValueError("The controller I/O review needs an expected controller type")
     if controller_io_task_class is not None and controller_io_assembly is None:
@@ -356,7 +357,8 @@ def build_preflight(path, studio_root, runtime_root=None, configuration=None, cp
     report = inspect_saved(saved, Path(path.name), configuration, cpu,
                            include_layout=include_layout, geometry_manager=geometry_manager,
                            recovery_managers=recovery_managers, include_motion=include_motion,
-                           include_io=include_io or controller_io_assembly is not None)
+                           include_io=include_io or controller_io_assembly is not None,
+                           include_layout_device=include_layout_device)
     studio = SavedFiles(studio_root)
     runtimes = SavedFiles(runtime_root if runtime_root is not None else studio.root.parent / "AS/System")
 
