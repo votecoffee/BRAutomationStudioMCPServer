@@ -79,18 +79,21 @@ class HmiSmokeTest(unittest.TestCase):
             bindings = read_status_bindings(None, target)
         binding = {"evidence": "ruc_binding_readback", "rucReview": {"archive": {}}, "snapshot": {},
                    "bindingReview": {"domId": "Main_Request"}}
-        for required, minimum, bounds in ((True, None, False), (False, 5, False), (False, None, True)):
-            with (self.subTest(required=required, minimum=minimum, bounds=bounds),
+        for required, minimum, bounds, separation in (
+            (True, None, False, False), (False, 5, False, False), (False, None, True, False), (False, None, False, True),
+        ):
+            with (self.subTest(required=required, minimum=minimum, bounds=bounds, separation=separation),
                   patch("br_automation_studio.hmi_smoke.review_ruc", return_value=binding),
                   patch("br_automation_studio.hmi_smoke.arsim_smoke", return_value={}) as smoke):
                 arsim_hmi_smoke(None, None, None, None, 30, target, None, None, 30, 20,
                                 require_traffic_labels=required, minimum_label_height=minimum, require_label_bounds=bounds,
-                                status_bindings=bindings)
+                                require_label_separation=separation, status_bindings=bindings)
                 browser = smoke.call_args.args[-1].browser
                 self.assertTrue(browser.check_assembly)
                 self.assertEqual(browser.require_traffic_labels, required)
                 self.assertEqual(browser.minimum_label_height, minimum)
                 self.assertEqual(browser.require_label_bounds, bounds)
+                self.assertEqual(browser.require_label_separation, separation)
                 self.assertTrue(smoke.call_args.kwargs["require_6d"])
                 self.assertTrue(smoke.call_args.kwargs["start_widget"].require_traffic_details)
 

@@ -91,6 +91,12 @@ Starting with br-studio 0.111.0, each measured label reports `insideWidget` and 
 
 Set `requireTrafficLabelsInBounds` to `true` to enable the label check and require both containment checks in each browser document. Labels extending past either rectangle appear under `outsideWidget` or `outsideViewport`. Combine this option with the chosen [viewport](#set-the-browser-viewport) and label height when needed. Inspect label overlap and readability on the intended panel.
 
+#### Check for overlapping labels
+
+Starting with br-studio 0.112.0, `trafficLabels.overlap` records the number of labels with measured rectangles and any pairs whose rectangles share positive area. Edges that only touch pass. The check uses the same CSS pixel rectangles for the verified station and waypoint text in each browser document. [CSSOM View geometry](https://www.w3.org/TR/cssom-view/#dom-element-getboundingclientrect)
+
+Set `requireNonOverlappingTrafficLabels` to `true` to enable the label check and require distinct label rectangles on both loads. It can run alongside the minimum height and bounds checks. Review the reported pairs when repositioning station or waypoint labels, and confirm legibility on the panel.
+
 ### Save the generated SVGs
 
 Set `captureLayoutAssets` to `true` in the request arguments. This also enables the required layout check in both browser documents. After the browser closes, the CLI makes a fresh GET for each expected URL on the same owned ARsim HTTP listener. Each response must be HTTP 200 with an `image/svg+xml` body and a namespaced SVG root. The browser status and capture refer to separate requests inside the same ARsim session.

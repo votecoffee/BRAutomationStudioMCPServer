@@ -1132,6 +1132,10 @@ def markdown_browser(browser, text):
                                  f" {text(viewport_content['heightCssPx'])} CSS px")
                 if height := labels.get("minObservedHeightCssPx"):
                     lines.append(f"    - Smallest observed height {text(height)} CSS px")
+                if overlap := labels.get("overlap"):
+                    lines.append(f"    - Label overlap {text(overlap['state'])} · Labels checked {text(overlap['checkedLabels'])}")
+                    for first, second in overlap["pairs"]:
+                        lines.append(f"      - {text(first)} and {text(second)}")
                 for name, label in labels["labels"].items():
                     label = label or {}
                     lines.append(f"    - {text(name)} · Text {text(label.get('text'))}"

@@ -10,7 +10,7 @@ from unittest.mock import Mock, call, patch
 from br_automation_studio.arsim_smoke import WIDGET_BUNDLE_PATH
 from br_automation_studio.browser_smoke import (
     ASSEMBLY_WIDGET, Page, assembly_dom_id, capture_layout_assets, debug_listener, expected_traffic_labels,
-    layout_asset_paths, verify_navigation,
+    label_overlap_observation, layout_asset_paths, verify_navigation,
 )
 from br_automation_studio.operations import InvalidRequest, execute
 
@@ -338,7 +338,48 @@ class TestBrowserSmoke(unittest.TestCase):
             "state": "below_minimum", "labels": {"S1": short}, "viewport": viewport,
             "viewportContent": None, "minObservedHeightCssPx": 4.999, "belowMinimum": ["S1"],
             "outsideWidget": [], "outsideViewport": [],
+            "overlap": {"state": "unverified", "checkedLabels": 0, "pairs": []},
         })
+
+    def test_traffic_label_overlap_requires_area_on_both_axes(self):
+        def box(left, top, width, height):
+            return {"leftCssPx": left, "topCssPx": top, "widthCssPx": width, "heightCssPx": height}
+
+        labels = {"A": box(0, 0, 10, 5), "B": box(9, 1, 10, 4), "C": box(19, 1, 10, 4),
+                  "D": box(0, 5, 9, 5)}
+        self.assertEqual(label_overlap_observation(labels, labels), {
+            "state": "overlapping", "checkedLabels": 4, "pairs": [["A", "B"]],
+        })
+        self.assertEqual(label_overlap_observation(labels, ("B", "C", "D")), {
+            "state": "unverified", "checkedLabels": 3, "pairs": [],
+        })
+
+    @patch("br_automation_studio.browser_smoke.time.sleep")
+    @patch("br_automation_studio.browser_smoke.time.monotonic", side_effect=range(8))
+    def test_traffic_label_overlap_on_reopen_fails_even_when_height_and_bounds_pass(self, now, pause):
+        label = {"count": 1, "visible": True, "text": "A", "widthCssPx": 12, "heightCssPx": 7,
+                 "insideWidget": True, "insideViewport": True, "leftCssPx": 5, "topCssPx": 10}
+
+        def seen(value, origin, second_x=17):
+            second = dict(label, text="B", leftCssPx=second_x)
+            return dict(hmi(value, origin), trafficLabels={"labels": {"A": label, "B": second}})
+
+        page = Mock(deadline=7)
+        page.read.side_effect = [
+            seen("1", 10), seen("2", 10), seen("3", 10),
+            {"url": "about:blank", "timeOrigin": 11},
+            seen("100", 10), seen("4", 12, 16), seen("5", 12, 16),
+        ]
+        receipt = dict(self.receipt(), expectedTrafficLabels=["A", "B"], requireTrafficLabelsInBounds=True,
+                       requireNonOverlappingTrafficLabels=True, minimumTrafficLabelHeightCssPx=5)
+        with self.assertRaisesRegex(TimeoutError, "Traffic label rectangles overlap: A and B"):
+            verify_navigation(page, URL, receipt)
+        self.assertEqual(receipt["initial"]["trafficLabels"]["overlap"]["state"], "observed")
+        reopened = receipt["reopened"]["trafficLabels"]
+        self.assertEqual(reopened["state"], "overlapping")
+        self.assertEqual(reopened["overlap"], {"state": "overlapping", "checkedLabels": 2, "pairs": [["A", "B"]]})
+        self.assertEqual(reopened["outsideViewport"], [])
+        self.assertEqual(reopened["minObservedHeightCssPx"], 7)
 
     @patch("br_automation_studio.browser_smoke.time.sleep")
     @patch("br_automation_studio.browser_smoke.time.monotonic", side_effect=range(8))
