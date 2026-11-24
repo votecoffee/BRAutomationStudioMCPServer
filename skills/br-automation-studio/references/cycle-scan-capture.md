@@ -144,6 +144,8 @@ The review requires active, error-free observations and checks the count against
 
 The peak covers the captured output samples. Queue changes can include arrivals between calls. Use Logger and the matched simulator to investigate losses or transitions between samples. [Station monitor function description](https://help.br-automation.com/#/en/4/motion/mapp_6d/bibliotheken/mptraffic/function_block/mptrafficstationmonitor/fb_mptrafficstationmonitor_functiondescription.html)
 
+An AS4.12 / J4.93 mock-queue rehearsal wrote the signals in the same PLC CSV as the HMI reopen. The review accounted for three outbound reads and one return read, and the peak remaining count was one in each monitor. The unchanged capture passed with a limit of one and was incomplete with a limit of zero. Isolated controls also reported a held-high read input and a monitor fault.
+
 ## Check the release total across both legs
 
 When `releaseTotalEvent` is set on the cycle request, use `hold.releaseTotal` for the same sampled counter from the start of the outbound leg through the first next-hold scan. If the export uses a different header or chart title, map it through `scanCapture.columns`. Use the value published to the HMI when pairing with a status report. [Event selection and review](cycle-trace-review.md#check-when-the-release-total-increments)
