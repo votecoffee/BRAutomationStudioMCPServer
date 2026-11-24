@@ -885,6 +885,15 @@ def markdown_cycle_trace(cycle, text):
                          f"· MpTraffic {text(encoding['libraryVersion'])} · SHA-256 {encoding['typeSha256']}")
         for leg, observed in capture.get("monitorSequences", {}).items():
             lines.append(f"- {text(leg.title())} recorded monitor sequence {observed['start']} → {observed['end']}")
+    if queue := cycle.get("monitorQueueReview"):
+        lines.extend(["", "## Station monitor queues", "",
+                      f"- State {text(queue['state'])} · Maximum remaining {queue['maximumRemainingShuttleCount']}"])
+        for leg, observed in queue["legs"].items():
+            lines.append(f"- {text(leg.title())} · Scans checked {observed['checkedScans']} "
+                         f"· Peak remaining {observed['peakRemainingShuttleCount']} "
+                         f"· Rising edges {observed['risingEdges']} · Consumed {observed['consumed']}")
+        if failure := queue.get("firstFailure"):
+            lines.append(f"- {text(failure['leg'].title())} · Scan {failure['scan']} · StatusID {failure['statusId']}")
     if outbound := cycle.get("outbound"):
         lines.extend(markdown_station_trace(outbound, text))
     if returned := cycle.get("returnLeg"):

@@ -622,6 +622,101 @@ class CycleTraceTest(unittest.TestCase):
         trace["scanCapture"]["monitorCheckpoints"] = True
         return trace, columns, rows
 
+    def monitor_queue_csv(self):
+        trace, columns, rows = self.checkpoint_csv()
+        trace["scanCapture"]["monitorQueue"] = {"maximumRemainingShuttleCount": 2}
+        fields = {"monitorActive": True, "monitorError": False, "monitorGetNextShuttle": False,
+                  "monitorRemainingShuttleCount": 0, "monitorStatusId": 0}
+        for leg, start, end in (("inspection", 10, 15), ("return", 15, 17)):
+            defaults = {f"{leg}.{field}": value for field, value in fields.items()}
+            columns.extend(defaults)
+            for scan in range(start, end + 1):
+                rows[scan - 10].update(defaults)
+        rows[2]["inspection.monitorRemainingShuttleCount"] = 2
+        rows[3]["inspection.monitorGetNextShuttle"] = True
+        rows[7]["return.monitorGetNextShuttle"] = True
+        return trace, columns, rows
+
+    def queue_trace_from_rows(self, trace, columns, rows):
+        output = StringIO(newline="")
+        writer = csv.DictWriter(output, fieldnames=columns)
+        writer.writeheader()
+        writer.writerows(rows)
+        return self.materialize(trace, output.getvalue().encode())[0]
+
+    def test_monitor_queue_allows_arriving_backlog_and_reports_independent_edges(self):
+        trace, columns, rows = self.monitor_queue_csv()
+        rows[4]["inspection.monitorGetNextShuttle"] = True
+        alias = "Saved queue depth"
+        field = "inspection.monitorRemainingShuttleCount"
+        trace["scanCapture"]["columns"] = {field: alias}
+        columns[columns.index(field)] = alias
+        for row in rows:
+            if field in row:
+                row[alias] = row.pop(field)
+        report = self.run_cycle(self.queue_trace_from_rows(trace, columns, rows))["monitorQueueReview"]
+        self.assertEqual(report, {"state": "matched", "maximumRemainingShuttleCount": 2, "legs": {
+            "inspection": {"checkedScans": 6, "peakRemainingShuttleCount": 2, "risingEdges": 1, "consumed": 1},
+            "return": {"checkedScans": 3, "peakRemainingShuttleCount": 0, "risingEdges": 1, "consumed": 1},
+        }})
+
+    def test_monitor_queue_rejects_unwitnessed_consumption_unhealthy_outputs_and_excess_depth(self):
+        for scan, updates, expected, failure_scan in (
+            (13, {"inspection.monitorGetNextShuttle": False}, "cycle_monitor_queue_read_edge", 13),
+            (12, {"inspection.monitorGetNextShuttle": True}, "cycle_monitor_queue_read_edge", 13),
+            (17, {"return.monitorActive": False}, "cycle_monitor_queue_unhealthy", 17),
+            (16, {"return.monitorError": True, "return.monitorStatusId": -456}, "cycle_monitor_queue_unhealthy", 16),
+            (12, {"inspection.monitorRemainingShuttleCount": 3}, "cycle_monitor_queue_depth", 12),
+        ):
+            with self.subTest(scan=scan, updates=updates):
+                trace, columns, rows = self.monitor_queue_csv()
+                rows[scan - 10].update(updates)
+                normalized = self.queue_trace_from_rows(trace, columns, rows)
+                result = {}
+                with self.assertRaises(TraceIssue) as issue:
+                    check_cycle(normalized, self.identity, self.outbound, self.inbound, result)
+                self.assertEqual((issue.exception.code, issue.exception.severity), (expected, "warning"))
+                self.assertEqual(result["phase"], "monitor_queue")
+                review = result["monitorQueueReview"]
+                self.assertEqual(review["state"], "incomplete")
+                self.assertEqual(review["firstFailure"]["scan"], failure_scan)
+                if expected == "cycle_monitor_queue_unhealthy":
+                    self.assertEqual(review["firstFailure"]["statusId"], updates.get("return.monitorStatusId", 0))
+
+    def test_monitor_queue_checks_consumption_count_per_invocation(self):
+        trace, columns, rows = self.monitor_queue_csv()
+        trace["scanCapture"]["detectionSlots"] = {"inspection": 2}
+        extra = {f"inspection.detection2.{key}": value for key, value in self.arrival(22, "Outfeed").items()}
+        columns.extend(extra)
+        for row in rows:
+            row["inspection.detection2.sequence"] = 0
+        rows[3].update(extra)
+        rows[3]["inspection.detection.event"] = "mpTRAFFIC_SH_PASSTHROUGH"
+        rows[3]["inspection.monitorSequenceAfterScan"] = 22
+        for row in rows[4:6]:
+            row.update({"inspection.monitorSequenceBeforeScan": 22, "inspection.monitorSequenceAfterScan": 22})
+        with self.assertRaisesRegex(TraceIssue, "2 consumed events with 1 witnessed") as error:
+            self.run_cycle(self.queue_trace_from_rows(trace, columns, rows))
+        self.assertEqual(error.exception.code, "cycle_monitor_queue_read_edge")
+
+    def test_monitor_queue_requires_explicit_bound_and_capture_fields(self):
+        trace, columns, rows = self.monitor_queue_csv()
+        for invalid in (None, True, {}, {"maximumRemainingShuttleCount": False}, {"maximumRemainingShuttleCount": 65536}):
+            with self.subTest(invalid=invalid), self.assertRaisesRegex(ValueError, "needs maximumRemainingShuttleCount"):
+                trace["scanCapture"]["monitorQueue"] = invalid
+                self.queue_trace_from_rows(trace, columns, rows)
+        trace["scanCapture"]["monitorQueue"] = {"maximumRemainingShuttleCount": 0}
+        trace["scanCapture"]["monitorCheckpoints"] = False
+        with self.assertRaisesRegex(ValueError, "requires monitorCheckpoints"):
+            self.queue_trace_from_rows(trace, columns, rows)
+        trace["scanCapture"]["monitorCheckpoints"] = True
+        field = "return.monitorStatusId"
+        columns.remove(field)
+        for row in rows:
+            row.pop(field, None)
+        with self.assertRaisesRegex(ValueError, "Missing CSV columns: return.monitorStatusId"):
+            self.queue_trace_from_rows(trace, columns, rows)
+
     def test_monitor_checkpoints_supply_missing_baselines_from_raw_rows(self):
         trace, columns, rows = self.checkpoint_csv()
         del trace["inspectionLeg"]["monitorSequenceBeforeRelease"]

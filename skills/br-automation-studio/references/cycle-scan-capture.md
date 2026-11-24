@@ -119,6 +119,31 @@ Set both `monitorCheckpoints: true` and `eventEncoding: "project-mptraffic"` in 
 
 In the AS4.12 / J4.93 rehearsal, the PLC published its synthetic consumption records with the full cycle and HMI reopen capture. The outbound monitor advanced from 51 to 54 and the return monitor from 80 to 81. The review decoded the raw codes from the verified MpTraffic 2.02.0 build and accepted only the matching fresh arrivals. It reported a conflicting baseline, an unaccounted-for return consumption on the final scan and a NONE code in an occupied detection slot.
 
+### Check the station monitor queue observations
+
+With br-studio 0.121.0 or later, add the optional queue review to the same `scanCapture` descriptor. Select the maximum observed backlog for the run. This example uses 1.
+
+```json
+{
+  "monitorCheckpoints": true,
+  "monitorQueue": {"maximumRemainingShuttleCount": 1}
+}
+```
+
+For each scan in the two selected leg windows, record the values below using both the `inspection.` and `return.` prefixes. Map alternate headers through `scanCapture.columns`. Record the input applied to the single station monitor call for that scan and the raw outputs from that call, at the same acquisition point as the consumption counters.
+
+| Suffix | Recorded field |
+| --- | --- |
+| `monitorGetNextShuttle` | `GetNextShuttle` input level, including low scans |
+| `monitorActive` | `Active` output |
+| `monitorError` | `Error` output |
+| `monitorStatusId` | Raw `StatusID` output |
+| `monitorRemainingShuttleCount` | `RemainingShuttleCount` output |
+
+The review requires active, error-free observations and checks the count against the inclusive limit. It attributes each new consumption to a low-to-high change witnessed in two consecutive scan rows. Preserve a low observation before the first consumed read. A rising input can occur without consumption. The report gives checked scans, rising edges, consumed events and peak observed depth per monitor. When this check finds a failed queue sample, `monitorQueueReview` records the first failure with its raw status, input level and count.
+
+The peak covers the captured output samples. Queue changes can include arrivals between calls. Use Logger and the matched simulator to investigate losses or transitions between samples. [Station monitor function description](https://help.br-automation.com/#/en/4/motion/mapp_6d/bibliotheken/mptraffic/function_block/mptrafficstationmonitor/fb_mptrafficstationmonitor_functiondescription.html)
+
 ## Check the release total across both legs
 
 When `releaseTotalEvent` is set on the cycle request, use `hold.releaseTotal` for the same sampled counter from the start of the outbound leg through the first next-hold scan. If the export uses a different header or chart title, map it through `scanCapture.columns`. Use the value published to the HMI when pairing with a status report. [Event selection and review](cycle-trace-review.md#check-when-the-release-total-increments)

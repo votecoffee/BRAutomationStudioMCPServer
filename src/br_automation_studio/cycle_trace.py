@@ -11,6 +11,7 @@ from .cycle_capture import materialize_cycle
 from .cycle_hmi import bind_session_scan_capture, check_session_receipt, review_cycle_hmi, status_run
 from .layout_svg import layout_svg_review
 from .launchpad_route import json_snapshot, launchpad_route_review
+from .monitor_queue import review_monitor_queues
 from .mptraffic_events import read_project_events
 from .runtime_capture import CAPTURE_COPY
 from .station_trace import (
@@ -248,6 +249,9 @@ def check_cycle(trace, identity, outbound_path, inbound_path, result, *, max_rel
     if max_release_to_next_hold_scans is not None or max_release_to_next_hold_us is not None:
         result["phase"] = "scan_timing"
         check_cycle_timing_limits(timing, max_release_to_next_hold_scans, max_release_to_next_hold_us)
+    if "monitorQueue" in trace.get("scanCapture", {}):
+        result["phase"] = "monitor_queue"
+        review_monitor_queues(trace, result)
     result["phase"] = "complete"
 
 

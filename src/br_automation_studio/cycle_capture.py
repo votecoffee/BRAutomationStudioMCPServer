@@ -6,6 +6,7 @@ from hashlib import sha256
 from io import StringIO
 import re
 
+from .monitor_queue import QUEUE_FIELDS, QUEUE_FLAGS, validate_queue_request
 from .mptraffic_definition import NONE
 from .station_trace import (
     FLAGS, MONITOR_CHECKPOINTS, POSITION_FIELDS, POSITION_IDENTIFIERS, POSITION_TIME, RELEASE_MOTION_FIELDS,
@@ -171,6 +172,10 @@ class Sample:
             row["statusId"] = self.number("return.statusId")
         return row
 
+    def monitor_queue(self, leg):
+        return {field: self.flag(f"{leg}.{field}") if field in QUEUE_FLAGS else self.number(f"{leg}.{field}")
+                for field in QUEUE_FIELDS}
+
     def position(self, phase, roles):
         values = {role.partition(".")[2]: self.get(role) for role in roles if role.startswith(f"{phase}.")}
         for name in (*POSITION_IDENTIFIERS, POSITION_TIME):
@@ -264,6 +269,10 @@ def materialize_cycle(trace, path, summary, *, read_project_events=None, verify_
         raise ValueError("scanCapture.monitorCheckpoints must be a Boolean")
     if checkpoints:
         required.update(f"{phase}.{field}" for phase in ("inspection", "return") for field in MONITOR_CHECKPOINTS)
+    queue = "monitorQueue" in capture
+    if queue:
+        validate_queue_request(capture["monitorQueue"], checkpoints)
+        required.update(f"{phase}.{field}" for phase in ("inspection", "return") for field in QUEUE_FIELDS)
     scan_time_column = columns.get(SCAN_TIME, SCAN_TIME)
     read_scan_time = verify_scan_clock and scan_time_column in header
     if read_scan_time:
@@ -325,6 +334,8 @@ def materialize_cycle(trace, path, summary, *, read_project_events=None, verify_
             outbound.update(row.position("inspection", position_columns))
             if checkpoints:
                 outbound.update({field: row.number(f"inspection.{field}") for field in MONITOR_CHECKPOINTS})
+            if queue:
+                outbound["monitorQueue"] = row.monitor_queue("inspection")
             outbound_rows.append(outbound)
         if return_start <= scan <= return_end:
             inbound = row.returned(scan, slots.get("return", 1), stations, events)
@@ -334,6 +345,8 @@ def materialize_cycle(trace, path, summary, *, read_project_events=None, verify_
             inbound.update(row.position("return", position_columns))
             if checkpoints:
                 inbound.update({field: row.number(f"return.{field}") for field in MONITOR_CHECKPOINTS})
+            if queue:
+                inbound["monitorQueue"] = row.monitor_queue("return")
             return_rows.append(inbound)
         if scan == hold_scan:
             hold = row.hold(scan, stations, status_fields)
