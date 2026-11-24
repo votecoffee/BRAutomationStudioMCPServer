@@ -158,7 +158,7 @@ Use `arsim_hmi_smoke` with both extras to verify the binding and default visuali
 
 Use `arsim_status_smoke` to verify expected numeric status such as a held request and shuttle in the initial and reopened HMI and in direct OPC UA. The probe can also retain a finalized CSV from the PLC task. [Status reconnect workflow](skills/br-automation-studio/references/arsim-status-smoke.md) · [AS4 scan file publisher](skills/br-automation-studio/references/plc-scan-file-publisher.md)
 
-Use `held_status_scan_review` to match a held-only CSV against the archived session, both HMI documents and the direct OPC UA reads. [Held-window review](skills/br-automation-studio/references/plc-scan-file-publisher.md#review-the-held-window)
+Use `held_status_scan_review` to match a held-only CSV or the hold selected by a cycle descriptor against the archived session, both HMI documents and the direct OPC UA reads. [Held-window review](skills/br-automation-studio/references/plc-scan-file-publisher.md#review-the-held-window)
 
 Combine viewport, label and one-way mapping line checks, widget bundle, SVG capture and direct OPC UA readback in one request. Use `hmiReport` in the SVG review to verify the captures against the panel session and build. [Panel layout rehearsal](skills/br-automation-studio/references/arsim-panel-layout.md)
 

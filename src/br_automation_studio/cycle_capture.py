@@ -197,6 +197,16 @@ def anchored_monitor_window(leg, rows, field):
     return {**leg, field: start, "scans": rows}, {"start": start, "end": end}
 
 
+def scan_hold_range(capture):
+    first = capture.get("nextHoldScan")
+    if not integer(first):
+        raise ValueError("scanCapture.nextHoldScan needs the observed PLC scan index")
+    last = capture.get("holdThroughScan", first)
+    if "holdThroughScan" in capture and last != "last" and not integer(last, first + 1):
+        raise ValueError("scanCapture.holdThroughScan must be an integer after nextHoldScan or 'last'")
+    return first, last
+
+
 def materialize_cycle(trace, path, summary, *, read_project_events=None, verify_release_total=False,
                       verify_scan_clock=False):
     capture = trace.get("scanCapture") if isinstance(trace, dict) else None
@@ -208,14 +218,9 @@ def materialize_cycle(trace, path, summary, *, read_project_events=None, verify_
         raise ValueError("Select scan-file rows or JSON scan arrays and hold observations, using only one source")
     start, end = interval(capture, "inspectionScans")
     return_start, return_end = interval(capture, "returnScans")
-    hold_scan = capture.get("nextHoldScan")
-    if not integer(hold_scan):
-        raise ValueError("scanCapture.nextHoldScan needs the observed PLC scan index")
-    hold_end = capture.get("holdThroughScan", hold_scan)
+    hold_scan, hold_end = scan_hold_range(capture)
     extended_hold = "holdThroughScan" in capture
     hold_through_last = hold_end == "last"
-    if extended_hold and not hold_through_last and not integer(hold_end, hold_scan + 1):
-        raise ValueError("scanCapture.holdThroughScan must be an integer after nextHoldScan or 'last'")
     format_name = capture.get("format", "csv")
     delimiter = capture.get("delimiter", ",")
     if format_name not in ("csv", "as-chart"):

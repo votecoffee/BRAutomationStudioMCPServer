@@ -542,10 +542,14 @@ def run_arsim_status_smoke(arguments, request_directory):
 
 def run_held_status_scan_review(arguments, request_directory):
     descriptor = arguments.get("scanDescriptor")
+    cycle_trace = arguments.get("cycleTrace")
+    if descriptor and cycle_trace:
+        raise InvalidRequest("Supply scanDescriptor or cycleTrace")
     return held_status_scan_review(project_path(arguments, request_directory),
                                    request_directory / arguments["jobDirectory"],
                                    request_directory / arguments["hmiStatusReport"],
-                                   request_directory / descriptor if descriptor else None)
+                                   request_directory / descriptor if descriptor else None,
+                                   cycle_trace_path=request_directory / cycle_trace if cycle_trace else None)
 
 
 PROJECT_INSPECT = Operation(
@@ -1061,6 +1065,8 @@ HELD_STATUS_SCAN_REVIEW = Operation(
                             "description": "Completed arsim_status_smoke JSON beside session.json and scan-capture.csv."},
         "scanDescriptor": {"type": "string", "minLength": 1,
                            "description": "Optional schemaVersion 1 JSON with column and OPC UA binding maps."},
+        "cycleTrace": {"type": "string", "minLength": 1,
+                       "description": "Reuse a cycle trace descriptor to select its hold from the complete retained CSV. Use in place of scanDescriptor."},
     },
     required=(*RUC_REVIEW.required, "hmiStatusReport"),
     handler=run_held_status_scan_review,

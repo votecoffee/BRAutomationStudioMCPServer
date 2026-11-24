@@ -955,10 +955,14 @@ def markdown_held_scan(review, text):
         lines.append(f"- Session receipt {text(receipt['path'])} · SHA-256 {receipt['sha256']}")
     if capture := review.get("scanCapture"):
         lines.append(f"- CSV {text(capture['path'])} · {capture['bytes']} bytes · SHA-256 {capture['sha256']}")
+    if selected := review.get("cycleSelection"):
+        lines.append(f"- Cycle descriptor selected scans {selected['nextHoldScan']}–{text(selected['holdThroughScan'])}")
     if window := review.get("window"):
         lines.append(f"- {window['rows']} scans · {window['firstScan']}–{window['lastScan']} "
                      f"· Heartbeat {window['firstHeartbeat']}–{window['lastHeartbeat']}"
                      f" · Final direct sample after reopen {window['directAfterLast']}")
+        if station := window.get("station"):
+            lines.append(f"- Held station {text(station)}")
         if missing := window["missingHeartbeats"]:
             lines.append(f"- Missing heartbeat samples {', '.join(map(str, missing))}")
     for role, value in review.get("status", {}).items():

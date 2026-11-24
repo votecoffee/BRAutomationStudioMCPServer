@@ -153,6 +153,8 @@ Save as `cycle-request.json`. If the build retained a name map, supply the same 
 
 The review uses `session.json`, `scan-capture.csv` and `layout-assets/` beside the selected status response. The session comparison runs before the scan is bound to the response. Supply `scanCsv` explicitly when the retained scan copy is stored elsewhere. `requireHoldThroughReopen` requires consecutive held scans that reach the final direct heartbeat after the reopen. `requireHmiTrafficMappingLines` compares the recorded mapping lines in both browser documents with the cycle's compiled one-way mappings. `verifyCapturedLayout` checks the archived SVGs separately. Select the mapping checks for a supported one-way layout. Add motion checks when their source evidence is present and the test defines the expected values. [Session receipt check](cycle-trace-review.md#verify-the-retained-arsim-session-receipt) · [Cycle mapping-line check](cycle-trace-review.md#verify-the-cycles-rendered-mapping-lines)
 
+For a focused hold and HMI check with br-studio 0.120.0 or later, pass this same descriptor as `cycleTrace` to `held_status_scan_review`. It rehashes the complete retained CSV and matches the selected held scans to each browser and direct OPC UA heartbeat. Use the full cycle review for release, arrival and return. [Select the hold from the complete CSV](plc-scan-file-publisher.md#select-the-hold-from-a-complete-cycle-csv)
+
 | Check | Request inputs | Evidence needed |
 | --- | --- | --- |
 | Release setpoints | `expectedExitVelocityMps` and `expectedExitAccelerationMps2` as decimal strings | Both inputs sampled on the Release edge and a RUC with pinned motion limits |

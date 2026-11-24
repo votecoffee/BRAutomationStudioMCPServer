@@ -120,3 +120,9 @@ An optional `scanDescriptor` points to a JSON file for renamed columns or older 
 ```
 
 Run `br-studio run --request hold-review.json`. The review verifies the retained build, matches the runtime JSON and CSV hash, and compares the scan values with the four status bindings. Read `heldStatusScanReview.window` for the scan range and any missing heartbeat witnesses. For release, arrival and return acceptance, run the full cycle review with the corresponding scan columns. [Inspection-cycle rehearsal](inspection-cycle-rehearsal.md)
+
+### Select the hold from a complete cycle CSV
+
+With br-studio 0.120.0 or later, set `"cycleTrace": "cycle-trace.json"` in the review request in place of `scanDescriptor`. Keep the complete original `scan-capture.csv` beside the status response. Use the same cycle descriptor you pass as `trace` to `cycle_trace_review`. It supplies the CSV delimiter, column and station mappings, and any explicit HMI bindings. The review matches any supplied scan hash, session ID and heartbeat identifier to the archived evidence. [Full-cycle descriptor](inspection-cycle-rehearsal.md#review-the-saved-svgs-and-plc-scans)
+
+The reviewer selects every scan from `scanCapture.nextHoldScan` through `holdThroughScan`, inclusive. Use `"last"` when the file ends during the hold. Through that range, keep the station and status values steady, hold active, and Release and result acceptance clear. The selected scans must include every heartbeat sampled by the HMI and direct OPC UA. Read `cycleSelection` for the requested bounds and `window` for the checked scan range and station.

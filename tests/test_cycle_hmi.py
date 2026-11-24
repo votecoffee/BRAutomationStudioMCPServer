@@ -153,6 +153,37 @@ class CycleHmiTest(unittest.TestCase):
             self.assertEqual(renamed["status"], "complete")
             self.assertEqual(renamed["result"]["heldStatusScanReview"]["window"], result["window"])
 
+            cycle = root / "cycle.json"
+            request["arguments"]["cycleTrace"] = cycle.name
+            with self.assertRaisesRegex(InvalidRequest, "Supply scanDescriptor or cycleTrace"):
+                execute(request, root)
+            del request["arguments"]["scanDescriptor"]
+            selection = {"schemaVersion": 1, "scanCapture": {
+                "nextHoldScan": 20, "holdThroughScan": 32, "delimiter": ";",
+                "columns": {"scan": "ScanIndex", "hold.station": "StationCode"},
+                "stationNames": {"1": "Inspect"},
+            }}
+            cycle.write_text(json.dumps(selection), encoding="utf-8")
+            cycle_header = (b"ScanIndex;StationCode;hold.requestId;hold.shuttleId;hold.held;hold.release;"
+                            b"hold.resultAccepted;hold.phase;hold.releaseTotal;hold.heartbeat\n")
+            all_scans = b"19;;;;;;;;;\n" + b"".join(
+                f"{index};1;13;3;1;0;0;10;4;{heartbeat}\n".encode("ascii")
+                for index, heartbeat in enumerate(range(3, 16), 20)
+            ) + b"33;;;;;;;;;\n"
+            selected = review(cycle_header + all_scans)
+            self.assertEqual(selected["status"], "complete")
+            accepted = selected["result"]["heldStatusScanReview"]
+            self.assertEqual(accepted["cycleSelection"], {"nextHoldScan": 20, "holdThroughScan": 32})
+            self.assertEqual(accepted["window"], result["window"] | {"station": "Inspect"})
+
+            released = all_scans.replace(b"25;1;13;3;1;0;0;", b"25;1;13;3;1;1;0;")
+            self.assertEqual(review(cycle_header + released)["result"]["diagnostics"][0]["code"],
+                             "held_scan_hold_state")
+            selection["scanCapture"]["nextHoldScan"] = 18
+            cycle.write_text(json.dumps(selection), encoding="utf-8")
+            self.assertEqual(review(cycle_header + all_scans)["result"]["diagnostics"][0]["code"],
+                             "held_scan_window")
+
     def test_extended_hold_reaches_last_direct_heartbeat_after_reopen(self):
         self.assertNotIn("holdCoverage", self.check())
         with self.assertRaises(TraceIssue) as missing:
