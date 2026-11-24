@@ -175,6 +175,16 @@ br-studio run --request ./cycle-request.json | Set-Content -LiteralPath ./cycle-
 $LASTEXITCODE
 ```
 
+## Rehearse the capture with synthetic station observations
+
+Use a disposable PC simulation configuration to exercise the capture and review chain ahead of the motion run. Keep the motion and Traffic Manager command function blocks disabled. In the capture task, script the outbound Release and arrival, the return and the next inspection hold. Record them with the same column names and scan boundaries planned for the target task. Advance the heartbeat from that task and bind the four held-status fields read-only to mapp View and OPC UA.
+
+Leave the Assembly6D widget and its Traffic Manager overlay on the default page. Keep the configuration's `6DData` device for the widget and use a separate `CaptureData` device on `USER_PATH` for the CSV. Choose a held window that covers browser start, both documents and the last direct read. Keep the heartbeat running through the final required scan, then freeze the buffer and publish it with FileIO. Give `scanCaptureTimeoutSeconds` time for the remainder of the window and the close and rename. [PLC scan file publisher](plc-scan-file-publisher.md) · [Status and layout capture](arsim-status-smoke.md)
+
+Set `inspectionLeg.captureKind` to `"synthetic"` for scripted station observations. Check that the retained CSV matches the published file in `runtime/USER`, then run `cycle_trace_review` and `held_status_scan_review` with the same capture and descriptor. Keep the native build, finalized CSV, browser and direct OPC UA witnesses, both SVGs and both review responses together. Repeat with the matched simulator and actual consumed station events to qualify the target motion configuration.
+
+In the AS4.12 fixture with Automation Runtime J4.93 and mapp 6D 2.2.0, the PLC published 161 records, including 150 consecutive held scans. The focused review matched all 11 distinct browser and direct OPC UA heartbeat observations. Both browser documents showed all five mapping lines, and the cycle review matched the line endpoints and traffic label anchors in the two archived SVGs.
+
 ## Read the handoff
 
 | Receipt | Fields to record |
