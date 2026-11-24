@@ -450,7 +450,7 @@ def arsim_inputs(arguments, request_directory):
 
 
 def run_arsim_smoke(arguments, request_directory, runtime_probe=None):
-    require_traffic_details = arguments.get("requireTrafficDetails", False)
+    require_traffic_details = arguments.get("requireTrafficDetails", False) or arguments.get("requireTrafficLabels", False)
     start_widget = None
     if arguments.get("requireStartPage") or require_traffic_details:
         start_widget = StartPageWidget(arguments.get("assemblyWidgetId"), require_traffic_details)
@@ -463,7 +463,8 @@ def run_arsim_browser_smoke(arguments, request_directory):
                         arguments.get("assemblyWidgetId"), arguments.get("browserTimeoutSeconds", 30),
                         require_layout=arguments.get("requireLayoutAssets", False),
                         capture_layout=arguments.get("captureLayoutAssets", False),
-                        require_widget_bundle=arguments.get("requireWidgetBundle", False))
+                        require_widget_bundle=arguments.get("requireWidgetBundle", False),
+                        require_traffic_labels=arguments.get("requireTrafficLabels", False))
     return run_arsim_smoke(arguments, request_directory, probe)
 
 
@@ -483,6 +484,7 @@ def run_arsim_hmi_smoke(arguments, request_directory, status_bindings=(), scan_c
         require_widget_bundle=arguments.get("requireWidgetBundle", False),
         require_start_page=arguments.get("requireStartPage", False),
         require_traffic_details=arguments.get("requireTrafficDetails", False),
+        require_traffic_labels=arguments.get("requireTrafficLabels", False),
         status_bindings=status_bindings, scan_capture=scan_capture,
     )
 
@@ -913,6 +915,8 @@ ARSIM_BROWSER_SMOKE = Operation(
                              "description": "Verify the Assembly6D startup route and require the generated client map in both browser documents."},
         "requireTrafficDetails": {"type": "boolean", "default": False,
                                   "description": "Require enabled saved and compiled Traffic Manager details and the selected startup content in both browser documents."},
+        "requireTrafficLabels": {"type": "boolean", "default": False,
+                                 "description": "Require the Traffic Manager display option, layout assets, and visible compiled station and waypoint labels in both documents."},
         "requireWidgetBundle": {"type": "boolean", "default": False,
                                 "description": "Check the packaged Assembly6D bundle and require its script load in both HMI documents."},
         "requireLayoutAssets": {"type": "boolean", "default": False,
@@ -946,6 +950,7 @@ ARSIM_HMI_SMOKE = Operation(
         "browserTimeoutSeconds": ARSIM_BROWSER_SMOKE.arguments["browserTimeoutSeconds"],
         "requireStartPage": ARSIM_BROWSER_SMOKE.arguments["requireStartPage"],
         "requireTrafficDetails": ARSIM_BROWSER_SMOKE.arguments["requireTrafficDetails"],
+        "requireTrafficLabels": ARSIM_BROWSER_SMOKE.arguments["requireTrafficLabels"],
         "requireWidgetBundle": ARSIM_BROWSER_SMOKE.arguments["requireWidgetBundle"],
         "requireLayoutAssets": ARSIM_BROWSER_SMOKE.arguments["requireLayoutAssets"],
         "captureLayoutAssets": ARSIM_BROWSER_SMOKE.arguments["captureLayoutAssets"],

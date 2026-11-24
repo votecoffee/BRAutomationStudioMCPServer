@@ -98,6 +98,30 @@ def layout_observation(value, paths):
             "assets": {role: {"path": path, "httpStatus": statuses[role]} for role, path in paths.items()}}
 
 
+def expected_traffic_labels(reviewed, start):
+    if not start or start.get("trafficDetails", {}).get("state") != "matched":
+        raise ValueError("Traffic label checks require a verified enabled Traffic Manager display option")
+    compiled = start["compiled"]
+    manager_id = (compiled["manager"] or "").removeprefix("mapp6D::")
+    assembly = (compiled["assembly"] or "").removeprefix("mapp6D::")
+    managers = [row for row in reviewed["trafficManagers"]
+                if row["manager"] == manager_id and row["assembly"] == assembly]
+    if len(managers) != 1:
+        raise ValueError("Traffic label checks require one reviewed manager linked to the widget's assembly")
+    names = [row["name"] for row in managers[0]["objects"] if row["type"] in {"Station", "Waypoint"}]
+    if not names or len(set(names)) != len(names):
+        raise ValueError("Traffic label checks require unique reviewed station or waypoint names")
+    return sorted(names)
+
+
+def traffic_label_observation(value, expected):
+    observed = value if isinstance(value, dict) else {}
+    labels = {name: observed.get(name) for name in expected}
+    state = "observed" if all(row == {"count": 1, "text": name, "visible": True}
+                              for name, row in labels.items()) else "unverified"
+    return {"state": state, "labels": labels}
+
+
 def seconds_left(deadline):
     remaining = deadline - time.monotonic()
     if remaining <= 0:
@@ -203,7 +227,8 @@ class Page:
         return value
 
 
-def widget_expression(assembly, counter, layout_paths=None, status_widgets=(), *, resource_paths=None):
+def widget_expression(assembly, counter, layout_paths=None, status_widgets=(), *, resource_paths=None,
+                      traffic_labels=()):
     return f"""(() => {{
         const assembly = document.getElementById({json.dumps(assembly)});
         const read = (id) => {{
@@ -230,6 +255,27 @@ def widget_expression(assembly, counter, layout_paths=None, status_widgets=(), *
             }});
             return [key, matching ? {{httpStatus: matching.responseStatus}} : null];
         }}));
+        const labelNames = {json.dumps(list(traffic_labels))};
+        const trafficLabels = labelNames.length && assembly ? (() => {{
+            const labels = new Map(labelNames.map(name => ['label_' + name, []]));
+            for (const node of assembly.querySelectorAll('svg g.traffic-manager text[id]')) {{
+                if (node.namespaceURI === 'http://www.w3.org/2000/svg') labels.get(node.id)?.push(node);
+            }}
+            const visible = (node) => {{
+                const rect = node.getBoundingClientRect();
+                if (rect.width <= 0 || rect.height <= 0 || getComputedStyle(node).visibility !== 'visible') return false;
+                for (let parent = node; parent; parent = parent.parentElement) {{
+                    if (getComputedStyle(parent).opacity === '0') return false;
+                }}
+                return true;
+            }};
+            return Object.fromEntries(labelNames.map(name => {{
+                const matches = labels.get('label_' + name);
+                const node = matches.length === 1 ? matches[0] : null;
+                return [name, {{count: matches.length, text: node?.textContent.trim() ?? null,
+                                visible: node ? visible(node) : false}}];
+            }}));
+        }})() : null;
         return {{
             ...resources,
             url: location.href,
@@ -238,6 +284,7 @@ def widget_expression(assembly, counter, layout_paths=None, status_widgets=(), *
                 ? assembly.getAttribute('data-brease-widget') : null,
             value: read({json.dumps(counter)}),
             statusValues: Object.fromEntries({json.dumps(list(status_widgets))}.map(id => [id, read(id)])),
+            trafficLabels,
             layout
         }};
     }})()"""
@@ -269,7 +316,7 @@ def check_document_status(state, receipt, expected):
 
 def collect_samples(page, expression, url, receipt, count, prior_origins=(), after=Decimal(0),
                     *, layout_paths=None, require_layout=False, check_assembly=True, expected_status=None,
-                    resource_paths=None):
+                    resource_paths=None, traffic_labels=()):
     latest = after
     resource_paths = resource_paths or {}
     while time.monotonic() < page.deadline:
@@ -284,6 +331,8 @@ def collect_samples(page, expression, url, receipt, count, prior_origins=(), aft
                 receipt["widgetType"] = ASSEMBLY_WIDGET
             if layout_paths:
                 receipt["layout"] = layout_observation(result.get("layout"), layout_paths)
+            if traffic_labels:
+                receipt["trafficLabels"] = traffic_label_observation(result.get("trafficLabels"), traffic_labels)
             for key, path in resource_paths.items():
                 receipt[key] = resource_observation(result.get(key), path)
             value = result.get("value")
@@ -295,6 +344,7 @@ def collect_samples(page, expression, url, receipt, count, prior_origins=(), aft
                     receipt["counterSamples"].append(value)
             if (status_matches and len(receipt["counterSamples"]) == count
                     and all(receipt[key]["state"] == "observed" for key in resource_paths)
+                    and (not traffic_labels or receipt["trafficLabels"]["state"] == "observed")
                     and (not require_layout or receipt.get("layout", {}).get("state") == "observed")):
                 return
         time.sleep(0.2)
@@ -302,8 +352,10 @@ def collect_samples(page, expression, url, receipt, count, prior_origins=(), aft
         for key in resource_paths:
             if receipt[key]["state"] != "observed":
                 raise TimeoutError(f"A successful same-origin mapp View {RESOURCE_LABELS[key]} request was not verified")
-        if require_layout:
+        if require_layout and receipt.get("layout", {}).get("state") != "observed":
             raise TimeoutError("Successful 6DData SVG requests and an inline SVG with layout bounds were not verified")
+        if traffic_labels and receipt["trafficLabels"]["state"] != "observed":
+            raise TimeoutError("The expected station and waypoint labels were not verified in the Assembly6D widget")
     if expected_status:
         raise TimeoutError("The expected displayed status values and changing numeric counter were not verified")
     raise TimeoutError("The displayed Assembly6D and changing numeric counter were not verified")
@@ -321,9 +373,11 @@ def verify_navigation(page, url, receipt):
         resources["startPageContent"] = content
     expected = receipt.get("expectedStatus", {})
     assembly = receipt["assemblyWidgetId"]
+    labels = receipt.get("expectedTrafficLabels", ())
     options = {"layout_paths": paths, "require_layout": required, "check_assembly": assembly is not None,
-               "expected_status": expected, "resource_paths": resources}
-    expression = widget_expression(assembly, receipt["counterWidgetId"], paths, expected, resource_paths=resources)
+               "expected_status": expected, "resource_paths": resources, "traffic_labels": labels}
+    expression = widget_expression(assembly, receipt["counterWidgetId"], paths, expected, resource_paths=resources,
+                                   traffic_labels=labels)
     page.navigate(url)
     receipt["state"] = "first_document"
     first = receipt["initial"] = {"counterSamples": []}
@@ -397,6 +451,7 @@ class ChromeProbe:
     expected_status: tuple[tuple[str, int], ...] = ()
     check_assembly: bool = True
     require_widget_bundle: bool = False
+    require_traffic_labels: bool = False
     key: ClassVar[str] = "browser"
     evidence: ClassVar[str] = "arsim_loopback_browser"
 
@@ -415,7 +470,7 @@ class ChromeProbe:
         if self.check_assembly or start:
             widget = assembly_dom_id(reviewed["widgets"], selected, self.counter_widget)
         paths = layout_asset_paths(reviewed["widgets"], widget) if widget is not None else {}
-        require_layout = self.require_layout or self.capture_layout
+        require_layout = self.require_layout or self.capture_layout or self.require_traffic_labels
         if require_layout and not paths:
             raise ValueError("The reviewed widget has no supported 6DData SVG paths")
         receipt.update(state="ready", assemblyWidgetId=widget, layoutPaths=paths, requireLayoutAssets=require_layout,
@@ -427,6 +482,10 @@ class ChromeProbe:
             receipt["startPageMapPath"] = start["compiled"]["clientMapUrl"]
             if "trafficDetails" in start:
                 receipt["startPageContentPath"] = start["compiled"]["contentUrl"]
+        if self.require_traffic_labels:
+            if "trafficManager" not in paths:
+                raise ValueError("Traffic label checks require a Traffic Manager SVG path")
+            receipt["expectedTrafficLabels"] = expected_traffic_labels(reviewed, start)
         if self.require_widget_bundle:
             if widget is None:
                 raise ValueError("The bundle check requires a reviewed Assembly6D widget")

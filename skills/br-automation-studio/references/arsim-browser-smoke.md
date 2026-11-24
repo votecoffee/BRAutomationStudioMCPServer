@@ -65,6 +65,12 @@ The browser report includes the expected `6DData` SVG requests and an inline SVG
 
 The expected URLs are derived from the compiled widget links as `/FileDevice:6DData/<symbol>.svg`. The report uses browser resource timing for those exact URLs. An unavailable status or missing inline bounds leaves the layout unverified. An HTTP error is reported as `request_failed`. [B&R layout display troubleshooting](https://help.br-automation.com/#/en/4/motion/mapp_6d/leitfaden/getting_started_mapp_6d/faq.html)
 
+### Verify the station and waypoint labels in Chrome
+
+In br-studio 0.107.0 or later, set `requireTrafficLabels` to `true` to include the Traffic Manager display-option and layout checks. The expected labels come from the compiled stations and waypoints of the manager linked to the selected widget and assembly. The same option works in `arsim_hmi_smoke` and `arsim_status_smoke`.
+
+In each browser document, the selected Assembly6D widget's inline Traffic Manager SVG must contain one `label_<name>` text element per expected object. Its text must equal the compiled name, with nonzero layout bounds, visible CSS visibility and nonzero ancestor opacity. Review `trafficLabels` under `initial` and `reopened` for the text, element count and visibility. This evidence covers the AS4 SVG format and DOM layout. Check clipping, readability and changing shuttle or manager state on the intended runtime. [SVG text rendering](https://www.w3.org/TR/SVG2/text.html#Introduction)
+
 ### Save the generated SVGs
 
 Set `captureLayoutAssets` to `true` in the request arguments. This also enables the required layout check in both browser documents. After the browser closes, the CLI makes a fresh GET for each expected URL on the same owned ARsim HTTP listener. Each response must be HTTP 200 with an `image/svg+xml` body and a namespaced SVG root. The browser status and capture refer to separate requests inside the same ARsim session.

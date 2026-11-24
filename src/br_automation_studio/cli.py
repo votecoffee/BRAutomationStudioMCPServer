@@ -1112,6 +1112,12 @@ def markdown_browser(browser, text):
                 lines.append(f"  - Layout {text(layout['state'])} · Inline SVGs with layout bounds {text(layout['boundedSvgCount'])}")
                 for role, asset in layout["assets"].items():
                     lines.append(f"  - {text(role)} {text(asset['path'])} · HTTP {text(asset['httpStatus'])}")
+            if labels := document.get("trafficLabels"):
+                lines.append(f"  - Traffic labels {text(labels['state'])}")
+                for name, label in labels["labels"].items():
+                    label = label or {}
+                    lines.append(f"    - {text(name)} · Text {text(label.get('text'))}"
+                                 f" · Elements {text(label.get('count'))} · Visible {text(label.get('visible'))}")
     if capture := browser.get("layoutCapture"):
         lines.append(f"- Layout capture {text(capture['state'])} · Paths relative to the session directory")
         for asset in capture["assets"].values():

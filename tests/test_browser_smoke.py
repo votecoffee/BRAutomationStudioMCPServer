@@ -9,7 +9,8 @@ from unittest.mock import Mock, patch
 
 from br_automation_studio.arsim_smoke import WIDGET_BUNDLE_PATH
 from br_automation_studio.browser_smoke import (
-    ASSEMBLY_WIDGET, Page, assembly_dom_id, capture_layout_assets, debug_listener, layout_asset_paths, verify_navigation,
+    ASSEMBLY_WIDGET, Page, assembly_dom_id, capture_layout_assets, debug_listener, expected_traffic_labels,
+    layout_asset_paths, verify_navigation,
 )
 
 URL = "http://127.0.0.1:18081/"
@@ -271,6 +272,41 @@ class TestBrowserSmoke(unittest.TestCase):
         for selected, counter in ((None, "Proof_Count"), ("Missing_Asmb", "Proof_Count"), ("Other_Asmb", "Other_Asmb")):
             with self.subTest(selected=selected, counter=counter), self.assertRaises(ValueError):
                 assembly_dom_id(widgets, selected, counter)
+
+    def test_traffic_labels_come_from_the_linked_manager_and_assembly(self):
+        manager = {"manager": "Traffic", "assembly": "Assembly",
+                   "objects": [{"name": "S1", "type": "Station"}, {"name": "G1", "type": "Waypoint"}]}
+        start = {"compiled": {"manager": "mapp6D::Traffic", "assembly": "Assembly"},
+                 "trafficDetails": {"state": "matched"}}
+        self.assertEqual(expected_traffic_labels({"trafficManagers": [manager]}, start), ["G1", "S1"])
+        for linked in ([], [manager, manager], [dict(manager, assembly="Other")]):
+            with self.subTest(linked=linked), self.assertRaisesRegex(ValueError, "one reviewed manager"):
+                expected_traffic_labels({"trafficManagers": linked}, start)
+
+    @patch("br_automation_studio.browser_smoke.time.sleep")
+    @patch("br_automation_studio.browser_smoke.time.monotonic", side_effect=range(8))
+    def test_reopened_traffic_labels_require_unique_visible_matching_text(self, now, pause):
+        label = {"count": 1, "visible": True, "text": "S1"}
+        paths = {"trafficManager": "/FileDevice:6DData/T.svg"}
+        layout = {"boundedSvgCount": 1, "statuses": {"trafficManager": 200}}
+
+        def seen(value, origin, row=label):
+            return dict(hmi(value, origin), layout=layout, trafficLabels={"S1": row})
+
+        page = Mock(deadline=7)
+        page.read.side_effect = [
+            seen("1", 10), seen("2", 10), seen("3", 10),
+            {"url": "about:blank", "timeOrigin": 11},
+            seen("100", 10), seen("4", 12, dict(label, count=2)), seen("5", 12, dict(label, visible=False)),
+        ]
+        receipt = dict(self.receipt(), expectedTrafficLabels=["S1"], requireLayoutAssets=True, layoutPaths=paths)
+        with self.assertRaisesRegex(TimeoutError, "station and waypoint labels"):
+            verify_navigation(page, URL, receipt)
+        self.assertEqual(receipt["initial"]["trafficLabels"]["state"], "observed")
+        self.assertEqual(receipt["reopened"]["layout"]["state"], "observed")
+        self.assertEqual(receipt["reopened"]["trafficLabels"], {
+            "state": "unverified", "labels": {"S1": dict(label, visible=False)},
+        })
 
     @patch("br_automation_studio.browser_smoke.endpoints")
     def test_debugger_requires_owned_ipv4_loopback(self, endpoints):

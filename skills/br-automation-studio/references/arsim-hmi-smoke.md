@@ -56,6 +56,8 @@ If both `6DData` requests return HTTP 404, run `layout_device_review` with the s
 
 Use the two captured SVGs with `layout_svg_review` on the same job to check the traffic labels and route geometry. Verify changing Traffic Manager details on the target while its manager is running. [Generated layout workflow](layout-svg-review.md)
 
+Set `requireTrafficLabels` to `true` in br-studio 0.107.0 or later to require the compiled station and waypoint names to appear as visible SVG text inside the Assembly6D widget in each browser document. This includes `requireTrafficDetails` and `requireLayoutAssets`. Set `captureLayoutAssets` separately when you also need the SVG files. [Browser label check](arsim-browser-smoke.md#verify-the-station-and-waypoint-labels-in-chrome)
+
 ## Read the evidence
 
 1. Confirm the binding, compiled default visualization, 6D configuration and rendered Assembly6D links belong to the same completed build. A binding or default visualization mismatch stops before runtime materialization.
