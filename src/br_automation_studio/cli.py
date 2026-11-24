@@ -547,6 +547,8 @@ def markdown_ruc(response, text):
         lines.extend(["", "## Loopback HTTP", "",
                       f"- Session {text(smoke['state'])} · Runtime {text(smoke.get('runtimeVersion'))}",
                       f"- Cleanup {text(smoke['cleanup'])}"])
+        if preflight := smoke.get("simulationPreflightReport"):
+            lines.append(f"- Session simulation preflight {text(preflight['path'])} · SHA-256 {preflight['sha256']}")
         for asset in smoke["assets"]:
             lines.append(f"- {text(asset['path'])} · HTTP {asset['status']} · {asset['bytes']} bytes · {asset['sha256']}")
             if member := asset.get("archiveMember"):
@@ -672,6 +674,9 @@ def markdown_layout_svg(review, text):
         lines.append(f"- HMI capture session {text(capture['sessionId'])} · Widget {text(capture['assemblyWidgetId'])}")
         lines.append(f"- HMI report SHA-256 {capture['hmiReport']['sha256']}"
                      f" · Session receipt SHA-256 {capture['sessionReceipt']['sha256']}")
+    capture = review.get("hmiCapture") or review.get("statusCapture", {})
+    if preflight := capture.get("simulationPreflightReportFile"):
+        lines.append(f"- Retained simulation preflight {text(preflight['path'])} · SHA-256 {preflight['sha256']}")
     for row in review["assets"].values():
         lines.append(f"- {text(row['path'])} · SHA-256 {row['sha256']}")
     if "segments" in review:
@@ -969,6 +974,8 @@ def markdown_held_scan(review, text):
         lines.append(f"- ARsim session {text(session)}")
     if receipt := review.get("sessionReceipt"):
         lines.append(f"- Session receipt {text(receipt['path'])} · SHA-256 {receipt['sha256']}")
+    if preflight := review.get("simulationPreflightReportFile"):
+        lines.append(f"- Retained simulation preflight {text(preflight['path'])} · SHA-256 {preflight['sha256']}")
     if capture := review.get("scanCapture"):
         lines.append(f"- CSV {text(capture['path'])} · {capture['bytes']} bytes · SHA-256 {capture['sha256']}")
     if selected := review.get("cycleSelection"):
@@ -994,6 +1001,8 @@ def markdown_cycle_hmi(hmi, text):
         lines.append(f"- Session receipt {text(receipt['path'])} · SHA-256 {receipt['sha256']}")
     if workstation := hmi.get("environmentReportFile"):
         lines.append(f"- Retained workstation report {text(workstation['path'])} · SHA-256 {workstation['sha256']}")
+    if preflight := hmi.get("simulationPreflightReportFile"):
+        lines.append(f"- Retained simulation preflight {text(preflight['path'])} · SHA-256 {preflight['sha256']}")
     if "sessionId" in hmi:
         lines.append(f"- ARsim session {text(hmi['sessionId'])} · Cycle capture {text(hmi['captureKind'])}")
     if capture := hmi.get("scanCapture"):

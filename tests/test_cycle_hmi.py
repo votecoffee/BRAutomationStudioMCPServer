@@ -472,6 +472,43 @@ class CycleHmiTest(unittest.TestCase):
                          "cycle_hmi_environment_file_unbound")
         self.assertEqual(review()["cycleHmiReview"]["state"], "matched")
 
+    def test_cycle_rechecks_the_pinned_simulation_preflight_identity_and_bytes(self):
+        with TemporaryDirectory(dir=os.environ.get("BR_STUDIO_TEST_SCRATCH")) as scratch:
+            directory = Path(scratch).resolve()
+            status = directory / "status-response.json"
+            artifact = directory / "simulation-preflight.json"
+            original = b'{"modeled":"saved-project-preflight"}\n'
+            receipt = {"path": artifact.name, "sha256": sha256(original).hexdigest()}
+            self.ruc["simulationPreflightReport"] = receipt
+            wrapped_ruc = self.document["result"]["rucReview"] = dict(self.ruc)
+
+            def review():
+                report = {"cycleTraceReview": self.cycle, "rucReview": self.ruc, "cycleHmiReview": {},
+                          "diagnostics": []}
+                status.write_text(json.dumps(self.document), encoding="utf-8")
+                review_cycle_hmi(report, self.trace, status)
+                return report["cycleHmiReview"], report["diagnostics"]
+
+            self.assertEqual(review()[1][0]["code"], "cycle_hmi_preflight_mismatch")
+            self.smoke["simulationPreflightReport"] = receipt
+            del wrapped_ruc["simulationPreflightReport"]
+            self.assertEqual(review()[1][0]["code"], "cycle_hmi_preflight_mismatch")
+            wrapped_ruc["simulationPreflightReport"] = receipt
+            _, missing = review()
+            self.assertEqual(missing[0]["code"], "hmi_simulation_preflight_receipt")
+            self.assertIn("Keep simulation-preflight.json", missing[0]["message"])
+            artifact.write_bytes(original + b"\n")
+            _, changed = review()
+            self.assertEqual(changed[0]["code"], "hmi_simulation_preflight_receipt")
+            self.assertIn("SHA-256 differs", changed[0]["message"])
+            self.assertEqual(changed[0]["path"], artifact.as_posix())
+            artifact.write_bytes(original)
+            matched, diagnostics = review()
+            self.assertEqual(diagnostics, [])
+            self.assertEqual(matched["state"], "matched")
+            self.assertEqual(matched["simulationPreflightReportFile"],
+                             {"path": str(artifact), "sha256": receipt["sha256"]})
+
     def test_hmi_evidence_options_require_and_pass_the_status_response(self):
         root = Path("workspace")
         request = {

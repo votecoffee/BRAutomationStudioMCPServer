@@ -384,6 +384,11 @@ def retain_environment_report(job_dir, receipt):
                          "workstation package report")
 
 
+def retain_simulation_preflight_report(directory, receipt):
+    return retain_report(directory, receipt, RETAINED_SIMULATION_PREFLIGHT_REPORT,
+                         SIMULATION_PREFLIGHT_REPORT_LIMIT, "saved-project simulation preflight")
+
+
 def execute_build(path, studio_root, runtime_root, configuration, cpu, plan_sha256, job_directory,
                   timeout_seconds=180, *, verify_mptraffic_enum=False, verify_motion_payloads=False,
                   verify_motion_declarations=False, verify_motion_symbols=False, launchpad_inputs=None,
@@ -440,9 +445,7 @@ def execute_build(path, studio_root, runtime_root, configuration, cpu, plan_sha2
         if environment := manifest.get("environmentReview"):
             job["environmentReport"] = retain_environment_report(job_dir, environment["receipt"])
         if simulation_review := manifest.get("simulationPreflightReview"):
-            job["simulationPreflightReport"] = retain_report(
-                job_dir, simulation_review["receipt"], RETAINED_SIMULATION_PREFLIGHT_REPORT,
-                SIMULATION_PREFLIGHT_REPORT_LIMIT, "saved-project simulation preflight")
+            job["simulationPreflightReport"] = retain_simulation_preflight_report(job_dir, simulation_review["receipt"])
         if route := manifest.get("launchPadRoute"):
             files = retain_launchpad_route(job_dir, route)
             job["launchPadRoute"] = {"manager": route["manager"], "files": files}

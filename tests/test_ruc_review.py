@@ -342,13 +342,17 @@ class RucReviewTests(unittest.TestCase):
         self.assertIn("Inspect (Station) → Load (Station)", markdown(response))
         self.assertIn("Builder errors 0 · Builder warnings 1", markdown(response))
 
-    def test_arsim_retains_the_verified_workstation_report_before_materialization(self):
+    def test_arsim_retains_workstation_and_preflight_reports_before_materialization(self):
         content = b'{"modeled":true}\n'
+        preflight_content = b'{"modeled":"saved-project-preflight"}\n'
         environment = {"path": "simulation-environment.json", "sha256": sha256(content).hexdigest()}
-        retained = self.job / environment["path"]
-        retained.write_bytes(content)
+        preflight = {"path": "simulation-preflight.json", "sha256": sha256(preflight_content).hexdigest()}
+        files = ((environment, content), (preflight, preflight_content))
+        for receipt, original in files:
+            (self.job / receipt["path"]).write_bytes(original)
         manifest = self.plan["manifest"]
         manifest["environmentReview"] = {"state": "matched", "receipt": environment}
+        manifest["simulationPreflightReview"] = {"state": "matched", "receipt": preflight}
         self.plan["sha256"] = identity(manifest)
         self.write("plan.json", self.plan)
         self.members["ProjectInformation.xml"] = (
@@ -357,11 +361,12 @@ class RucReviewTests(unittest.TestCase):
         )
         self.members[f"{VIEW}/index.html"] = b"modeled home page"
         job = self.package()
-        self.write("job.json", dict(job, environmentReport=environment))
+        self.write("job.json", dict(job, environmentReport=environment, simulationPreflightReport=preflight))
 
         review = self.review()
         self.assertEqual(review["status"], "complete", review["result"]["diagnostics"])
         self.assertEqual(review["result"]["rucReview"]["environmentReport"], environment)
+        self.assertEqual(review["result"]["rucReview"]["simulationPreflightReport"], preflight)
         self.assertIn(environment["sha256"], markdown(review))
 
         pvi = self.root / "vendor" / "PVITransfer.exe"
@@ -372,8 +377,11 @@ class RucReviewTests(unittest.TestCase):
                                  "pviTransfer": "vendor/PVITransfer.exe", "sessionDirectory": "smoke"}}
 
         def materialize(args, workdir, dispatch, stream, timeout):
-            self.assertEqual((workdir / environment["path"]).read_bytes(), content)
-            self.assertEqual(json.loads((workdir / "session.json").read_bytes())["environmentReport"], environment)
+            for receipt, original in files:
+                self.assertEqual((workdir / receipt["path"]).read_bytes(), original)
+            session = json.loads((workdir / "session.json").read_bytes())
+            self.assertEqual(session["environmentReport"], environment)
+            self.assertEqual(session["simulationPreflightReport"], preflight)
             runtime = workdir / "runtime"
             runtime.mkdir()
             (runtime / "ar000loader.exe").write_bytes(b"modeled runtime marker")
@@ -392,20 +400,28 @@ class RucReviewTests(unittest.TestCase):
             self.assertEqual(smoke["status"], "complete", smoke["result"]["diagnostics"])
             launcher.assert_called_once()
         self.assertEqual(smoke["result"]["arsimSmoke"]["environmentReport"], environment)
+        self.assertEqual(smoke["result"]["arsimSmoke"]["simulationPreflightReport"], preflight)
+        self.assertIn(preflight["sha256"], markdown(smoke))
 
-        def change_after_review(ports):
-            retained.write_bytes(content + b"\n")
+        for (receipt, original), label in zip(files, ("workstation package report", "saved-project simulation preflight")):
+            with self.subTest(path=receipt["path"]):
+                retained = self.job / receipt["path"]
+                session_name = f"drift-{retained.stem}"
+                request["arguments"]["sessionDirectory"] = session_name
 
-        request["arguments"]["sessionDirectory"] = "drift"
-        with (patch("br_automation_studio.arsim_smoke.loopback_profile", return_value=profile),
-              patch("br_automation_studio.arsim_smoke.product_version", return_value="PVI4.12"),
-              patch("br_automation_studio.arsim_smoke.check_free", side_effect=change_after_review),
-              patch("br_automation_studio.arsim_smoke.run_build") as launcher):
-            failed = execute(request, self.root)
-            launcher.assert_not_called()
-        self.assertEqual(failed["result"]["arsimSmoke"]["state"], "failed")
-        self.assertIn("workstation package report changed", failed["result"]["diagnostics"][0]["message"])
-        self.assertFalse((self.root / "drift" / environment["path"]).exists())
+                def change_after_review(ports):
+                    retained.write_bytes(original + b"\n")
+
+                with (patch("br_automation_studio.arsim_smoke.loopback_profile", return_value=profile),
+                      patch("br_automation_studio.arsim_smoke.product_version", return_value="PVI4.12"),
+                      patch("br_automation_studio.arsim_smoke.check_free", side_effect=change_after_review),
+                      patch("br_automation_studio.arsim_smoke.run_build") as launcher):
+                    failed = execute(request, self.root)
+                    launcher.assert_not_called()
+                self.assertEqual(failed["result"]["arsimSmoke"]["state"], "failed")
+                self.assertIn(f"{label} changed", failed["result"]["diagnostics"][0]["message"])
+                self.assertFalse((self.root / session_name / receipt["path"]).exists())
+                retained.write_bytes(original)
 
     def test_changed_source_cannot_be_used_as_build_baseline(self):
         self.package()

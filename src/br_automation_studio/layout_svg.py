@@ -8,11 +8,12 @@ from xml.etree import ElementTree as ET
 
 from .arsim_smoke import SESSION_RECEIPT
 from .browser_smoke import ASSEMBLY_WIDGET, LAYOUT_ASSET_DIRECTORY, layout_asset_path, layout_asset_paths
-from .cycle_hmi import captured_layout_assets, check_session_receipt, hmi_run, status_run
+from .cycle_hmi import captured_layout_assets, check_session_receipt, check_simulation_preflight_receipt, hmi_run, status_run
 from .launchpad_baseline import json_snapshot
 from .launchpad_geometry import point
 from .launchpad_layout import GRID_MM, linked_layout, master_offsets, native_segments
 from .links import UnsupportedTrafficMapping, directed_svg_mapping_ids
+from .native_build import RETAINED_SIMULATION_PREFLIGHT_REPORT
 from .project import ProjectXml, SavedFiles, XML_LIMIT
 from .ruc_review import review_ruc
 from .station_trace import TRACE_LIMIT, TraceIssue
@@ -94,6 +95,9 @@ def captured_layout_inputs(report_snapshot, ruc, assembly, manager, *, combined=
     else:
         provenance = {"sessionId": session, "statusReport": snapshot}
         captures = captured_layout_assets(smoke, urls)
+    if preflight := smoke.get("simulationPreflightReport"):
+        provenance["simulationPreflightReportFile"] = check_simulation_preflight_receipt(
+            session_dir / RETAINED_SIMULATION_PREFLIGHT_REPORT, preflight)
     for role, asset in captures.items():
         if asset.get("file") != f"{LAYOUT_ASSET_DIRECTORY}/{role}.svg":
             raise TraceIssue("layout_svg_capture_file", f"The {role} capture needs its standard retained SVG filename")

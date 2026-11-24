@@ -8,7 +8,8 @@ from .browser_smoke import ASSEMBLY_WIDGET, http_status, layout_asset_paths, num
 from .hmi_smoke import HELD_STATUS_ROLES, check_samples
 from .json_io import json_snapshot
 from .links import UnsupportedTrafficMapping, directed_svg_mapping_ids
-from .native_build import RETAINED_ENVIRONMENT_REPORT, check_source, identity
+from .native_build import (RETAINED_ENVIRONMENT_REPORT, RETAINED_SIMULATION_PREFLIGHT_REPORT,
+                           SIMULATION_PREFLIGHT_REPORT_LIMIT, check_source, identity)
 from .opcua_smoke import CURRENT_READ, INTEGER_NODE_TYPES
 from .runtime_capture import CAPTURE_COPY
 from .simulation_preflight import ENVIRONMENT_REPORT_LIMIT
@@ -51,6 +52,10 @@ def hmi_run(document, ruc, *, combined=False):
            for receipt in (reviewed, smoke)):
         raise TraceIssue(f"{diagnostic}_environment_mismatch",
                          f"The {name} records a different workstation package review than the selected RUC")
+    preflight = ruc.get("simulationPreflightReport")
+    if any(receipt.get("simulationPreflightReport") != preflight for receipt in (reviewed, smoke)):
+        raise TraceIssue(f"{diagnostic}_preflight_mismatch",
+                         f"The {name} and the selected RUC must identify the same saved-project simulation preflight")
     if smoke["state"] != "complete" or smoke["cleanup"] != "empty" or smoke["hmi"]["state"] != "complete":
         raise ValueError("The ARsim runtime and HMI check must complete with verified cleanup")
     return reviewed, smoke
@@ -66,6 +71,20 @@ def check_session_receipt(path, smoke, *, code):
     saved, snapshot = json_snapshot(path, TRACE_LIMIT)
     if identity(saved) != identity(smoke):
         raise TraceIssue(code, "The HMI report and retained session.json identify different session data")
+    return snapshot
+
+
+def check_simulation_preflight_receipt(path, expected):
+    code = "hmi_simulation_preflight_receipt"
+    try:
+        check_source(path, False)
+        _, snapshot = json_snapshot(path, SIMULATION_PREFLIGHT_REPORT_LIMIT)
+    except FileNotFoundError as error:
+        raise TraceIssue(code, "Keep simulation-preflight.json beside the HMI response") from error
+    except (OSError, RecursionError, RuntimeError, ValueError) as error:
+        raise TraceIssue(code, f"Could not read the retained saved-project simulation preflight. {error}") from error
+    if snapshot["sha256"] != expected["sha256"]:
+        raise TraceIssue(code, "The retained simulation preflight SHA-256 differs from the selected RUC and HMI session")
     return snapshot
 
 
@@ -460,6 +479,10 @@ def review_cycle_hmi(report, trace, path, *, require_session_capture=False, requ
             snapshot = check_environment_file(evidence_path, environment, required=environment_report_path is not None)
             if snapshot is not None:
                 result["environmentReportFile"] = snapshot
+            evidence_path = path
+        if preflight := ruc.get("simulationPreflightReport"):
+            evidence_path = Path(result["statusReport"]["path"]).with_name(RETAINED_SIMULATION_PREFLIGHT_REPORT.name)
+            result["simulationPreflightReportFile"] = check_simulation_preflight_receipt(evidence_path, preflight)
             evidence_path = path
         if layout_report_path is not None:
             evidence_path = layout_report_path

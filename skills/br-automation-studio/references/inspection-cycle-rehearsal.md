@@ -226,6 +226,8 @@ run/
 
 Keep any pinned name map in the job's LaunchPad inputs and select it in the cycle request. For a build with generated motion symbols, also copy the files named by `job.json` under `motionSymbols[].path`, preserving their job-relative paths. When the build carries a workstation report, keep `simulation-environment.json` in the copied build job and beside the copied HMI status response. Set `hmiEnvironmentReport` to `evidence/simulation-environment.json` to require the hash comparison for that HMI run. [Verify the retained workstation report](cycle-trace-review.md#rehash-the-retained-workstation-report)
 
+When the build pins the saved-project simulation preflight, use br-studio 0.123.0 or later for the ARsim run. Copy `simulation-preflight.json` with the build job and beside `evidence/status-response.json`. The HMI review checks both the recorded identities and the archived bytes. [Verify the retained simulation preflight](cycle-trace-review.md#rehash-the-retained-simulation-preflight)
+
 Copy the [cycle request](../../../examples/inspection-cycle/cycle-review.json) and [held-status request](../../../examples/inspection-cycle/hold-review.json) into the run root under the names above. Replace the example project filename, Traffic Manager and source station. The cycle template selects the strict same-session checks for a supported one-way Assembly6D route. Preserve any additional command, counter, clock or position checks from the original cycle request by carrying their options into the copied request.
 
 From the run directory, save the two review responses alongside the requests.

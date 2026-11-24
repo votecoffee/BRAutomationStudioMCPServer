@@ -31,6 +31,10 @@ With br-studio 0.91.0 or later, a RUC built with a pinned `environmentReport` ca
 
 The same retention applies to the browser, OPC UA and combined HMI smoke operations. The report identifies the packages reviewed for the RUC that was loaded. Use the runtime and HMI observations to establish what the session actually served.
 
+## Keep the saved-project simulation preflight with the session
+
+With br-studio 0.123.0 or later, a RUC built with `simulationPreflightReport` carries `simulation-preflight.json` into the ARsim session. The tool rehashes the copy before PVI materialization and records the identity in `result.arsimSmoke.simulationPreflightReport` and `session.json`. Use this version to capture HMI evidence for a build with a pinned simulation preflight. [Pin the saved-project preflight](native-build.md#keep-the-saved-project-simulation-preflight-with-the-build)
+
 ## Interpret the session
 
 - `CreateARsimStructure` generates a fresh copy with `Start=0`. The session records the PVI version, package hash, input profile, loader hash, and vendor log.

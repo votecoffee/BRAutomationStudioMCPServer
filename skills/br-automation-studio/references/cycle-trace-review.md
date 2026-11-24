@@ -135,6 +135,10 @@ With br-studio 0.92.0 or later, put `simulation-environment.json` beside the com
 
 Read `cycleHmiReview.environmentReportFile` for the path and SHA-256 after byte verification. When no explicit file is supplied and the adjacent copy is absent, the review can still compare the recorded identities. That comparison is recorded in `environmentReport`.
 
+### Rehash the retained simulation preflight
+
+For a RUC built with a pinned `simulationPreflightReport`, use br-studio 0.123.0 or later to capture the HMI response and keep `simulation-preflight.json` beside it. Cycle review matches the identities in the response against the selected RUC and rehashes the adjacent file. A match records the path and SHA-256 in `cycleHmiReview.simulationPreflightReportFile`. The held-status scan review and HMI-derived SVG review also verify and report the file. [Keep the receipt with the ARsim session](arsim-smoke.md#keep-the-saved-project-simulation-preflight-with-the-session)
+
 ## Verify the retained ARsim session receipt
 
 With br-studio 0.118.0 or later, set `requireHmiSessionReceipt: true` with `hmiStatusReport`. Archive the original `session.json` beside the completed status response. The reviewer checks the response against the selected build and compares the full parsed session with `result.arsimSmoke` before deriving scan inputs. A missing file or changed session data stops the cycle review at `verify_session_receipt`. On a match, `cycleHmiReview.sessionReceipt` records the file's path and SHA-256. [Combined request](inspection-cycle-rehearsal.md#review-the-saved-svgs-and-plc-scans)

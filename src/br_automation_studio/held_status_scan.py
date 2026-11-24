@@ -10,10 +10,10 @@ from .arsim_smoke import SESSION_RECEIPT
 from .browser_smoke import numeric_text
 from .cycle_capture import HOLD_HMI, Sample, scan_hold_range, string_map
 from .cycle_hmi import (check_heartbeat, check_held_status_identifiers, check_session_capture, check_session_receipt,
-                        check_status_role, recorded_status_roles, status_run)
+                        check_simulation_preflight_receipt, check_status_role, recorded_status_roles, status_run)
 from .hmi_smoke import HELD_STATUS_ROLES
 from .json_io import json_snapshot
-from .native_build import check_source
+from .native_build import RETAINED_SIMULATION_PREFLIGHT_REPORT, check_source
 from .ruc_review import review_ruc
 from .runtime_capture import CAPTURE_COPY
 from .station_trace import TRACE_LIMIT, TraceIssue, integer
@@ -147,6 +147,9 @@ def held_status_scan_review(project, job, status_path, descriptor_path=None, cyc
         directory = Path(result["statusReport"]["path"]).parent
         path = directory / SESSION_RECEIPT
         result["sessionReceipt"] = check_session_receipt(path, smoke, code="held_scan_session")
+        if preflight := smoke.get("simulationPreflightReport"):
+            path = directory / RETAINED_SIMULATION_PREFLIGHT_REPORT
+            result["simulationPreflightReportFile"] = check_simulation_preflight_receipt(path, preflight)
         hmi = smoke["hmi"]
         if hmi["opcUaAfter"]["ownedListener"] not in smoke.get("ownedEndpoints", []):
             raise TraceIssue("held_scan_session", "The status reads need the OPC UA listener owned by this session")
