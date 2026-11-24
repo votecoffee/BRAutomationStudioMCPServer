@@ -1097,6 +1097,8 @@ def markdown_browser(browser, text):
         lines.append(f"- Required traffic label height {text(minimum_height)} CSS px")
     if minimum_gap := browser.get("minimumTrafficLabelGapCssPx"):
         lines.append(f"- Required traffic label gap {text(minimum_gap)} CSS px")
+    if minimum_edge := browser.get("minimumTrafficLabelEdgeClearanceCssPx"):
+        lines.append(f"- Required traffic label edge clearance {text(minimum_edge)} CSS px")
     if requested := browser.get("requestedViewport"):
         lines.append(f"- Requested viewport {text(requested['widthCssPx'])} × {text(requested['heightCssPx'])} CSS px")
     for phase, label in (("initial", "Initial document"), ("reopened", "Reopened document")):
@@ -1134,6 +1136,10 @@ def markdown_browser(browser, text):
                                  f" {text(viewport_content['heightCssPx'])} CSS px")
                 if height := labels.get("minObservedHeightCssPx"):
                     lines.append(f"    - Smallest observed height {text(height)} CSS px")
+                for area, edge in labels.get("edgeClearance", {}).items():
+                    if edge:
+                        lines.append(f"    - Closest {area} edge {text(edge['distanceCssPx'])} CSS px"
+                                     f" · {text(edge['label'])} · {text(edge['edge'])}")
                 if overlap := labels.get("overlap"):
                     lines.append(f"    - Label overlap {text(overlap['state'])} · Labels checked {text(overlap['checkedLabels'])}")
                     if (gap := overlap.get("minGapCssPx")) is not None:

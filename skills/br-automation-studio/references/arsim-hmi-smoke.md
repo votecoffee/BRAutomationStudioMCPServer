@@ -68,6 +68,8 @@ Set `requireNonOverlappingTrafficLabels` to require the verified label rectangle
 
 Set `minimumTrafficLabelGapCssPx` to enforce a project-selected space between the closest labels on both page loads. [Label gap workflow](arsim-browser-smoke.md#check-the-gap-between-labels)
 
+Set `minimumTrafficLabelEdgeClearanceCssPx` to enforce clearance from the widget and viewport edges on both page loads. [Edge clearance workflow](arsim-browser-smoke.md#check-clearance-from-the-widget-and-viewport-edges)
+
 ## Read the evidence
 
 1. Confirm the binding, compiled default visualization, 6D configuration and rendered Assembly6D links belong to the same completed build. A binding or default visualization mismatch stops before runtime materialization.

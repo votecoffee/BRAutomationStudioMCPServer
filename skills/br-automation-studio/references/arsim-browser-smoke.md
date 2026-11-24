@@ -91,6 +91,12 @@ Starting with br-studio 0.111.0, each measured label reports `insideWidget` and 
 
 Set `requireTrafficLabelsInBounds` to `true` to enable the label check and require both containment checks in each browser document. Labels extending past either rectangle appear under `outsideWidget` or `outsideViewport`. Combine this option with the chosen [viewport](#set-the-browser-viewport) and label height when needed. Inspect label overlap and readability on the intended panel.
 
+#### Check clearance from the widget and viewport edges
+
+Starting with br-studio 0.114.0, `trafficLabels.edgeClearance` records the smallest distance to a widget edge and the smallest distance to a viewport edge. Each record includes the label and side. A label touching the boundary has zero clearance. An edge extending past the boundary gives a negative distance. The measurements use the same text rectangles as the bounds check. [CSSOM View geometry](https://www.w3.org/TR/cssom-view/#dom-element-getboundingclientrect)
+
+Set `minimumTrafficLabelEdgeClearanceCssPx` to a positive whole number to enable the label check and require that clearance for both areas on both page loads. A measured distance equal to the requested minimum passes. Use the receipt to identify the label and edge being limited.
+
 #### Check for overlapping labels
 
 Starting with br-studio 0.112.0, `trafficLabels.overlap` records the number of labels with measured rectangles and any pairs whose rectangles share positive area. Edges that only touch pass. The check uses the same CSS pixel rectangles for the verified station and waypoint text in each browser document. [CSSOM View geometry](https://www.w3.org/TR/cssom-view/#dom-element-getboundingclientrect)

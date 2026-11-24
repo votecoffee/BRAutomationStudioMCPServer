@@ -147,8 +147,27 @@ def label_overlap_observation(labels, verified):
             "closestPair": nearest[1] if nearest[1] and state != "unverified" else None}
 
 
+def label_edge_clearance(labels, verified):
+    minima = {}
+    for area in ("widget", "viewport"):
+        distances = []
+        for name in verified:
+            clearance = labels[name].get("edgeClearance")
+            entry = clearance.get(area) if isinstance(clearance, dict) else None
+            if not isinstance(entry, dict):
+                continue
+            distance, edge = entry.get("distanceCssPx"), entry.get("edge")
+            if type(distance) in (int, float) and isfinite(distance) and edge in ("left", "top", "right", "bottom"):
+                distances.append((distance, name, edge))
+        minima[area] = None
+        if distances and len(distances) == len(labels):
+            distance, name, edge = min(distances)
+            minima[area] = {"distanceCssPx": distance, "label": name, "edge": edge}
+    return minima
+
+
 def traffic_label_observation(value, expected, minimum_height=None, require_in_bounds=False, require_no_overlap=False,
-                              minimum_gap=None):
+                              minimum_gap=None, minimum_edge_clearance=None):
     value = value if isinstance(value, dict) else {}
     observed = value.get("labels")
     observed = observed if isinstance(observed, dict) else {}
@@ -166,11 +185,14 @@ def traffic_label_observation(value, expected, minimum_height=None, require_in_b
     overlap = label_overlap_observation(labels, heights)
     gap = overlap["minGapCssPx"]
     separation_required = require_no_overlap or minimum_gap is not None
+    edge_clearance = label_edge_clearance(labels, heights)
+    edge_missing = minimum_edge_clearance is not None and None in edge_clearance.values()
     bounds_missing = require_in_bounds and any(
         type(labels[name].get(key)) is not bool for name in heights for key in ("insideWidget", "insideViewport")
     )
     state = "observed"
-    if len(heights) != len(labels) or bounds_missing or (separation_required and overlap["state"] == "unverified"):
+    if (len(heights) != len(labels) or bounds_missing or edge_missing
+            or (separation_required and overlap["state"] == "unverified")):
         state = "unverified"
     elif below:
         state = "below_minimum"
@@ -180,10 +202,14 @@ def traffic_label_observation(value, expected, minimum_height=None, require_in_b
         state = "overlapping"
     elif minimum_gap is not None and gap is not None and gap < minimum_gap:
         state = "gap_below_minimum"
+    elif minimum_edge_clearance is not None and any(
+        entry["distanceCssPx"] < minimum_edge_clearance for entry in edge_clearance.values()
+    ):
+        state = "edge_clearance_below_minimum"
     return {"state": state, "labels": labels, "viewport": value.get("viewport"),
             "viewportContent": value.get("viewportContent"), "minObservedHeightCssPx": min(heights.values(), default=None),
             "belowMinimum": below, "outsideWidget": outside_widget, "outsideViewport": outside_viewport,
-            "overlap": overlap}
+            "overlap": overlap, "edgeClearance": edge_clearance}
 
 
 def viewport_observation(value, requested):
@@ -342,9 +368,16 @@ def widget_expression(assembly, counter, layout_paths=None, status_widgets=(), *
         const trafficLabels = labelNames.length && assembly ? (() => {{
             const root = document.compatMode === 'BackCompat' ? document.body : document.documentElement;
             const viewportRect = {{left: 0, top: 0, right: root.clientWidth, bottom: root.clientHeight}};
-            const contains = (outer, rect) =>
-                rect.left >= outer.left && rect.top >= outer.top &&
-                rect.right <= outer.right && rect.bottom <= outer.bottom;
+            const edgeClearance = (outer, rect) => {{
+                const distances = {{
+                    left: rect.left - outer.left, top: rect.top - outer.top,
+                    right: outer.right - rect.right, bottom: outer.bottom - rect.bottom
+                }};
+                const [edge, distanceCssPx] = Object.entries(distances).reduce(
+                    (closest, current) => current[1] < closest[1] ? current : closest
+                );
+                return {{edge, distanceCssPx}};
+            }};
             const labels = new Map(labelNames.map(name => ['label_' + name, []]));
             for (const node of assembly.querySelectorAll('svg g.traffic-manager text[id]')) {{
                 if (node.namespaceURI === 'http://www.w3.org/2000/svg') labels.get(node.id)?.push(node);
@@ -364,11 +397,14 @@ def widget_expression(assembly, counter, layout_paths=None, status_widgets=(), *
                     const node = matches.length === 1 ? matches[0] : null;
                     const rect = node?.getBoundingClientRect();
                     const shown = node ? visible(node, rect) : false;
+                    const widget = shown ? edgeClearance(assemblyRect, rect) : null;
+                    const viewportEdge = shown ? edgeClearance(viewportRect, rect) : null;
                     return [name, {{count: matches.length, text: node?.textContent.trim() ?? null,
                                     visible: shown, widthCssPx: rect?.width ?? null, heightCssPx: rect?.height ?? null,
                                     leftCssPx: rect?.left ?? null, topCssPx: rect?.top ?? null,
-                                    insideWidget: shown ? contains(assemblyRect, rect) : null,
-                                    insideViewport: shown ? contains(viewportRect, rect) : null}}];
+                                    insideWidget: widget ? widget.distanceCssPx >= 0 : null,
+                                    insideViewport: viewportEdge ? viewportEdge.distanceCssPx >= 0 : null,
+                                    edgeClearance: {{widget, viewport: viewportEdge}}}}];
                 }}))
             }};
         }})() : null;
@@ -415,7 +451,8 @@ def check_document_status(state, receipt, expected):
 def collect_samples(page, expression, url, receipt, count, prior_origins=(), after=Decimal(0),
                     *, layout_paths=None, require_layout=False, check_assembly=True, expected_status=None,
                     resource_paths=None, traffic_labels=(), minimum_label_height=None, requested_viewport=None,
-                    require_label_bounds=False, require_label_separation=False, minimum_label_gap=None):
+                    require_label_bounds=False, require_label_separation=False, minimum_label_gap=None,
+                    minimum_label_edge_clearance=None):
     latest = after
     resource_paths = resource_paths or {}
     while time.monotonic() < page.deadline:
@@ -447,7 +484,7 @@ def collect_samples(page, expression, url, receipt, count, prior_origins=(), aft
             if traffic_labels:
                 receipt["trafficLabels"] = traffic_label_observation(
                     result.get("trafficLabels"), traffic_labels, minimum_label_height, require_label_bounds,
-                    require_label_separation, minimum_label_gap)
+                    require_label_separation, minimum_label_gap, minimum_label_edge_clearance)
             for key, path in resource_paths.items():
                 receipt[key] = resource_observation(result.get(key), path)
             value = result.get("value")
@@ -486,6 +523,10 @@ def collect_samples(page, expression, url, receipt, count, prior_origins=(), aft
             if observed["state"] == "gap_below_minimum":
                 first, second = observed["overlap"]["closestPair"]
                 raise TimeoutError(f"Traffic label gap below {minimum_label_gap} CSS px: {first} and {second}")
+            if observed["state"] == "edge_clearance_below_minimum":
+                area, closest = min(observed["edgeClearance"].items(), key=lambda item: item[1]["distanceCssPx"])
+                raise TimeoutError(f"Traffic label edge clearance below {minimum_label_edge_clearance} CSS px"
+                                   f" for {closest['label']} at the {area} {closest['edge']} edge")
             if observed["state"] != "observed":
                 raise TimeoutError("The expected station and waypoint labels were not verified in the Assembly6D widget")
     if expected_status:
@@ -512,7 +553,8 @@ def verify_navigation(page, url, receipt):
                "minimum_label_height": receipt.get("minimumTrafficLabelHeightCssPx"),
                "requested_viewport": viewport, "require_label_bounds": receipt.get("requireTrafficLabelsInBounds", False),
                "require_label_separation": receipt.get("requireNonOverlappingTrafficLabels", False),
-               "minimum_label_gap": receipt.get("minimumTrafficLabelGapCssPx")}
+               "minimum_label_gap": receipt.get("minimumTrafficLabelGapCssPx"),
+               "minimum_label_edge_clearance": receipt.get("minimumTrafficLabelEdgeClearanceCssPx")}
     expression = widget_expression(assembly, receipt["counterWidgetId"], paths, expected, resource_paths=resources,
                                    traffic_labels=labels)
     if viewport:
@@ -596,6 +638,7 @@ class ChromeProbe:
     require_label_bounds: bool = False
     require_label_separation: bool = False
     minimum_label_gap: int | None = None
+    minimum_label_edge_clearance: int | None = None
     key: ClassVar[str] = "browser"
     evidence: ClassVar[str] = "arsim_loopback_browser"
 
@@ -615,7 +658,8 @@ class ChromeProbe:
             widget = assembly_dom_id(reviewed["widgets"], selected, self.counter_widget)
         paths = layout_asset_paths(reviewed["widgets"], widget) if widget is not None else {}
         check_labels = (self.require_traffic_labels or self.minimum_label_height is not None
-                        or self.require_label_bounds or self.require_label_separation or self.minimum_label_gap is not None)
+                        or self.require_label_bounds or self.require_label_separation or self.minimum_label_gap is not None
+                        or self.minimum_label_edge_clearance is not None)
         require_layout = self.require_layout or self.capture_layout or check_labels
         if require_layout and not paths:
             raise ValueError("The reviewed widget has no supported 6DData SVG paths")
@@ -638,6 +682,8 @@ class ChromeProbe:
             receipt["requireNonOverlappingTrafficLabels"] = True
         if self.minimum_label_gap is not None:
             receipt["minimumTrafficLabelGapCssPx"] = self.minimum_label_gap
+        if self.minimum_label_edge_clearance is not None:
+            receipt["minimumTrafficLabelEdgeClearanceCssPx"] = self.minimum_label_edge_clearance
         if self.minimum_label_height is not None:
             receipt["minimumTrafficLabelHeightCssPx"] = self.minimum_label_height
         if self.viewport is not None:

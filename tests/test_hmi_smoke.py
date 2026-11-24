@@ -79,16 +79,19 @@ class HmiSmokeTest(unittest.TestCase):
             bindings = read_status_bindings(None, target)
         binding = {"evidence": "ruc_binding_readback", "rucReview": {"archive": {}}, "snapshot": {},
                    "bindingReview": {"domId": "Main_Request"}}
-        for required, minimum, bounds, separation, gap in (
-            (True, None, False, False, None), (False, 5, False, False, None), (False, None, True, False, None),
-            (False, None, False, True, None), (False, None, False, False, 5),
+        for required, minimum, bounds, separation, gap, clearance in (
+            (True, None, False, False, None, None), (False, 5, False, False, None, None),
+            (False, None, True, False, None, None), (False, None, False, True, None, None),
+            (False, None, False, False, 5, None), (False, None, False, False, None, 10),
         ):
-            with (self.subTest(required=required, minimum=minimum, bounds=bounds, separation=separation, gap=gap),
+            with (self.subTest(required=required, minimum=minimum, bounds=bounds, separation=separation, gap=gap,
+                               clearance=clearance),
                   patch("br_automation_studio.hmi_smoke.review_ruc", return_value=binding),
                   patch("br_automation_studio.hmi_smoke.arsim_smoke", return_value={}) as smoke):
                 arsim_hmi_smoke(None, None, None, None, 30, target, None, None, 30, 20,
                                 require_traffic_labels=required, minimum_label_height=minimum, require_label_bounds=bounds,
-                                require_label_separation=separation, minimum_label_gap=gap, status_bindings=bindings)
+                                require_label_separation=separation, minimum_label_gap=gap,
+                                minimum_label_edge_clearance=clearance, status_bindings=bindings)
                 browser = smoke.call_args.args[-1].browser
                 self.assertTrue(browser.check_assembly)
                 self.assertEqual(browser.require_traffic_labels, required)
@@ -96,6 +99,7 @@ class HmiSmokeTest(unittest.TestCase):
                 self.assertEqual(browser.require_label_bounds, bounds)
                 self.assertEqual(browser.require_label_separation, separation)
                 self.assertEqual(browser.minimum_label_gap, gap)
+                self.assertEqual(browser.minimum_label_edge_clearance, clearance)
                 self.assertTrue(smoke.call_args.kwargs["require_6d"])
                 self.assertTrue(smoke.call_args.kwargs["start_widget"].require_traffic_details)
 

@@ -148,7 +148,7 @@ def arsim_hmi_smoke(project, job_dir, pvi, session_dir, timeout, target, chrome,
                     assembly_widget, browser_timeout, opcua_timeout, *, require_layout=False, capture_layout=False,
                     require_widget_bundle=False, require_start_page=False, require_traffic_details=False,
                     require_traffic_labels=False, require_label_bounds=False, require_label_separation=False,
-                    minimum_label_height=None, minimum_label_gap=None, viewport=None,
+                    minimum_label_height=None, minimum_label_gap=None, minimum_label_edge_clearance=None, viewport=None,
                     status_bindings=(), scan_capture=None):
     binding_report = review_ruc(project, job_dir, replace(target, require_default=True))
     if binding_report["evidence"] != "ruc_binding_readback":
@@ -170,7 +170,7 @@ def arsim_hmi_smoke(project, job_dir, pvi, session_dir, timeout, target, chrome,
     expected_status = tuple((item["bindingReview"]["domId"], item["expectedValue"]) for item in statuses)
     require_traffic_details = (require_traffic_details or require_traffic_labels or require_label_bounds
                                or require_label_separation or minimum_label_height is not None
-                               or minimum_label_gap is not None)
+                               or minimum_label_gap is not None or minimum_label_edge_clearance is not None)
     start_widget = None
     if require_start_page or require_traffic_details:
         start_widget = StartPageWidget(assembly_widget, require_traffic_details)
@@ -182,7 +182,7 @@ def arsim_hmi_smoke(project, job_dir, pvi, session_dir, timeout, target, chrome,
                           require_widget_bundle=require_widget_bundle, require_traffic_labels=require_traffic_labels,
                           minimum_label_height=minimum_label_height, viewport=viewport,
                           require_label_bounds=require_label_bounds, require_label_separation=require_label_separation,
-                          minimum_label_gap=minimum_label_gap)
+                          minimum_label_gap=minimum_label_gap, minimum_label_edge_clearance=minimum_label_edge_clearance)
     probe = HmiProbe(binding_report, browser, opcua_timeout, tuple(statuses), scan_capture)
     before_start = scan_capture.require_absent if scan_capture is not None else None
     report = arsim_smoke(project, job_dir, pvi, session_dir, timeout, probe, extra_content=(target.content,),

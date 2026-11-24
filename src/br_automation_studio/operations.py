@@ -454,7 +454,8 @@ def run_arsim_smoke(arguments, request_directory, runtime_probe=None):
                                or arguments.get("requireTrafficLabelsInBounds", False)
                                or arguments.get("requireNonOverlappingTrafficLabels", False)
                                or "minimumTrafficLabelHeightCssPx" in arguments
-                               or "minimumTrafficLabelGapCssPx" in arguments)
+                               or "minimumTrafficLabelGapCssPx" in arguments
+                               or "minimumTrafficLabelEdgeClearanceCssPx" in arguments)
     start_widget = None
     if arguments.get("requireStartPage") or require_traffic_details:
         start_widget = StartPageWidget(arguments.get("assemblyWidgetId"), require_traffic_details)
@@ -483,6 +484,7 @@ def run_arsim_browser_smoke(arguments, request_directory):
                         require_label_separation=arguments.get("requireNonOverlappingTrafficLabels", False),
                         minimum_label_height=arguments.get("minimumTrafficLabelHeightCssPx"),
                         minimum_label_gap=arguments.get("minimumTrafficLabelGapCssPx"),
+                        minimum_label_edge_clearance=arguments.get("minimumTrafficLabelEdgeClearanceCssPx"),
                         viewport=browser_viewport(arguments))
     return run_arsim_smoke(arguments, request_directory, probe)
 
@@ -508,6 +510,7 @@ def run_arsim_hmi_smoke(arguments, request_directory, status_bindings=(), scan_c
         require_label_separation=arguments.get("requireNonOverlappingTrafficLabels", False),
         minimum_label_height=arguments.get("minimumTrafficLabelHeightCssPx"),
         minimum_label_gap=arguments.get("minimumTrafficLabelGapCssPx"),
+        minimum_label_edge_clearance=arguments.get("minimumTrafficLabelEdgeClearanceCssPx"),
         viewport=browser_viewport(arguments),
         status_bindings=status_bindings, scan_capture=scan_capture,
     )
@@ -951,6 +954,8 @@ ARSIM_BROWSER_SMOKE = Operation(
                                                "description": "Require traffic label rectangles to have no shared area in either browser document. Enables the traffic label check."},
         "minimumTrafficLabelGapCssPx": {"type": "integer", "minimum": 1,
                                         "description": "Require this shortest gap in CSS pixels between traffic label rectangles in each document. Enables the traffic label check."},
+        "minimumTrafficLabelEdgeClearanceCssPx": {"type": "integer", "minimum": 1,
+                                                 "description": "Require this clearance in CSS pixels from every traffic label to the widget and viewport edges. Enables the traffic label check."},
         "minimumTrafficLabelHeightCssPx": {"type": "integer", "minimum": 1,
                                             "description": "Require each verified traffic label to meet this height in CSS pixels. Enables the traffic label check."},
         "requireWidgetBundle": {"type": "boolean", "default": False,
@@ -992,6 +997,7 @@ ARSIM_HMI_SMOKE = Operation(
         "requireTrafficLabelsInBounds": ARSIM_BROWSER_SMOKE.arguments["requireTrafficLabelsInBounds"],
         "requireNonOverlappingTrafficLabels": ARSIM_BROWSER_SMOKE.arguments["requireNonOverlappingTrafficLabels"],
         "minimumTrafficLabelGapCssPx": ARSIM_BROWSER_SMOKE.arguments["minimumTrafficLabelGapCssPx"],
+        "minimumTrafficLabelEdgeClearanceCssPx": ARSIM_BROWSER_SMOKE.arguments["minimumTrafficLabelEdgeClearanceCssPx"],
         "minimumTrafficLabelHeightCssPx": ARSIM_BROWSER_SMOKE.arguments["minimumTrafficLabelHeightCssPx"],
         "requireWidgetBundle": ARSIM_BROWSER_SMOKE.arguments["requireWidgetBundle"],
         "requireLayoutAssets": ARSIM_BROWSER_SMOKE.arguments["requireLayoutAssets"],

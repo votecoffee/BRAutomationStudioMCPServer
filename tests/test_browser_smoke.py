@@ -339,6 +339,7 @@ class TestBrowserSmoke(unittest.TestCase):
             "viewportContent": None, "minObservedHeightCssPx": 4.999, "belowMinimum": ["S1"],
             "outsideWidget": [], "outsideViewport": [],
             "overlap": {"state": "unverified", "checkedLabels": 0, "pairs": [], "minGapCssPx": None, "closestPair": None},
+            "edgeClearance": {"widget": None, "viewport": None},
         })
 
     def test_traffic_label_overlap_requires_area_on_both_axes(self):
@@ -445,6 +446,39 @@ class TestBrowserSmoke(unittest.TestCase):
         self.assertEqual(reopened["outsideViewport"], ["S1"])
         self.assertEqual(reopened["minObservedHeightCssPx"], 7)
         self.assertEqual(reopened["viewportContent"], client)
+
+    @patch("br_automation_studio.browser_smoke.time.sleep")
+    @patch("br_automation_studio.browser_smoke.time.monotonic", side_effect=range(8))
+    def test_reopened_traffic_label_edge_clearance_identifies_the_limiting_boundary(self, now, pause):
+        label = {"count": 1, "visible": True, "text": "S1", "widthCssPx": 12, "heightCssPx": 7,
+                 "insideWidget": True, "insideViewport": True}
+
+        def seen(value, origin, distance=5):
+            clearances = {"widget": {"distanceCssPx": distance, "edge": "top"},
+                          "viewport": {"distanceCssPx": 20, "edge": "left"}}
+            row = dict(label, edgeClearance=clearances)
+            other = dict(label, text="G1", edgeClearance={"widget": {"distanceCssPx": 12, "edge": "right"},
+                                                        "viewport": {"distanceCssPx": 8, "edge": "bottom"}})
+            return dict(hmi(value, origin), trafficLabels={"labels": {"S1": row, "G1": other}})
+
+        page = Mock(deadline=7)
+        page.read.side_effect = [
+            seen("1", 10), seen("2", 10), seen("3", 10),
+            {"url": "about:blank", "timeOrigin": 11},
+            seen("100", 10), seen("4", 12, 4), seen("5", 12, 4),
+        ]
+        receipt = dict(self.receipt(), expectedTrafficLabels=["G1", "S1"], minimumTrafficLabelEdgeClearanceCssPx=5)
+        with self.assertRaisesRegex(TimeoutError, "edge clearance below 5 CSS px for S1 at the widget top edge"):
+            verify_navigation(page, URL, receipt)
+        self.assertEqual(receipt["initial"]["trafficLabels"]["edgeClearance"]["widget"]["distanceCssPx"], 5)
+        reopened = receipt["reopened"]["trafficLabels"]
+        self.assertEqual(reopened["state"], "edge_clearance_below_minimum")
+        self.assertEqual(reopened["edgeClearance"], {
+            "widget": {"label": "S1", "distanceCssPx": 4, "edge": "top"},
+            "viewport": {"label": "G1", "distanceCssPx": 8, "edge": "bottom"},
+        })
+        self.assertEqual(reopened["outsideWidget"], [])
+        self.assertEqual(reopened["outsideViewport"], [])
 
     @patch("br_automation_studio.browser_smoke.time.sleep")
     @patch("br_automation_studio.browser_smoke.time.monotonic", side_effect=range(8))
