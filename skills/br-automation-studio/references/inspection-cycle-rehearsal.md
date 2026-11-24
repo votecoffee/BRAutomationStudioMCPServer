@@ -175,6 +175,8 @@ br-studio run --request ./cycle-request.json | Set-Content -LiteralPath ./cycle-
 $LASTEXITCODE
 ```
 
+When the PLC records the two monitor checkpoints and raw numeric events, enable both checks on the same cycle descriptor. The reviewer derives the two starting counters from the rows and verifies the event codes against the compiled library. [Capture counters and numeric events together](cycle-scan-capture.md#capture-counters-and-numeric-events-together)
+
 ## Rehearse the capture with synthetic station observations
 
 Use a disposable PC simulation configuration to exercise the capture and review chain ahead of the motion run. Keep the motion and Traffic Manager command function blocks disabled. In the capture task, script the outbound Release and arrival, the return and the next inspection hold. Record them with the same column names and scan boundaries planned for the target task. Advance the heartbeat from that task and bind the four held-status fields read-only to mapp View and OPC UA.

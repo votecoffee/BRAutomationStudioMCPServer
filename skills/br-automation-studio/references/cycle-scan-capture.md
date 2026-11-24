@@ -111,6 +111,14 @@ The first inspection row begins after the old queue has been drained and before 
 
 For each scan the checker compares the before value with the running sequence, walks the ordered slots, then compares the after value with the result. A mismatch leaves the cycle incomplete, including when an unrecorded consumption occurs on the final scan. Keep monitor health and queue occupancy evidence available to assess loss before the application consumed an event. [B&R station monitor behavior](https://help.br-automation.com/#/en/4/motion/mapp_6d/bibliotheken/mptraffic/function_block/mptrafficstationmonitor/fb_mptrafficstationmonitor_functiondescription.html)
 
+### Capture counters and numeric events together
+
+For each destination monitor, snapshot its application sequence before consuming any available events in that scan. Advance it for every new consumption, including a pass-through or an arrival for a different shuttle. Copy the sequence, station, shuttle ID and raw event to the same scan row before publishing it. Keep the starting baseline when a previously consumed slot is observed again. The arrival check uses a fresh matching event after Release.
+
+Set both `monitorCheckpoints: true` and `eventEncoding: "project-mptraffic"` in `scanCapture`. Omit the explicit monitor baselines to derive them from the first before-counter values. Keep the aggregate start and end values in `cycleTraceReview.scanCapture.monitorSequences` and the enum and binary provenance in `cycleTraceReview.scanCapture.eventEncoding`. Save the original monitor validity and queue observations with the capture to assess losses before the PLC consumed a detection. [Packaged numeric enum review](#decode-events-from-the-saved-project-and-ruc)
+
+In the AS4.12 / J4.93 rehearsal, the PLC published its synthetic consumption records with the full cycle and HMI reopen capture. The outbound monitor advanced from 51 to 54 and the return monitor from 80 to 81. The review decoded the raw codes from the verified MpTraffic 2.02.0 build and accepted only the matching fresh arrivals. It reported a conflicting baseline, an unaccounted-for return consumption on the final scan and a NONE code in an occupied detection slot.
+
 ## Check the release total across both legs
 
 When `releaseTotalEvent` is set on the cycle request, use `hold.releaseTotal` for the same sampled counter from the start of the outbound leg through the first next-hold scan. If the export uses a different header or chart title, map it through `scanCapture.columns`. Use the value published to the HMI when pairing with a status report. [Event selection and review](cycle-trace-review.md#check-when-the-release-total-increments)
