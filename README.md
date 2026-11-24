@@ -156,7 +156,7 @@ With the optional `opcua` extra, `arsim_opcua_smoke` reads an explicitly selecte
 
 Use `arsim_hmi_smoke` with both extras to verify the binding and default visualization, then check that the displayed counter stays within direct OPC UA readings in one ARsim session. The browser receipt records the Assembly6D widget's rendered dimensions. Set `requireTrafficLabels` to verify the compiled station and waypoint names. Apply label height, bounds, overlap, gap or edge clearance checks when validating a chosen viewport. Use `captureLayoutAssets` to retain the generated SVGs. [Combined HMI workflow](skills/br-automation-studio/references/arsim-hmi-smoke.md)
 
-Use `arsim_status_smoke` to verify expected numeric status such as a held request and shuttle in the initial and reopened HMI and in direct OPC UA. [Status reconnect workflow](skills/br-automation-studio/references/arsim-status-smoke.md)
+Use `arsim_status_smoke` to verify expected numeric status such as a held request and shuttle in the initial and reopened HMI and in direct OPC UA. The probe can also retain a finalized CSV from the PLC task. [Status reconnect workflow](skills/br-automation-studio/references/arsim-status-smoke.md) · [AS4 scan file publisher](skills/br-automation-studio/references/plc-scan-file-publisher.md)
 
 Combine viewport, label and one-way mapping line checks, widget bundle, SVG capture and direct OPC UA readback in one request. Use `hmiReport` in the SVG review to verify the captures against the panel session and build. [Panel layout rehearsal](skills/br-automation-studio/references/arsim-panel-layout.md)
 

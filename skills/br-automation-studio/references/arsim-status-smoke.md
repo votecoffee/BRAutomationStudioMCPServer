@@ -36,6 +36,8 @@ For [the cycle's Assembly6D check](cycle-trace-review.md#verify-the-cycles-assem
 
 Since br-studio 0.31.0, set `scanCaptureFile` to a finalized `.csv` basename such as `inspection-cycle.csv` when the simulation project can export its scan buffer. Have the project publish the final name in its ARsim `USER` file device after the next hold. Close the temporary output before publishing the final name, and publish it once per run. The smoke probe checks that the final name is absent after materialization and before starting ARsim.
 
+Use the FileIO publisher example when the PLC task produces the CSV. [Publish a PLC scan file](plc-scan-file-publisher.md)
+
 After both browser documents and direct OPC UA reads pass, the tool waits up to `scanCaptureTimeoutSeconds` for the final file. The default is 20 seconds. It checks that the original owned listener is still serving, reads at most 16 MiB from the finalized file, and saves the exact bytes as `scan-capture.csv` next to `session.json`. The status smoke reports an issue if the expected file is missing or cannot be retained. A file retained during the session binds its bytes to the smoke report. Keep the project's acquisition record to identify the producer.
 
 Retain the response, `session.json` and captured file together. In `cycle_trace_review`, set `requireSessionScanCapture` to true with the completed `hmiStatusReport`. Starting in br-studio 0.75.0, the reviewer can use `scan-capture.csv` beside that response. Supply `scanCsv` explicitly for a copy stored elsewhere. The review compares the file with the status receipt's hash and byte length. [Scan file descriptor](cycle-scan-capture.md#bind-the-scan-file) · [Scan beside its response](cycle-trace-review.md#review-the-scan-beside-its-status-response)
