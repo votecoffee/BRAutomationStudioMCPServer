@@ -1095,10 +1095,15 @@ def markdown_browser(browser, text):
             lines.append(f"- Counter {text(browser['counterWidgetId'])}")
     if minimum_height := browser.get("minimumTrafficLabelHeightCssPx"):
         lines.append(f"- Required traffic label height {text(minimum_height)} CSS px")
+    if requested := browser.get("requestedViewport"):
+        lines.append(f"- Requested viewport {text(requested['widthCssPx'])} × {text(requested['heightCssPx'])} CSS px")
     for phase, label in (("initial", "Initial document"), ("reopened", "Reopened document")):
         if document := browser.get(phase):
             samples = ", ".join(document["counterSamples"])
             lines.append(f"- {label} · Samples {text(samples or None)} · Time origin {text(document.get('timeOrigin'))}")
+            if viewport := document.get("viewport"):
+                lines.append(f"  - Viewport {text(viewport['state'])} · {text(viewport['widthCssPx'])}"
+                             f" × {text(viewport['heightCssPx'])} CSS px · Device pixel ratio {text(viewport['devicePixelRatio'])}")
             for widget, value in document.get("statusValues", {}).items():
                 lines.append(f"  - {text(widget)} · Value {text(value)}")
             if bundle := document.get("widgetBundle"):
@@ -1116,7 +1121,7 @@ def markdown_browser(browser, text):
                     lines.append(f"  - {text(role)} {text(asset['path'])} · HTTP {text(asset['httpStatus'])}")
             if labels := document.get("trafficLabels"):
                 lines.append(f"  - Traffic labels {text(labels['state'])}")
-                if viewport := labels.get("viewport"):
+                if (viewport := labels.get("viewport")) and "viewport" not in document:
                     lines.append(f"    - Viewport {text(viewport['widthCssPx'])} × {text(viewport['heightCssPx'])}"
                                  f" CSS px · Device pixel ratio {text(viewport['devicePixelRatio'])}")
                 if height := labels.get("minObservedHeightCssPx"):

@@ -459,6 +459,16 @@ def run_arsim_smoke(arguments, request_directory, runtime_probe=None):
                        require_widget_bundle=arguments.get("requireWidgetBundle", False), start_widget=start_widget)
 
 
+def browser_viewport(arguments):
+    width = arguments.get("viewportWidthCssPx")
+    height = arguments.get("viewportHeightCssPx")
+    if width is None and height is None:
+        return None
+    if width is None or height is None:
+        raise InvalidRequest("Supply viewportWidthCssPx and viewportHeightCssPx together")
+    return width, height
+
+
 def run_arsim_browser_smoke(arguments, request_directory):
     probe = ChromeProbe(request_directory / arguments["browserExecutable"], arguments["counterWidgetId"],
                         arguments.get("assemblyWidgetId"), arguments.get("browserTimeoutSeconds", 30),
@@ -466,7 +476,8 @@ def run_arsim_browser_smoke(arguments, request_directory):
                         capture_layout=arguments.get("captureLayoutAssets", False),
                         require_widget_bundle=arguments.get("requireWidgetBundle", False),
                         require_traffic_labels=arguments.get("requireTrafficLabels", False),
-                        minimum_label_height=arguments.get("minimumTrafficLabelHeightCssPx"))
+                        minimum_label_height=arguments.get("minimumTrafficLabelHeightCssPx"),
+                        viewport=browser_viewport(arguments))
     return run_arsim_smoke(arguments, request_directory, probe)
 
 
@@ -488,6 +499,7 @@ def run_arsim_hmi_smoke(arguments, request_directory, status_bindings=(), scan_c
         require_traffic_details=arguments.get("requireTrafficDetails", False),
         require_traffic_labels=arguments.get("requireTrafficLabels", False),
         minimum_label_height=arguments.get("minimumTrafficLabelHeightCssPx"),
+        viewport=browser_viewport(arguments),
         status_bindings=status_bindings, scan_capture=scan_capture,
     )
 
@@ -914,6 +926,10 @@ ARSIM_BROWSER_SMOKE = Operation(
         "counterWidgetId": {"type": "string", "minLength": 1, "description": "DOM ID of a read-only PLC-bound increasing counter widget."},
         "assemblyWidgetId": {"type": "string", "minLength": 1, "description": "DOM ID of a reviewed Assembly6D widget. Required when multiple are reviewed."},
         "browserTimeoutSeconds": {"type": "integer", "minimum": 1, "maximum": 120, "default": 30},
+        "viewportWidthCssPx": {"type": "integer", "minimum": 1, "maximum": 10_000_000,
+                               "description": "Headless browser viewport width in CSS pixels. Supply with viewportHeightCssPx."},
+        "viewportHeightCssPx": {"type": "integer", "minimum": 1, "maximum": 10_000_000,
+                                "description": "Headless browser viewport height in CSS pixels. Supply with viewportWidthCssPx."},
         "requireStartPage": {"type": "boolean", "default": False,
                              "description": "Verify the Assembly6D startup route and require the generated client map in both browser documents."},
         "requireTrafficDetails": {"type": "boolean", "default": False,
@@ -953,6 +969,8 @@ ARSIM_HMI_SMOKE = Operation(
         "browserExecutable": ARSIM_BROWSER_SMOKE.arguments["browserExecutable"],
         "assemblyWidgetId": ARSIM_BROWSER_SMOKE.arguments["assemblyWidgetId"],
         "browserTimeoutSeconds": ARSIM_BROWSER_SMOKE.arguments["browserTimeoutSeconds"],
+        "viewportWidthCssPx": ARSIM_BROWSER_SMOKE.arguments["viewportWidthCssPx"],
+        "viewportHeightCssPx": ARSIM_BROWSER_SMOKE.arguments["viewportHeightCssPx"],
         "requireStartPage": ARSIM_BROWSER_SMOKE.arguments["requireStartPage"],
         "requireTrafficDetails": ARSIM_BROWSER_SMOKE.arguments["requireTrafficDetails"],
         "requireTrafficLabels": ARSIM_BROWSER_SMOKE.arguments["requireTrafficLabels"],

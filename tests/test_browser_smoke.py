@@ -5,7 +5,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 import unittest
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, call, patch
 
 from br_automation_studio.arsim_smoke import WIDGET_BUNDLE_PATH
 from br_automation_studio.browser_smoke import (
@@ -335,6 +335,37 @@ class TestBrowserSmoke(unittest.TestCase):
             "minObservedHeightCssPx": 4.999, "belowMinimum": ["S1"],
         })
 
+    @patch("br_automation_studio.browser_smoke.time.sleep")
+    @patch("br_automation_studio.browser_smoke.time.monotonic", side_effect=range(8))
+    def test_viewport_is_set_before_navigation_and_checked_in_the_reopened_document(self, now, pause):
+        size = {"widthCssPx": 1280, "heightCssPx": 800}
+        viewport = dict(size, devicePixelRatio=1.25)
+        wrong = dict(viewport, heightCssPx=799)
+        page = Mock(deadline=7)
+        page.read.side_effect = [
+            *(dict(hmi(str(value), 10), viewport=viewport) for value in (1, 2, 3)),
+            {"url": "about:blank", "timeOrigin": 11},
+            dict(hmi("100", 10), viewport=viewport),
+            dict(hmi("4", 12), viewport=wrong), dict(hmi("5", 12), viewport=wrong),
+        ]
+        receipt = dict(self.receipt(), requestedViewport=size)
+        with self.assertRaisesRegex(TimeoutError, "requested 1280 × 800 CSS px viewport"):
+            verify_navigation(page, URL, receipt)
+        self.assertEqual(page.method_calls[:2], [call.set_viewport(1280, 800), call.navigate(URL)])
+        self.assertEqual(receipt["initial"]["viewport"], dict(viewport, state="matched"))
+        self.assertEqual(receipt["reopened"]["viewport"], dict(wrong, state="mismatched"))
+        self.assertEqual(receipt["reopened"]["counterSamples"], [])
+
+    def test_viewport_override_uses_desktop_metrics_and_surfaces_rejections(self):
+        page = Page(None, Mock(), 5)
+        with patch.object(page, "request", side_effect=[{"result": {}}, {"error": {}}]) as request:
+            page.set_viewport(800, 480)
+            request.assert_called_once_with("Emulation.setDeviceMetricsOverride", {
+                "width": 800, "height": 480, "deviceScaleFactor": 0, "mobile": False,
+            })
+            with self.assertRaisesRegex(ValueError, "apply the requested HMI viewport"):
+                page.set_viewport(800, 480)
+
     @patch("br_automation_studio.operations.arsim_smoke", return_value={"diagnostics": []})
     def test_browser_request_accepts_positive_integer_label_height_without_explicit_label_check(self, smoke):
         arguments = {"project": "Demo.apj", "jobDirectory": "job", "pviTransfer": "pvi.exe",
@@ -350,6 +381,20 @@ class TestBrowserSmoke(unittest.TestCase):
                 arguments["minimumTrafficLabelHeightCssPx"] = rejected
                 execute(request, Path("."))
         self.assertEqual(smoke.call_count, 1)
+
+    @patch("br_automation_studio.operations.arsim_smoke", return_value={"diagnostics": []})
+    def test_browser_request_requires_both_viewport_dimensions(self, smoke):
+        arguments = {"project": "Demo.apj", "jobDirectory": "job", "pviTransfer": "pvi.exe",
+                     "sessionDirectory": "session", "browserExecutable": "chrome.exe",
+                     "counterWidgetId": "Count", "viewportWidthCssPx": 1280}
+        request = {"schemaVersion": 1, "workspace": "test", "operation": "arsim_browser_smoke",
+                   "arguments": arguments}
+        with self.assertRaisesRegex(InvalidRequest, "Supply viewportWidthCssPx and viewportHeightCssPx together"):
+            execute(request, Path("."))
+        arguments["viewportHeightCssPx"] = 800
+        self.assertEqual(execute(request, Path("."))["status"], "complete")
+        self.assertEqual(smoke.call_args.args[-1].viewport, (1280, 800))
+        smoke.assert_called_once()
 
     @patch("br_automation_studio.browser_smoke.endpoints")
     def test_debugger_requires_owned_ipv4_loopback(self, endpoints):

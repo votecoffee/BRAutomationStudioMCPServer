@@ -37,6 +37,12 @@ Use `br-studio operation-help arsim_browser_smoke` to discover the contract. Sel
 
 Run `br-studio run --request <browser-request.json>`. Set `timeoutSeconds` for the ARsim HTTP startup window and `browserTimeoutSeconds` for the complete Chrome probe. Select `--format markdown` on the same invocation if you need the readable format. Use a different session directory for each invocation.
 
+## Set the browser viewport
+
+In br-studio 0.109.0 or later, supply both `viewportWidthCssPx` and `viewportHeightCssPx` to rehearse at a chosen viewport size. Chrome applies the desktop dimensions before opening the HMI. Each document must report the requested width and height before the browser probe accepts samples. The receipt records `requestedViewport` and the measured `viewport` with its device pixel ratio under both `initial` and `reopened`. [Chrome DevTools device metrics](https://chromedevtools.github.io/devtools-protocol/tot/Emulation/#method-setDeviceMetricsOverride)
+
+Use the panel browser's content area in CSS pixels when selecting the dimensions. Combine this setting with the [label size check](#check-label-size) to compare the actual SVG label bounds at that viewport. These dimensions also work with `arsim_hmi_smoke` and `arsim_status_smoke`.
+
 ## Verify the default start page in ARsim
 
 Set `requireStartPage` to `true` in br-studio 0.40.0 or later to check that the selected Assembly6D widget is assigned to the default visualization's start page. The operation uses the [saved and compiled placement review](ruc-review.md#verify-the-default-page-placement-of-assembly6d) on the selected build before starting ARsim. Supply `assemblyWidgetId` when several Assembly6D widgets exist.

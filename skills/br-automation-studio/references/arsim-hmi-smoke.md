@@ -60,6 +60,8 @@ Set `requireTrafficLabels` to `true` in br-studio 0.107.0 or later to require th
 
 Set `minimumTrafficLabelHeightCssPx` to enable the label check and enforce a project-selected minimum in both browser documents. The same option works with `arsim_status_smoke` and `arsim_browser_smoke`. [Label size evidence](arsim-browser-smoke.md#check-label-size)
 
+Set `viewportWidthCssPx` and `viewportHeightCssPx` together to run the check at the chosen content area. Both documents record the measured dimensions before accepting counter samples. [Viewport workflow](arsim-browser-smoke.md#set-the-browser-viewport)
+
 ## Read the evidence
 
 1. Confirm the binding, compiled default visualization, 6D configuration and rendered Assembly6D links belong to the same completed build. A binding or default visualization mismatch stops before runtime materialization.

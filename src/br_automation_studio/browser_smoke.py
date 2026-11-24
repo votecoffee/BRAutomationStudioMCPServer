@@ -136,6 +136,16 @@ def traffic_label_observation(value, expected, minimum_height=None):
             "minObservedHeightCssPx": min(heights.values(), default=None), "belowMinimum": below}
 
 
+def viewport_observation(value, requested):
+    value = value if isinstance(value, dict) else {}
+    observed = {key: value.get(key) for key in (*requested, "devicePixelRatio")}
+    dimensions = [observed[key] for key in requested]
+    state = "unverified"
+    if all(type(size) is int and size > 0 for size in dimensions):
+        state = "matched" if all(observed[key] == size for key, size in requested.items()) else "mismatched"
+    return {"state": state, **observed}
+
+
 def seconds_left(deadline):
     remaining = deadline - time.monotonic()
     if remaining <= 0:
@@ -228,6 +238,13 @@ class Page:
         if "error" in reply or not reply.get("result", {}).get("loaderId") or reply["result"].get("errorText"):
             raise ValueError("Chrome could not load the selected document")
 
+    def set_viewport(self, width, height):
+        reply = self.request("Emulation.setDeviceMetricsOverride", {
+            "width": width, "height": height, "deviceScaleFactor": 0, "mobile": False,
+        })
+        if "error" in reply or "result" not in reply:
+            raise ValueError("Chrome could not apply the requested HMI viewport")
+
     def read(self, expression):
         reply = self.request("Runtime.evaluate", {"expression": expression, "returnByValue": True})
         if error := reply.get("error"):
@@ -269,6 +286,7 @@ def widget_expression(assembly, counter, layout_paths=None, status_widgets=(), *
             }});
             return [key, matching ? {{httpStatus: matching.responseStatus}} : null];
         }}));
+        const viewport = {{widthCssPx: innerWidth, heightCssPx: innerHeight, devicePixelRatio}};
         const labelNames = {json.dumps(list(traffic_labels))};
         const trafficLabels = labelNames.length && assembly ? (() => {{
             const labels = new Map(labelNames.map(name => ['label_' + name, []]));
@@ -283,7 +301,7 @@ def widget_expression(assembly, counter, layout_paths=None, status_widgets=(), *
                 return true;
             }};
             return {{
-                viewport: {{widthCssPx: innerWidth, heightCssPx: innerHeight, devicePixelRatio}},
+                viewport,
                 labels: Object.fromEntries(labelNames.map(name => {{
                     const matches = labels.get('label_' + name);
                     const node = matches.length === 1 ? matches[0] : null;
@@ -302,6 +320,7 @@ def widget_expression(assembly, counter, layout_paths=None, status_widgets=(), *
                 ? assembly.getAttribute('data-brease-widget') : null,
             value: read({json.dumps(counter)}),
             statusValues: Object.fromEntries({json.dumps(list(status_widgets))}.map(id => [id, read(id)])),
+            viewport,
             trafficLabels,
             layout
         }};
@@ -334,14 +353,20 @@ def check_document_status(state, receipt, expected):
 
 def collect_samples(page, expression, url, receipt, count, prior_origins=(), after=Decimal(0),
                     *, layout_paths=None, require_layout=False, check_assembly=True, expected_status=None,
-                    resource_paths=None, traffic_labels=(), minimum_label_height=None):
+                    resource_paths=None, traffic_labels=(), minimum_label_height=None, requested_viewport=None):
     latest = after
     resource_paths = resource_paths or {}
     while time.monotonic() < page.deadline:
         result = page.read(expression)
         origin = document_origin(result, url)
+        current_document = origin is not None and origin not in prior_origins
+        if current_document and requested_viewport:
+            viewport = receipt["viewport"] = viewport_observation(result.get("viewport"), requested_viewport)
+            if viewport["state"] != "matched":
+                time.sleep(0.2)
+                continue
         widget_matches = not check_assembly or result.get("widgetType") == ASSEMBLY_WIDGET
-        if origin is not None and origin not in prior_origins and widget_matches:
+        if current_document and widget_matches:
             if "timeOrigin" in receipt and receipt["timeOrigin"] != origin:
                 raise ValueError("The HMI document changed during counter sampling")
             receipt["timeOrigin"] = origin
@@ -367,6 +392,9 @@ def collect_samples(page, expression, url, receipt, count, prior_origins=(), aft
                     and (not require_layout or receipt.get("layout", {}).get("state") == "observed")):
                 return
         time.sleep(0.2)
+    if (viewport := receipt.get("viewport")) and viewport["state"] != "matched":
+        width, height = requested_viewport["widthCssPx"], requested_viewport["heightCssPx"]
+        raise TimeoutError(f"The browser did not report the requested {width} × {height} CSS px viewport")
     if len(receipt["counterSamples"]) == count:
         for key in resource_paths:
             if receipt[key]["state"] != "observed":
@@ -398,11 +426,15 @@ def verify_navigation(page, url, receipt):
     expected = receipt.get("expectedStatus", {})
     assembly = receipt["assemblyWidgetId"]
     labels = receipt.get("expectedTrafficLabels", ())
+    viewport = receipt.get("requestedViewport")
     options = {"layout_paths": paths, "require_layout": required, "check_assembly": assembly is not None,
                "expected_status": expected, "resource_paths": resources, "traffic_labels": labels,
-               "minimum_label_height": receipt.get("minimumTrafficLabelHeightCssPx")}
+               "minimum_label_height": receipt.get("minimumTrafficLabelHeightCssPx"),
+               "requested_viewport": viewport}
     expression = widget_expression(assembly, receipt["counterWidgetId"], paths, expected, resource_paths=resources,
                                    traffic_labels=labels)
+    if viewport:
+        page.set_viewport(viewport["widthCssPx"], viewport["heightCssPx"])
     page.navigate(url)
     receipt["state"] = "first_document"
     first = receipt["initial"] = {"counterSamples": []}
@@ -478,6 +510,7 @@ class ChromeProbe:
     require_widget_bundle: bool = False
     require_traffic_labels: bool = False
     minimum_label_height: int | None = None
+    viewport: tuple[int, int] | None = None
     key: ClassVar[str] = "browser"
     evidence: ClassVar[str] = "arsim_loopback_browser"
 
@@ -515,6 +548,9 @@ class ChromeProbe:
             receipt["expectedTrafficLabels"] = expected_traffic_labels(reviewed, start)
         if self.minimum_label_height is not None:
             receipt["minimumTrafficLabelHeightCssPx"] = self.minimum_label_height
+        if self.viewport is not None:
+            width, height = self.viewport
+            receipt["requestedViewport"] = {"widthCssPx": width, "heightCssPx": height}
         if self.require_widget_bundle:
             if widget is None:
                 raise ValueError("The bundle check requires a reviewed Assembly6D widget")
