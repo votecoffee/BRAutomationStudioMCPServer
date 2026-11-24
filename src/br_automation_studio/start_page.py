@@ -12,7 +12,7 @@ from .binding_review import (
 from .inspection import inspect_saved, registered_assembly
 from .json_io import invalid_constant, unique_object
 from .project import SavedFiles, children, choices, objects, package_files, tag
-from .ruc_review import TRAFFIC_DETAILS, VIEW, blank_equivalent
+from .ruc_review import TRAFFIC_DETAILS, VIEW, Archive, blank_equivalent, read_widgets
 
 
 RESOURCE_ID = re.compile(r"[a-zA-Z0-9_-]+")
@@ -286,9 +286,8 @@ def review_traffic_details(source, node, path, result):
                      "The selected Assembly6D widget has its additional Traffic Manager details disabled")
 
 
-def compare_compiled_traffic_details(archive, source, manifest, widget, rendered, report):
-    traffic = report["trafficDetails"]
-    saved = traffic["saved"]
+def check_saved_traffic_details(source, manifest, widget, report):
+    saved = report["trafficDetails"]["saved"]
     node = check_start_widget_content(source, widget)
     require(not source.diagnostics, widget["path"], "Could not verify one saved widget for the detail comparison")
     review_traffic_details(source, node, Path(widget["path"]), saved)
@@ -296,6 +295,12 @@ def compare_compiled_traffic_details(archive, source, manifest, widget, rendered
             "Saved Traffic Manager detail evidence differs from the build manifest")
     if saved["state"] == "matched":
         require(not source.diagnostics, widget["path"], "Could not verify the saved detail setting")
+    return saved
+
+
+def compare_compiled_traffic_details(archive, source, manifest, widget, rendered, report):
+    traffic = report["trafficDetails"]
+    saved = check_saved_traffic_details(source, manifest, widget, report)
 
     path = Path(rendered["path"])
     compiled = traffic["compiled"] = {**rendered["trafficDetails"], "path": path.as_posix()}
@@ -310,6 +315,23 @@ def compare_compiled_traffic_details(archive, source, manifest, widget, rendered
         traffic["state"] = "matched"
     if saved["state"] == "mismatched":
         traffic["state"] = "mismatched"
+
+
+def verify_packaged_traffic_details(bundle, staged, manifest, widgets):
+    route = manifest["launchPadRoute"]
+    reader = SavedFiles(staged)
+    archive = Archive(bundle, reader)
+    check = StartPageWidget(route["startPageWidgetId"], require_traffic_details=True)
+    _, widget = select_saved_widget(widgets, check.dom_id)
+    rendered = read_widgets(archive, {"widgets": [widget]}, reader, include_traffic_details=True)
+    evidence = check.receipt()
+    check.check(archive, staged, manifest, [widget], rendered, evidence)
+    if reader.diagnostics:
+        raise ValueError(reader.diagnostics[0]["message"])
+    details = evidence["trafficDetails"]
+    if details["state"] != "matched" or details["saved"] != route["trafficDetails"]:
+        raise ValueError("The saved and generated Traffic Manager display settings must match the reviewed build plan")
+    return details
 
 
 def review_saved_assembly_widget(path, configuration, cpu, widget_id, assembly_id, manager_id, *,

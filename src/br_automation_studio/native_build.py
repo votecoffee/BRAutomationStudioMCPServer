@@ -291,17 +291,24 @@ def plan_build(path, studio_root, runtime_root=None, configuration=None, cpu=Non
             except ValueError as error:
                 issue(report, "error", "launchpad_build_positions_unverified", str(error))
                 return report
-        if launchpad_inputs.widget_id is not None:
-            from .start_page import StartPageWidget
+        if launchpad_inputs.widget_id is not None or launchpad_inputs.require_traffic_details:
+            from .start_page import StartPageWidget, check_saved_traffic_details
 
-            widget = StartPageWidget(launchpad_inputs.widget_id)
+            widget = StartPageWidget(launchpad_inputs.widget_id, launchpad_inputs.require_traffic_details)
+            source = SavedFiles(root)
+            widget_report = widget.receipt()
             try:
                 manager = selected_manager(route["manager"], report["trafficManagers"])
-                widget.check_saved(SavedFiles(root), plan, report["widgets"], widget.receipt(), manager)
+                saved_widget = widget.check_saved(source, plan, report["widgets"], widget_report, manager)
+                if widget.require_traffic_details:
+                    details = check_saved_traffic_details(source, plan, saved_widget, widget_report)
+                    if details["state"] != "matched":
+                        raise ValueError(source.diagnostics[-1]["message"])
+                    route["trafficDetails"] = details
             except (OSError, RuntimeError, ValueError) as error:
                 issue(report, "error", "launchpad_build_widget_unverified", str(error))
                 return report
-            route["startPageWidgetId"] = widget.dom_id
+            route["startPageWidgetId"] = widget_report["domId"]
         if launchpad_inputs.verify_rules:
             try:
                 route["rules"] = launchpad_rules(route, report["trafficManagers"])
@@ -499,6 +506,13 @@ def execute_build(path, studio_root, runtime_root, configuration, cpu, plan_sha2
             try:
                 job["package"] = package_evidence(ruc, job_dir, mptraffic=definition, motion=motion,
                                                   verify_layout_device="layoutDevice" in manifest)
+                if "trafficDetails" in manifest.get("launchPadRoute", {}):
+                    from .start_page import verify_packaged_traffic_details
+
+                    artifact_error = "traffic_details_unverified"
+                    with ZipFile(ruc) as bundle:
+                        job["package"]["trafficDetails"] = verify_packaged_traffic_details(
+                            bundle, staged, manifest, report["widgets"])
                 if "motionSymbols" in manifest:
                     artifact_error = "motion_symbols_unverified"
                     job["motionSymbols"] = read_motion_symbols(job_dir, manifest["configuration"],

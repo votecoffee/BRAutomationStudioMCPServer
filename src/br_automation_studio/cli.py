@@ -239,6 +239,8 @@ def markdown(response):
                 lines.append(f"- Pinned LaunchPad route positions · {len(positions)} objects")
             if widget := route.get("startPageWidgetId"):
                 lines.append(f"- Pinned LaunchPad start page widget {text(widget)}")
+            if details := route.get("trafficDetails"):
+                lines.append(f"- Pinned Traffic Manager details · Enabled · Source {text(details['path'])}")
             if "rules" in route:
                 lines.append(f"- Pinned Traffic Manager rule lists · {len(route['rules'])}")
             if recovery := route.get("recovery"):
@@ -261,6 +263,8 @@ def markdown(response):
             if device := package.get("layoutDevice"):
                 lines.append(f"- Verified compiled 6DData · {text(device['compiled']['deviceParameter'])}"
                              f" · System configuration SHA-256 {device['systemConfigSha256']}")
+            if details := package.get("trafficDetails"):
+                lines.append(f"- Verified enabled Traffic Manager details in {text(details['compiled']['path'])}")
         if symbols := job.get("motionSymbols"):
             lines.extend(markdown_motion_symbols(symbols, text))
     lines.extend(markdown_diagnostics(report["diagnostics"], text))

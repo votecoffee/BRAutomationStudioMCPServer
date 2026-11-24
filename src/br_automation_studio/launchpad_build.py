@@ -38,6 +38,7 @@ class LaunchPadBuildInputs:
     verify_recovery: bool = False
     verify_motion_limits: bool = False
     read_axes: list[str] | None = None
+    require_traffic_details: bool = False
 
 
 def selected_manager(manager, managers):

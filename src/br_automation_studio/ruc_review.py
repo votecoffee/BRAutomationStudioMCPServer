@@ -2,7 +2,6 @@
 """Review saved AS4 RUC contents against a linked native build plan."""
 
 from collections import Counter, defaultdict
-from dataclasses import replace
 from hashlib import file_digest
 import json
 from pathlib import Path
@@ -455,6 +454,9 @@ def review_ruc(path, job_directory, binding=None, *, geometry_manager=None, incl
                         binding_report["state"] = "unverified"
                     return result
                 pinned_widget = launchpad is not None and "startPageWidgetId" in launchpad
+                pinned_traffic_details = launchpad is not None and "trafficDetails" in launchpad
+                if pinned_traffic_details and not pinned_widget:
+                    raise ValueError("The Traffic Manager display setting needs a pinned start page widget")
                 if pinned_widget:
                     from .start_page import StartPageWidget
 
@@ -463,8 +465,8 @@ def review_ruc(path, job_directory, binding=None, *, geometry_manager=None, incl
                         raise ValueError("The LaunchPad plan has no usable start page widget ID")
                     if start_widget is not None and start_widget.dom_id not in (None, dom_id):
                         raise ValueError(f"The LaunchPad build plan requires start page widget {dom_id!r}")
-                    start_widget = (replace(start_widget, dom_id=dom_id) if start_widget is not None
-                                    else StartPageWidget(dom_id))
+                    start_widget = StartPageWidget(dom_id, pinned_traffic_details or (
+                        start_widget is not None and start_widget.require_traffic_details))
                     review["startPageWidget"] = start_widget.receipt()
                     review["startPageWidget"]["launchPadManager"] = launchpad["manager"]
                 if include_layout_device and not pinned_layout_device:
@@ -560,8 +562,14 @@ def review_ruc(path, job_directory, binding=None, *, geometry_manager=None, incl
                                                                           and start_widget.require_traffic_details))
                 if start_widget is not None:
                     manager = selected_manager(launchpad["manager"], managers) if pinned_widget else None
-                    start_widget.check(archive, path.parent, manifest, saved["widgets"], review["widgets"],
-                                       review["startPageWidget"], manager)
+                    startup = review["startPageWidget"]
+                    start_widget.check(archive, path.parent, manifest, saved["widgets"], review["widgets"], startup, manager)
+                    if pinned_traffic_details:
+                        details = startup["trafficDetails"]
+                        if (startup["state"] != "matched" or details["saved"] != launchpad["trafficDetails"]
+                                or details != job["package"].get("trafficDetails")):
+                            reader.issue("error", "ruc_pinned_traffic_details_mismatch", Path("."),
+                                         "The Traffic Manager display setting differs from the pinned build evidence")
                 if require_6d and not saved["motionModules"] and not saved["widgets"]:
                     reader.issue("warning", "ruc_no_expected_6d_content", Path("."),
                                  "No supported saved 6D modules or Assembly6D widgets to compare")

@@ -10,7 +10,7 @@ Use the three requests below from one run directory. Adjust the Automation Studi
 | --- | --- | --- |
 | [Workstation check](../../../examples/inspection-cycle/workstation-check.json) | `receipts/workstation.json` | The exact three-package selection, simulator registration and the four media roles. |
 | [Saved-project preflight](../../../examples/inspection-cycle/simulation-preflight.json) | `receipts/simulation-preflight.json` | The project, CPU and Runtime, matched workstation receipt, native export and selected IEC declarations and MpTraffic definition. |
-| [Native build plan](../../../examples/inspection-cycle/build-plan.json) | `receipts/build-plan.json` | The plan SHA-256 and its saved-project preflight, workstation, route, widget, 6DData device, X/Y read axes, assembly limits and motion pins. |
+| [Native build plan](../../../examples/inspection-cycle/build-plan.json) | `receipts/build-plan.json` | The plan SHA-256 and its saved-project preflight, workstation, route, widget and Traffic Manager display, 6DData device, X/Y read axes, assembly limits and motion pins. |
 
 Copy the examples into the run root as `workstation-request.json`, `simulation-preflight-request.json` and `build-plan-request.json`. Run each stage with `br-studio run --request <request.json>` and retain the JSON response before selecting the next stage. Use the same saved project, CPU, native export and workstation receipt for preflight and planning. A blocked workstation or preflight calls for resolving the reported dependency. Review the diagnostics when the preflight reports `review_required` or the planner returns a plan with warnings. The plan can carry the selected IEC declarations, the six motion binaries and generated motion globals into package verification. [Workstation and project prerequisites](simulation-preflight.md)
 
@@ -84,6 +84,8 @@ Run the [coordinate frame review](launchpad-frame-review.md) on the imported geo
 With br-studio 0.54.0 or later, add `"launchPadWidgetId": "Overview_PlanarDisplay"` to both build requests with the reviewed route inputs. Use the exact `ContentId_WidgetId` from the saved project. Planning checks that this Assembly6D widget is placed on the default visualization's start page and that its links point to the reviewed manager and that manager's assembly. The selected widget ID is part of the build plan SHA-256.
 
 [RUC review](ruc-review.md#verify-the-default-page-placement-of-assembly6d) reads the compiled links, client map, and rendered content for the pinned widget automatically. The [browser rehearsal](arsim-hmi-smoke.md) uses the pinned widget and checks the served client map in both browser documents. Enable `captureLayoutAssets` and run [SVG review](layout-svg-review.md) to compare the served geometry.
+
+With br-studio 0.125.0 or later, add `"requireTrafficDetails": true` to both build requests with the reviewed LaunchPad route. Select `launchPadWidgetId` when several saved Assembly6D widgets exist. The plan verifies that the widget's saved `showAdditionalTrafficManagerInfo` option or registered widget default is enabled. Read its source under `buildPlan.manifest.launchPadRoute.trafficDetails`. The build verifies the generated Boolean `true` in the selected startup content before accepting the RUC and records it in `nativeBuild.package.trafficDetails`. [Review the generated display option](ruc-review.md#verify-the-generated-traffic-manager-display-option)
 
 ### Pin the reviewed traffic rules
 

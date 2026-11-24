@@ -46,6 +46,8 @@ With br-studio 0.104.0 or later, add `"requireTrafficDetails": true` to the `ruc
 
 A compiled `false` produces `ruc_traffic_details_disabled`. An absent option or a value outside the Boolean format produces `ruc_traffic_details_unverified`. Retain the RUC with the verified source read set and confirm the displayed information in the browser when the intended Traffic Manager is running.
 
+For a build planned with `requireTrafficDetails` in br-studio 0.125.0 or later, this review runs automatically for the pinned startup widget. The saved setting and compiled Boolean must match the build evidence. A missing, changed or unsupported value fails the review. [Pin traffic details before building](native-build.md#check-the-default-assembly6d-widget)
+
 ## Evidence in the result
 
 | Check | Evidence |

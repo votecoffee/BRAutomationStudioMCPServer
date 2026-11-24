@@ -190,8 +190,9 @@ def launchpad_build_inputs(arguments, request_directory):
     verify_recovery = arguments.get("verifyLaunchPadRecovery", False)
     verify_motion_limits = arguments.get("verifyLaunchPadMotionLimits", False)
     read_axes = arguments.get("launchPadReadAxes")
+    require_traffic_details = arguments.get("requireTrafficDetails", False)
     if not (verify_layout or verify_positions or verify_rules or verify_recovery or verify_motion_limits or widget is not None
-            or read_axes is not None or arguments.keys() & (required | {"nameMap"})):
+            or require_traffic_details or read_axes is not None or arguments.keys() & (required | {"nameMap"})):
         return None
     if missing := required - arguments.keys():
         raise InvalidRequest(f"Missing LaunchPad build inputs: {', '.join(sorted(missing))}")
@@ -204,7 +205,8 @@ def launchpad_build_inputs(arguments, request_directory):
                                 request_directory / mapping if mapping is not None else None,
                                 verify_layout=verify_layout, verify_positions=verify_positions, widget_id=widget,
                                 verify_rules=verify_rules, verify_recovery=verify_recovery,
-                                verify_motion_limits=verify_motion_limits, read_axes=read_axes)
+                                verify_motion_limits=verify_motion_limits, read_axes=read_axes,
+                                require_traffic_details=require_traffic_details)
 
 
 def build_plan(arguments, request_directory):
@@ -680,6 +682,8 @@ BUILD_PLAN = Operation(
                                      "description": "Pin the saved absolute station and waypoint XY values for RUC review."},
         "launchPadWidgetId": {"type": "string", "minLength": 1,
                               "description": "Pin the default start page's Assembly6D DOM ID and require it to show the reviewed manager."},
+        "requireTrafficDetails": {"type": "boolean", "default": False,
+                                  "description": "Require enabled Traffic Manager details on the saved and compiled LaunchPad start widget."},
         "verifyLaunchPadRules": {"type": "boolean", "default": False,
                                  "description": "Pin the selected manager's linked rule lists and typed exclusivity roles."},
         "verifyLaunchPadRecovery": {"type": "boolean", "default": False,

@@ -19,6 +19,7 @@ from br_automation_studio.inspection import inspect_project
 from br_automation_studio.native_build import identity, source_tree
 from br_automation_studio.operations import InvalidRequest, execute
 from br_automation_studio.ruc_review import CONTENT, DATA, VIEW, WIDGET_SCRIPT
+from br_automation_studio.start_page import verify_packaged_traffic_details
 
 FIXTURE = Path(__file__).resolve().parent / "fixtures/Loop"
 RUC_PATH = "binary/ARsim/PC/RUCPackage/RUCPackage.zip"
@@ -706,6 +707,43 @@ position-x-mm="0" position-y-mm="0" transform="translate(0 -240)"><g>
 
         self.add_launchpad_route()
         self.assertEqual(self.review(startPageWidgetId=dom_id)["status"], "complete")
+
+    def test_build_pinned_traffic_details_are_required_without_an_explicit_review_option(self):
+        self.add_start_page()
+        relative = "Logical/mappView/Overview.content"
+        content = self.project / relative
+        attribute = b' showAdditionalTrafficManagerInfo="true"'
+        content.write_bytes(content.read_bytes().replace(b' id="LoopOverview"', b' id="LoopOverview"' + attribute))
+        saved = {"state": "matched", "enabled": True, "source": "saved", "path": relative}
+        retained = self.add_launchpad_route(startPageWidgetId="DemoOverview_LoopOverview", trafficDetails=saved)
+        widgets = inspect_project(self.project / "Loop.apj", "ARsim", "PC")["widgets"]
+        manifest = self.plan["manifest"]
+        option = b'"mpLinkTrafficManager":"mapp6D::DemoTraffic"'
+        html = self.members[WIDGET]
+        self.members[WIDGET] = html.replace(option, option + b',"showAdditionalTrafficManagerInfo":true')
+        job = self.package() | {"launchPadRoute": retained}
+        with ZipFile(self.archive) as archive:
+            details = verify_packaged_traffic_details(archive, self.project, manifest, widgets)
+        self.assertEqual(details["saved"], saved)
+        job["package"]["trafficDetails"] = details
+        self.write("job.json", job)
+        response = self.review()
+        self.assertEqual(response["status"], "complete", response["result"]["diagnostics"])
+        self.assertEqual(response["result"]["rucReview"]["startPageWidget"]["trafficDetails"], details)
+
+        for rendered, reason in ((html, "ruc_traffic_details_unverified"),
+                                 (html.replace(option, option + b',"showAdditionalTrafficManagerInfo":false'),
+                                  "ruc_traffic_details_disabled")):
+            with self.subTest(reason=reason):
+                self.members[WIDGET] = rendered
+                job = self.package() | {"launchPadRoute": retained}
+                job["package"]["trafficDetails"] = details
+                self.write("job.json", job)
+                with ZipFile(self.archive) as archive, self.assertRaisesRegex(ValueError, "showAdditionalTrafficManagerInfo"):
+                    verify_packaged_traffic_details(archive, self.project, manifest, widgets)
+                response = self.review()
+                self.assertEqual(response["status"], "issues")
+                self.assertEqual(self.codes(response), [reason, "ruc_pinned_traffic_details_mismatch"])
 
     def test_compiled_route_must_preserve_the_planned_grid_and_positions(self):
         saved = self.project / "Physical/ARsim/PC/mapp6D/FixtureLayout.layout6d"
