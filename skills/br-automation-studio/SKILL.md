@@ -57,6 +57,8 @@ Use the [direct OPC UA smoke workflow](references/arsim-opcua-smoke.md) for an i
 
 Use the [combined HMI workflow](references/arsim-hmi-smoke.md) to verify the selected binding and compare direct and browser values inside one ARsim session.
 
+For one ARsim request that checks a panel viewport, Traffic Manager labels and captured geometry, follow the panel layout rehearsal. [Panel layout rehearsal](references/arsim-panel-layout.md)
+
 Use the [status reconnect workflow](references/arsim-status-smoke.md) to read the held request and shuttle in both HMI documents and the surrounding direct OPC UA sessions.
 
 Keep requests and results containing real project details in a project-owned folder or the checkout's ignored `.local/`. Use the read-set SHA-256 and selected configuration when reporting findings. Ground any claim about compiling, running ARsim, or operating on hardware in separate evidence.

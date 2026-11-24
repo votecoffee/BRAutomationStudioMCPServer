@@ -4,6 +4,8 @@ Use `arsim_hmi_smoke` for a design review of a trusted AS4 PC simulation RUC. It
 
 Use the [status reconnect workflow](arsim-status-smoke.md) to verify held request, shuttle and phase values around the same browser reopen.
 
+Combine the viewport, label checks, widget bundle, SVG capture and direct PLC counter comparison in one request. [Panel layout rehearsal](arsim-panel-layout.md)
+
 ## Select the HMI witness
 
 Use an increasing PLC integer with a local, one-way OPC UA value binding. The numeric widget should display that integer without scaling or wrapping during the check. Use zero or blank while the browser widget is unbound. The selected visualization must be the default in the saved and packaged mapp View server configuration. Its opening page must show the numeric widget and the reviewed `Assembly6D` widget.
